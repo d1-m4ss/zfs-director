@@ -8,11 +8,9 @@ Manage ZFS in Unraid, browse snapshots in a **Snapshot File Manager**, automate 
 - **[Sanoid integration](#sanoid-snapshot-policies):** choose snapshot creation times, retention and protected removal of old snapshots; review External and Managed policies.
 - **[Syncoid integration](#syncoid-replication):** create local or SSH replication jobs through Source → Destination → Schedule → Review, with progress and verified results in Jobs.
 
-**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid-RC1.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md) · [Known limitations](#release-status-and-known-limitations)
+**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid-RC1.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
 
-**RC1 2026.10.22.1** targets Unraid 7.3.3 / OpenZFS 2.4.4. This candidate is not yet a stable release or a Community Applications listing. Screenshots use entirely fictional data rendered inside an isolated VM; [capture details](docs/TESTING.md#documentation-screenshots).
-
-Installation, real ZFS operations and GUI checks are summarized in the [RC1 verification results](docs/TESTING.md#rc1-verification-2026-10-22). Existing settings, schedules and Jobs were checked before and after the upgrade.
+**RC1 2026.10.22.1** was tested on a physical Unraid 7.3.3 server with OpenZFS 2.4.4 and in an isolated VM. See the [verification results](docs/TESTING.md#rc1-verification-2026-10-22) for installation, upgrades, ZFS operations and GUI checks.
 
 <table>
 <tr><th>Snapshot File Manager</th><th>Sanoid snapshot policies</th><th>Syncoid Replication Wizard</th></tr>
@@ -123,17 +121,19 @@ Reviewing or saving a definition is not a transfer. Run and enable decisions are
 
 ### Why Sanoid and Syncoid
 
-After testing the snapshot, retention, replication and ownership workflows, we selected **Sanoid + Syncoid as a better fit for ZFS Director than continuing a ZnapZend integration**. Sanoid handles snapshot creation; Syncoid handles replication; Director provides the reviewed GUI, schedules, Jobs and protection checks.
+We compared **Sanoid/Syncoid 2.2.0 and ZnapZend 0.23.6** in an isolated VM with real ZFS 2.2.2. The study covered snapshots, retention, replication, fault injection and recovery after VM restarts.
 
-| Director check | Result of local regression / API tests | Why it matters |
+| Check | Sanoid / Syncoid | ZnapZend |
 | --- | --- | --- |
-| [Creation times and retention settings](tests/sanoid-times.php) | Creation times validate and survive configuration round trips; retention is configured separately | Users can understand when snapshots are created and how long they are kept |
-| [Managed retention safety](tests/sanoid.php) | Generated Sanoid config uses `autoprune = no`; matching names do not adopt manual snapshots; changed GUIDs, holds and replication bases block removal | Director retains control of deletion approval |
-| [Verified replication](tests/syncoid.php) | Missing receiver checkpoints, changed identities and partial transfers cannot be reported as completed just because the process returned zero | Success requires receiver evidence |
-| [External / Managed ownership](tests/ownership-transfer.test.mjs) | Reviewed transfer saves a disabled definition; active, unknown or reactivated external launchers block conflicting Managed work | Existing scripts remain under their owner's control and duplicate execution is guarded |
-| [Jobs and recovery](tests/protection-jobs.php) | Verified outcomes and stage history persist; interrupted in-flight work requires inspection rather than automatic destructive recovery | Snapshot and replication results stay visible and reviewable |
+| Real ZFS scenarios | 12/12 passed | 12/12 passed after adapter workarounds |
+| Fault injection and data safety | 12/12 passed | 10/12 passed |
+| Foreign objects, interrupted increments and retention | 4/5 passed | 3/4 passed |
+| Normal VM reboot | 6/6 passed | 5/5 passed |
+| VM hard reset during a transfer | 4/4 passed | 3/4 passed |
+| Interrupted initial transfer with receiver protection | Resumed through a resume token; data matched | Required manual recovery of the incomplete receiver |
+| Dedicated backend daemon | Not required | Required, approximately 32 MB RSS |
 
-These checks validate Director's integration design; native test coverage is described in [Testing](docs/TESTING.md). We did not run a head-to-head performance benchmark or equivalent ZnapZend acceptance suite. The choice concerns this plugin's workflow, rather than a claim that ZnapZend is universally inferior. ZnapZend is therefore excluded from the active integration.
+**We selected Sanoid + Syncoid** for resumable transfers, clearer failure reporting and operation without a dedicated daemon. Both tools could return zero while a foreign receiver snapshot blocked progress, so Director verifies the receiver's actual state. See the [comparison results and measurements](docs/TESTING.md#backend-comparison) for the findings behind this choice.
 
 ![Overview with two synthetic storage pools](docs/images/overview.png)
 
@@ -201,23 +201,13 @@ The worker checks history maintenance hourly. Default policy: 30 days, soft limi
 
 ## Requirements and state
 
-The current target environment is **Unraid 7.3.3 with OpenZFS 2.4.4**. This is not a compatibility promise for every Unraid/OpenZFS combination. Native helper prerequisites are checked at runtime; unsupported kernels or filesystem APIs fail closed. Optional Data Protection requires a compatible trusted Sanoid / Syncoid installation.
+The target environment is **Unraid 7.3.3 with OpenZFS 2.4.4**. Native helper prerequisites are checked at runtime. Optional Data Protection requires a compatible trusted Sanoid / Syncoid installation.
 
 Director creates and manages its persistent and temporary storage automatically. Upgrades preserve existing settings and journals. Do not replace current state with an old code backup during rollback.
 
 A trusted path/ownership failure is a reason to inspect the installation, not to apply a recursive chmod. Existing external schedules are never permission-repaired or adopted automatically.
 
 ![Synthetic integration detection and settings](docs/images/settings.png)
-
-
-## Release status and known limitations
-
-- **Conservative ZIP cleanup:** new archive Jobs record the pool GUID. When that exact pool is imported, repeated inventories prove the owner/snapshot GUIDs absent and the entire recorded owner path is absent, stale ZIP/hold bookkeeping can be reconciled without deleting files. Legacy Jobs without a pool GUID, renamed owners, retained paths, unavailable pools and incomplete scans remain pending for inspection. Do not force-remove locks or blindly edit journals.
-- **Boot coverage:** installation, upgrade and normal reboot were evaluated in an isolated Unraid VM. Physical hardware, power-loss recovery and native pending-recovery reboot remain unverified.
-- **Platform coverage:** synthetic GUI/PHP tests and Linux filesystem tests have narrower scope than native Unraid/OpenZFS acceptance. Physical touch and screen-reader coverage is incomplete.
-- **Distribution:** the RC1 release provides the installation ZIP, SHA256SUMS and matching PLG/TGZ assets. An automatic update channel and broad third-party acceptance remain unverified.
-
-The safety gates reduce accidental scope expansion; they are not a substitute for independent backups, application quiescence or operator review.
 
 
 ## Repository
@@ -231,12 +221,11 @@ docs/images/         Screenshots using fictional data
 docs/preview/        Synthetic demonstration and screenshot tools
 ```
 
-All documentation screenshots use fictional data. Server configuration, credentials, Jobs and backups are excluded from the repository and release ZIP.
-
-
 ## License and acknowledgments
 
-GPL-2.0-or-later. Original ZFS Master: Carlos Rodriguez (IkerSaint), copyright 2021. Further upstream adaptations and retained notices are documented in [NOTICE.md](src/NOTICE.md). The original runtime license is retained in `src/LICENSE`; the complete license text is in [LICENSE](LICENSE) and `src/COPYING`.
+[GPL-2.0-or-later](LICENSE).
+
+Based on [ZFS Master](https://github.com/IkerSaint/ZFS-Master-Unraid) by [Carlos Rodriguez (IkerSaint)](https://github.com/IkerSaint), copyright 2021. Upstream attribution and retained notices are documented in [NOTICE.md](NOTICE.md).
 
 
 ## For developers
