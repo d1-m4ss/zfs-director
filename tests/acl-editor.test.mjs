@@ -1,0 +1,2 @@
+import assert from'node:assert/strict';import{test}from'node:test';import{readFile}from'node:fs/promises';import{runtime}from'./php-runtime.mjs';
+test('ACL editor validates exact POSIX scope and exposes unsupported mechanisms',async()=>{const php=await runtime();try{php.writeFile('/app/acl-editor.php',await readFile('tests/acl-editor.php'));const r=await php.run({scriptPath:'/app/acl-editor.php'});assert.equal(r.errors,'',r.text);assert.equal(r.exitCode,0,r.text);}finally{php.exit();}});

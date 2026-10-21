@@ -1,0 +1,32 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-force-exit tests/*.test.mjs",
+    "test:gui": "node tests/gui/run.mjs",
+    "test:download": "node tests/gui/download-save.mjs",
+    "test:analysis": "node --test --test-force-exit tests/gui/source-probes.mjs",
+    "mock:gui": "node tests/gui/serve.mjs",
+    "test:gui-policy": "node --test tests/gui/result-policy.test.mjs",
+    "test:integration": "node tests/integration/run.mjs",
+    "mock:php": "node tests/integration/serve.mjs",
+    "test:native": "node tests/native-linux/run.mjs",
+    "test:visual": "node tests/gui/rc-visual.mjs",
+    "test:performance": "node tests/gui/rc-performance.mjs",
+    "demo": "node docs/preview/server.mjs",
+    "screenshots": "node docs/preview/capture.mjs",
+    "test:privacy": "python3 tools/check-release.py"
+  },
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0"
+  },
+  "devDependencies": {
+    "@php-wasm/node": "3.1.58",
+    "@php-wasm/universal": "3.1.58",
+    "jsdom": "30.1.3",
+    "playwright": "1.62.1"
+  },
+  "name": "zfs-director",
+  "version": "0.0.0-rc.20261022.1",
+  "description": "ZFS Director Unraid plugin source and isolated test fixtures",
+  "license": "GPL-2.0-or-later"
+}

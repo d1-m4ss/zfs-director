@@ -1,0 +1,2 @@
+import assert from'node:assert/strict';import{test}from'node:test';import{readFile}from'node:fs/promises';import{runtime}from'./php-runtime.mjs';
+test('maintenance thresholds stable transition history and verified lag aging',async()=>{const php=await runtime();try{php.writeFile('/app/maintenance.php',await readFile('tests/maintenance.php'));const r=await php.run({scriptPath:'/app/maintenance.php'});assert.equal(r.errors,'',r.text);assert.equal(r.exitCode,0,r.text);}finally{php.exit();}});

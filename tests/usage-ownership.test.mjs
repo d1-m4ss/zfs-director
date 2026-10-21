@@ -1,0 +1,2 @@
+import assert from 'node:assert/strict';import {test} from 'node:test';import {readFile} from 'node:fs/promises';import {runtime} from './php-runtime.mjs';
+test('Usage verifies shfs alias, container ancestor exposure and zvol VM identity',async()=>{const php=await runtime();try{php.writeFile('/app/usage-ownership.php',await readFile('tests/usage-ownership.php'));const r=await php.run({scriptPath:'/app/usage-ownership.php'});assert.equal(r.errors,'',r.text);assert.equal(r.exitCode,0,r.text);}finally{php.exit();}});

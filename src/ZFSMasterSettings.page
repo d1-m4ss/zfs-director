@@ -1,0 +1,8 @@
+Menu="Utilities"
+Title="ZFS Director"
+Icon="zfs.master.ui.png"
+Tag="zfs.master.ui.png"
+---
+<!-- Branding renamed to ZFS Director on 2026-10-16; GPL-2.0-or-later. -->
+<p><a href="/Main/ZFSDirector?section=settings">Open integrated ZFS Director settings</a></p>
+<script>window.location.replace('/Main/ZFSDirector?section=settings');</script>

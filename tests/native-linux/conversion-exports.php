@@ -1,0 +1,41 @@
+<?php
+// Existing isolated ZFS VM only. Service configuration is synthetic read IO;
+// ownership, mounts, queue, copy, publication and retained-original checks are real.
+$base=getenv('ZFSM_NATIVE_ROOT');$dataset=getenv('ZFSM_CONVERSION_DATASET');
+if(!preg_match('~^/var/lib/zfsd-convert-export-[a-z0-9_]+$~D',$base?:'')||!is_file($base.'/ISOLATED-TEST-ONLY')||!preg_match('~^director_it_1018/convert_export_[a-z0-9_]+$~D',$dataset?:''))throw new RuntimeException('Dedicated fixture scope required');
+require $base.'/src/backend/ZFSMOperations.php';
+$plugin_config=$base.'/director.cfg';$plugin_state=$base.'/jobs';$plugin_runtime=$base.'/runtime';$plugin_lock=$base.'/mutation.lock';$plugin_audit=$base.'/audit';$plugin_conversion_runtime=$base.'/conversions';
+function parse_plugin_cfg($p,$s){return parse_ini_file($GLOBALS['plugin_config'],true,INI_SCANNER_RAW)?:[];}
+function expectConversion($yes,$why){if(!$yes)throw new RuntimeException($why);}
+function zcmdConversion($args){$r=runProcess('zfs',$args);expectConversion($r['code']===0,'ZFS fixture command failed: '.$r['output']);return $r['output'];}
+function readonlyConversionRefusal($source,$pool,$owner,$change,$restore,$late=false){
+ $identity=zfsmDirectoryIdentity($source);$hash=hash_file('sha256',$source.'/payload');$target=$owner.'/'.basename($source);$job=null;
+ if($late){$queued=zfsmQueueConversion($source,$pool,true);expectConversion(isset($queued['job']),'Writable readonly-race fixture could not queue');$job=$queued['job'];}
+ try{
+  zcmdConversion($change);expectConversion(trim(zcmdConversion(['get','-H','-o','value','readonly',$owner]))==='on','Fixture owner is not effectively read-only');
+  if($late){$answer=zfsmRunConversionJob($job['id']);expectConversion($answer['state']==='recovery_required'&&$answer['stage']==='planned'&&preg_match('/read.?only/i',$answer['error']??''),'Worker did not reject changed readonly before native effects');expectConversion(!file_exists($job['staging']),'Read-only worker created private staging');}
+  else{$answer=zfsmQueueConversion($source,$pool,true);expectConversion(!empty($answer['failed'])&&!isset($answer['job'])&&preg_match('/read.?only/i',json_encode($answer['failed'])),'Read-only conversion was queued');}
+  expectConversion(!zfsmDatasetExists($target,'filesystem'),'Readonly rejection created a child dataset');expectConversion(zfsmDirectoryIdentity($source)===$identity&&hash_file('sha256',$source.'/payload')===$hash,'Readonly rejection changed the original directory');
+ }finally{zcmdConversion($restore);}
+ return ['effective_readonly'=>'on','rejected_before_target_creation'=>true,'original_inode_and_content_retained'=>true,'worker_revalidated'=>$late];
+}
+file_put_contents($plugin_config,"[general]\ndestructive_mode=1\nsanoid_integration=0\n");chmod($plugin_config,0600);
+$root=$base.'/source';$target=$root.'/SampleCamera';$sibling=$root.'/retained-sibling';$payload=random_bytes(131073);mkdir($target,0777);chmod($target,0777);chown($target,1001);chgrp($target,100);mkdir($sibling);file_put_contents($target.'/payload.bin',$payload);file_put_contents($sibling.'/keep.txt','unchanged sibling');$original=zfsmDirectoryIdentity($target);
+$props=['name'=>$dataset,'guid'=>zfsmReadIdentity($dataset)['guid'],'type'=>'filesystem','mounted'=>'yes','mountpoint'=>$root];
+$io=['read'=>function($file)use($root){if($file==='/etc/samba/smb-shares.conf')return ['status'=>'known','content'=>"[fixture]\npath = $root\n"];if($file==='/etc/exports')return ['status'=>'known','content'=>"$root *(rw)\n"];return zfsmUsageReadFile($file);}];
+try{
+ $usage=zfsmReadDatasetUsage($props,$io);expectConversion(count($usage['smb']['entries']??[])===1&&count($usage['nfs']['entries']??[])===1,'Synthetic parent exports not discovered');// The emulated VM needs >4s for a full retained-pool inventory. Keep the
+ // production HTTP budget unchanged; only this read-only fixture gets 20s.
+ $report=zfsmReadDependencies($props,$usage,['process'=>fn($tool,$args)=>runProcess('/usr/bin/timeout',array_merge(['20',$tool],$args))]);expectConversion($report['status']==='known','Real dependency inventory unavailable');expectConversion(!zfsmDependencyBlocks($report,'convertdirectory',$target),'Parent export still blocks ordinary child');expectConversion(zfsmDependencyBlocks($report,'convertdirectory',$root),'Exact export root no longer blocked');
+ $readonlySource=$root.'/readonly-local';mkdir($readonlySource);file_put_contents($readonlySource.'/payload','readonly original');
+ $readonly=['local'=>readonlyConversionRefusal($readonlySource,'director_it_1018',$dataset,['set','readonly=on',$dataset],['set','readonly=off',$dataset])];
+ $readonly['changed_after_queue']=readonlyConversionRefusal($readonlySource,'director_it_1018',$dataset,['set','readonly=on',$dataset],['set','readonly=off',$dataset],true);
+ $inheritedOwner=$dataset.'/readonly-inherited';$inheritedRoot=$base.'/readonly-inherited';zcmdConversion(['create','-o','mountpoint='.$inheritedRoot,$inheritedOwner]);$inheritedSource=$inheritedRoot.'/SampleProject';mkdir($inheritedSource);file_put_contents($inheritedSource.'/payload','inherited readonly original');
+ $readonly['inherited']=readonlyConversionRefusal($inheritedSource,'director_it_1018',$inheritedOwner,['set','readonly=on',$dataset],['set','readonly=off',$dataset]);expectConversion(str_contains(zcmdConversion(['get','-H','-o','source','readonly',$inheritedOwner]),'inherited from '.$dataset),'Fixture readonly source did not inherit from the ancestor');
+ $denied=zfsmQueueConversion($target,'director_it_1018',false);expectConversion(!empty($denied['failed'])&&!isset($denied['job']),'Stopped-writers confirmation bypassed');
+ $answer=zfsmQueueConversion($target,'director_it_1018',true);expectConversion(isset($answer['job']),'Queue refused: '.json_encode($answer));$job=$answer['job'];expectConversion($job['method']==='confined-v1','Wrong conversion method');$done=zfsmRunConversionJob($job['id']);expectConversion($done['state']==='completed'&&$done['stage']==='complete_source_retained','Native conversion incomplete: '.json_encode(['state'=>$done['state'],'stage'=>$done['stage'],'error'=>$done['error']??null]));
+ expectConversion(hash_file('sha256',$target.'/payload.bin')===hash('sha256',$payload),'Converted payload differs');expectConversion(hash_file('sha256',$done['recovery'].'/payload.bin')===hash('sha256',$payload),'Retained original differs');expectConversion(zfsmDirectoryIdentity($done['recovery'])['ino']===$original['ino'],'Original inode not retained');expectConversion(file_get_contents($sibling.'/keep.txt')==='unchanged sibling','Sibling changed');expectConversion(zfsmReadIdentity($dataset)['guid']===$props['guid'],'Parent dataset identity changed');$new=zfsmReadIdentity($job['dataset']);expectConversion($new['guid']!==$props['guid']&&zfsmLiveZfsMount($target,$job['dataset'],zfsmMountInfo()),'Converted dataset mount/GUID invalid');
+ expectConversion(preg_match('~/SampleCamera_archived_[0-9]{8}-[0-9]{6}(?:-[a-f0-9]{12})?$~D',$done['recovery'])===1,'New conversion did not use dated archived original name');expectConversion(!zfsmCleanupName(basename($done['recovery'])),'Retained original became eligible for journal cleanup');
+ $out=['pass'=>true,'dataset'=>$dataset,'owner_guid'=>$props['guid'],'converted_dataset'=>$job['dataset'],'converted_guid'=>$new['guid'],'job_id'=>$job['id'],'state'=>$done['state'],'stage'=>$done['stage'],'original'=>$original,'recovery'=>$done['recovery'],'readonly'=>$readonly,'dated_archive_name'=>true,'retained_original_excluded_from_journal_cleanup'=>true,'payload_sha256'=>hash('sha256',$payload),'converted_and_original_content_match'=>true,'original_inode_retained'=>true,'sibling_unchanged'=>true,'offline_confirmation_enforced'=>true,'native_helpers'=>'Real confined copy/publish on real ZFS','service_config'=>'Synthetic SMB/NFS read IO only; no Samba/NFS daemon or global config changes','metadata_budget_fixture'=>'Real ZFS dependency inventory allowed20s for slow emulated VM; production4s unchanged'];
+}catch(Throwable$e){$out=['pass'=>false,'error'=>$e->getMessage(),'dataset'=>$dataset];}
+file_put_contents($base.'/result.json',json_encode($out,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));echo json_encode($out,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n";exit($out['pass']?0:1);

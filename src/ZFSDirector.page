@@ -1,0 +1,45 @@
+Menu="Main:2"
+Title="ZFS Director"
+Icon="zfs.master.ui.png"
+Tag="database"
+---
+<!-- Branding renamed to ZFS Director on 2026-10-16; GPL-2.0-or-later. -->
+<?php
+$plugin = 'zfs.master.ui';
+$docroot = ($docroot ?? $_SERVER['DOCUMENT_ROOT'] ?? '/usr/local/emhttp') ?: '/usr/local/emhttp';
+require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMBase.php';
+require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMHelpers.php';
+require_once $docroot.'/webGui/include/Helpers.php';
+$zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
+$zfsm_vars = @parse_ini_file('/var/local/emhttp/var.ini');
+$zfsm_token = $var['csrf_token'] ?? $zfsm_vars['csrf_token'] ?? '';
+$zfsm_display = $display ?? (@parse_ini_file('/boot/config/plugins/dynamix/dynamix.cfg', true)['display'] ?? array());
+$zfsm_host_theme = in_array($zfsm_display['theme'] ?? '', array('black', 'gray', 'white', 'azure'), true) ? $zfsm_display['theme'] : '';
+$zfsm_datetime = array('timeZone' => date_default_timezone_get(), 'dateFormat' => $zfsm_display['date'] ?? '%d-%m-%Y', 'timeFormat' => $zfsm_display['time'] ?? '%T');
+?>
+<link rel="stylesheet" href="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMWorkspace.css'); ?>">
+<link rel="stylesheet" href="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMProtection.css'); ?>">
+<main id="zfsm-workspace" aria-label="ZFS Director"><p role="status">Loading ZFS Director…</p></main>
+<script>var zfsmDateTimeSettings = <?=json_encode($zfsm_datetime, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>;</script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMDateTime.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMInventory.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMForms.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMSnapshots.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMExplorer.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMPoolView.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMOverview.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMHistory.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMProtection.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMWorkspace.js'); ?>"></script>
+<script>
+var zfsm_csrf_token = (typeof csrf_token === 'string' && csrf_token) ? csrf_token : <?=json_encode($zfsm_token, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>;
+var zfsm_workspace = zfsmCreateWorkspace({
+  root: document.getElementById('zfsm-workspace'),
+  url: <?=json_encode($urlzmadmin, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>,
+  csrf: zfsm_csrf_token,
+  hostTheme: <?=json_encode($zfsm_host_theme, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>,
+  config: <?=json_encode($zfsm_cfg, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>
+});
+function requestRefresh() { zfsm_workspace.refresh(); }
+window.addEventListener('pagehide', function() { zfsm_workspace.stop(); });
+</script>

@@ -1,0 +1,4 @@
+<?php
+require __DIR__.'/protection-bootstrap.php';
+nativeCheck('native bookmark reader preserves snapshot lineage GUID without claiming file contents',function(){ $name='director_it_1018/promote-clone';$snapshot=$name.'@fork';$bookmark=$name.'#verified-lineage';nativeCommand(['bookmark',$snapshot,$bookmark]);$datasets=[$name=>['name'=>$name,'guid'=>zfsmReadIdentity($name)['guid']]];zfsmBookmarkMetadata('director_it_1018',$datasets);$metadata=$datasets[$name]['_bookmarks'];nativeExpect($metadata['status']==='known',json_encode($metadata));$entries=array_values(array_filter($metadata['entries'],fn($e)=>$e['name']===$bookmark));nativeExpect(count($entries)===1&&$entries[0]['guid']===zfsmReadIdentity($snapshot)['guid'],'Bookmark lineage does not match source GUID');return $metadata; });
+exit(array_filter($results,fn($r)=>$r['status']!=='PASS')?1:0);

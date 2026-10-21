@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "display_name": "ZFS Director",
+  "description": "Manage ZFS pools, datasets, snapshots and recoverable file operations in Unraid.",
+  "plugin_id": "zfs.master.ui",
+  "author": "d1-m4ss",
+  "original_project": {
+    "name": "ZFS Master",
+    "author": "Carlos Rodriguez (IkerSaint)",
+    "copyright": "2021 Carlos Rodriguez"
+  },
+  "license": "GPL-2.0-or-later",
+  "license_file": "COPYING",
+  "notice_file": "NOTICE.md",
+  "launch": "Main/ZFSDirector",
+  "settings_page": "ZFSMasterSettings",
+  "icon": "icons/zfs-director.svg",
+  "icon_light": "icons/zfs-director-light.svg",
+  "legacy_icon_aliases": [
+    "icons/zfs.master.png",
+    "icons/zfs.master.ui.png",
+    "icons/zfs.master.ui-128.png",
+    "icons/zfs.master.ui-256.png",
+    "images/zfs.master.png"
+  ],
+  "distribution": "source-only release candidate; descriptive metadata, not an installable .plg",
+  "branding_date": "2026-10-16",
+  "author_url": "https://github.com/d1-m4ss"
+}

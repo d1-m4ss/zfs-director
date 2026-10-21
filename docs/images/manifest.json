@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "synthetic": true,
+  "source": "docs/preview/data.mjs only; no imported inventories or files",
+  "source_hashes": {
+    "src/frontend/ZFSMAdminDatasetSnaps.php": "e5602619dc038dd48ce64a878189bdba1ce51634e96c7f61900a82357d7f4549",
+    "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
+    "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
+    "src/frontend/ZFSMExplorer.js": "2c1e952d5a74b6e26269aa2962df7ef0d1a40db3bcd52d33a165140f935a4938",
+    "src/frontend/ZFSMForms.js": "b8a2c57e05cfb1c1c8a2d64abdde36a59a656383c0d9e7bc1f2f91e26761db08",
+    "src/frontend/ZFSMHistory.js": "6248365512db7547ed7d507aa46114ba3bdb8f652aff99af706864e15b6db162",
+    "src/frontend/ZFSMInventory.js": "ad9571d0c9932e790607ccf5a689e5674ac5e728a6648de24a41c4341c49855b",
+    "src/frontend/ZFSMOverview.js": "e11b90ad133291d0211f9b983439ea1b0875226bbe96da7e4ee830d0070cfe05",
+    "src/frontend/ZFSMPoolView.js": "2a7b0ff85050a1acdc4f55169da1e9cb5811717b2cad4ab27bc671af07c74df9",
+    "src/frontend/ZFSMProtection.css": "40fd422a946662552a733d2b3662673fd501c908ba24a763f574af6b331fdff6",
+    "src/frontend/ZFSMProtection.js": "c7a95a32d3627772a9d869f23de052bdc35de4419a9a6799346cc5f46073aad1",
+    "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
+    "src/frontend/ZFSMWorkspace.css": "7274c85ed93261c8bd45ebefb05a04722506121ee0b1912c1582bd49a6e9a160",
+    "src/frontend/ZFSMWorkspace.js": "ee2cd68583969f5bb9298f48323cfcfe7829f464d4fefcc86311c8ad54e6bfc7",
+    "docs/preview/data.mjs": "55c9cf4249070f972b46278784db47e18510992994b2a245ec5ffbbf37990ebf",
+    "docs/preview/server.mjs": "be2a0eb85b84b74752d03a378a05aea1648986427335af56184db2f69ba93623",
+    "docs/preview/capture.mjs": "2eb697d8c50f46647b0c71442d161b5daeeca6387559660d57b63da33a068d50"
+  },
+  "capture": {
+    "platform": "linux",
+    "architecture": "arm64",
+    "virtualization": "qemu",
+    "browser": "151.0.7922.34",
+    "timezone": "UTC",
+    "display_clock": "2026-01-03T12:00:00Z",
+    "inside_vm": true
+  },
+  "screenshots": [
+    {
+      "file": "overview.png",
+      "sha256": "3cf55d9804fca751b5b391f476362d700fdac027c39d9a023fbc28057e0778ff",
+      "bytes": 71972,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "datasets.png",
+      "sha256": "3c027200356075816538da0a3495fbbad972a8a33224aa1db15da643e0531173",
+      "bytes": 202122,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "compact.png",
+      "sha256": "664e61e821298abc349d04b8952ffacf3618123f98c1701813f0c5e2ec7c9fed",
+      "bytes": 183877,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "snapshots.png",
+      "sha256": "679309baa57966b4cc249e2c527189cfbef7de2500ea9ad6770f3287216863fa",
+      "bytes": 159435,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "file-manager.png",
+      "sha256": "212919f58b7cad25f8e0a90392f405a583ae6f49d641580d11b5a8e9fa74178b",
+      "bytes": 116113,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "restore-review.png",
+      "sha256": "adcf3d22b7c42ed975a06bb32b06c4197c1e6ab2006a7c5af978c8e5e3ce2566",
+      "bytes": 117626,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "actions.png",
+      "sha256": "3efc5186c779ca32cb3fff85a950ffe374e0e2912bb29ca4ca168dbb1d37132a",
+      "bytes": 110478,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "deletion-review.png",
+      "sha256": "79c8ffe828345561608254bac392a1dca376e23d7f2e16e8f5925f1e1d8a1003",
+      "bytes": 118053,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "policies.png",
+      "sha256": "b75222aee3b8b65c737743e40da4f422c36959e08606783da23fffc002e2104b",
+      "bytes": 159618,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "snapshot-policy.png",
+      "sha256": "558adfec8db10ec683a0ea98cdfe13fdacf2d3fb46b8693a53965cdcca30d6ea",
+      "bytes": 163848,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "replication.png",
+      "sha256": "aef0d9dc8439f222e22ba8d4f6d3ce0814e2c633bc7ea361013b28567af6636e",
+      "bytes": 104777,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "replication-wizard.png",
+      "sha256": "87bbddb27c74382411da2ffa0c0a0372c471db5d7dbb033bcc435c0b1ac3aed2",
+      "bytes": 118757,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "jobs.png",
+      "sha256": "3a915eb3551449b698071addf2f55f5d677a80656244b27c45b06c8033459825",
+      "bytes": 117683,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "settings.png",
+      "sha256": "c3f8491fd10216ca3b3fba23c98e635eef6f0d3f8808f509dcb180a770f8de40",
+      "bytes": 93921,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "theme-gray.png",
+      "sha256": "a24366318bb500f35c638d80e82480e380d0b36bf69a94487453a9dd35c14aa0",
+      "bytes": 72273,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "theme-light.png",
+      "sha256": "286b143589dde8586b01d822fc415e4ac2b03aab3aea0357e813f8fa432fadde",
+      "bytes": 71819,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "theme-azure.png",
+      "sha256": "1da2d4c55e7d9eeae80bee7bd341d23d197f526e429cbdda8554bda70f992434",
+      "bytes": 72396,
+      "viewport": {
+        "width": 1440,
+        "height": 980
+      }
+    },
+    {
+      "file": "mobile.png",
+      "sha256": "e4bda8418ffce20ba3c2eb5eee67daff03d13288ced4d1b266601e0f6d28a448",
+      "bytes": 40967,
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    }
+  ],
+  "console_errors": []
+}

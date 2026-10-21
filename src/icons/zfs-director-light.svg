@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<!-- ZFS Director original local artwork, 2026-10-16; GPL-2.0-or-later. -->
+<path d="M3 7a6 2.5 0 1 0 12 0 6 2.5 0 1 0-12 0 M3 7v6c0 3.3 12 3.3 12 0V7 M3 13v6c0 3.3 12 3.3 12 0v-6" stroke="#101820" stroke-width="2.8"/>
+<path d="M3 7a6 2.5 0 1 0 12 0 6 2.5 0 1 0-12 0 M3 7v6c0 3.3 12 3.3 12 0V7 M3 13v6c0 3.3 12 3.3 12 0v-6" stroke="#314252" stroke-width="1.7"/>
+<path d="M14 3h7v7 M21 3l-8 8" stroke="#101820" stroke-width="3.5"/>
+<path d="M14 3h7v7 M21 3l-8 8" stroke="#ff9900" stroke-width="1.9"/>
+</svg>

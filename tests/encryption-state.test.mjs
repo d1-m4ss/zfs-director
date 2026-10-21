@@ -1,0 +1,2 @@
+import assert from 'node:assert/strict';import{test}from'node:test';import{readFile}from'node:fs/promises';import{runtime}from'./php-runtime.mjs';
+test('encryption mount journal restores only recorded identities and retains partial recovery',async()=>{const php=await runtime();try{php.writeFile('/app/encryption-state.php',await readFile('tests/encryption-state.php'));const r=await php.run({scriptPath:'/app/encryption-state.php'});assert.equal(r.errors,'',r.text);assert.equal(r.exitCode,0,r.text);}finally{php.exit();}});

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Compatibility stub: inventory is served by authenticated HTTP requests.
+# No shared Nchan channel or resident publisher is used by zfs.master.ui.
+exit 0

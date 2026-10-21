@@ -1,0 +1,9 @@
+export function protectionUXFixture(){
+ const names=['snapshot_daily','snapshot_archive','snapshot_status','photos_snapshots'];
+ const external=names.flatMap((name,n)=>Array.from({length:12},(_,line)=>({id:'external-'+n+'-line-'+line,...(n<2?{source_id:'source-'+n}:{}),file:'/boot/config/plugins/user.scripts/scripts/'+name+'/script',source_kind:'user_script',source_sha256:String(n+1).repeat(64),schedule_state:n===2?'unknown':'active',schedule:n===2?'Unknown':'0 '+(n+1)+' * * *',datasets:[line%2?'cache/a':'cache/photos'],review:true,description:'External schedule/script; inspect original file before transfer.',transfer_supported:false,transfer_reason:'Disable this source through User Scripts before transfer.',ownership_state:'external',script_body:'PRIVATE_SCRIPT_BODY_NOT_FOR_GUI'})));
+ return {datasets:[{name:'cache/a',guid:'123456'},{name:'cache/photos',guid:'234567'},{name:'cache/photos/library',guid:'345678'}],policies:[
+  {id:'managed-a',name:'Project snapshots',dataset:'cache/a',dataset_present:true,owner:'managed',enabled:false,recursive:false,hourly:24,daily:7,autosnap:true,autoprune:false,schedule:'15 * * * *'},
+  {id:'external-photos',name:'cache/photos',dataset:'cache/photos',dataset_present:true,owner:'external',enabled:true,recursive:true,file:'/etc/sanoid/sanoid.conf',effective:{use_template:'production',autosnap:'yes',autoprune:'no',frequently:'0',hourly:'0',daily:'7',weekly:'4',monthly:'3'}},
+  {id:'external-old',name:'zpoolname/parent2',dataset:'zpoolname/parent2',dataset_present:false,owner:'external',enabled:true,recursive:false,file:'/etc/sanoid/sanoid.conf',effective:{autosnap:'yes',autoprune:'no',hourly:'0',daily:'7'}}
+ ],templates:{production:{daily:'7',weekly:'4',monthly:'3'}},replications:[],jobs:[],credentials:[],issues:[],scheduler:{owner:'External / Director separate',mechanism:'Unraid cron',external,issues:[]}};
+}

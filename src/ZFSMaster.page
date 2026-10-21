@@ -1,0 +1,7 @@
+Menu=""
+Title="ZFS Director"
+Icon="zfs.master.ui.png"
+---
+<!-- Compatible bookmark alias; settings and job namespaces remain unchanged. -->
+<p><a href="/Main/ZFSDirector">Open ZFS Director</a></p>
+<script>window.location.replace('/Main/ZFSDirector'+window.location.search+window.location.hash);</script>

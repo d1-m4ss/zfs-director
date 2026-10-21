@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {runtime} from './php-runtime.mjs';
+test('file boundary, restore expiry and object validation security regressions',async()=>{
+ const php=await runtime();try{const r=await php.run({code:`<?php require '/app/harness.php';
+ $GLOBALS['plugin_runtime']='/security-runtime';$GLOBALS['plugin_state']='/security-jobs';
+ function refusal($fn,$pattern){try{$fn();}catch(Throwable $e){if(!preg_match($pattern,$e->getMessage()))throw $e;return;}throw new RuntimeException('Expected refusal');}
+ check('relative file paths reject escapes and private working roots',function(){foreach(['../file','/etc/passwd','a/../b','a//b','a/.zfs/snapshot','a/.zfsm-restore-job/file',"bad\\0name",str_repeat('x',4097),str_repeat('a/',129).'x']as $path)refusal(fn()=>zfsmExplorerPath($path),'/path/i');same([], $GLOBALS['test_calls']);});
+ check('Unicode, spaces and special filename characters remain literal paths',function(){foreach(['Каталог/файл с пробелами.txt','a/$(touch x); file','a/<tag>.txt']as $path)same($path,zfsmExplorerPath($path));same([], $GLOBALS['test_calls']);});
+ check('directory authorization rejects symlinks and nested mounts',function(){mkdir('/boundary');mkdir('/boundary/data');mkdir('/outside');symlink('/outside','/boundary/link');$fs=['cache'=>['mountpoint'=>'/boundary','mounted'=>'yes']];$mounts=[['id'=>'1','parent'=>'0','path'=>'/boundary','fs'=>'zfs','source'=>'cache']];same(null,zfsmValidateDirectory('/boundary/link',$fs,$mounts));same(null,zfsmValidateDirectory('/boundary',$fs,$mounts));same('/boundary/data',zfsmValidateDirectory('/boundary/data',$fs,$mounts)['path']);$mounts[]=['id'=>'2','parent'=>'1','path'=>'/boundary/data','fs'=>'tmpfs','source'=>'tmpfs'];same(null,zfsmValidateDirectory('/boundary/data',$fs,$mounts));});
+ check('restore signature covers destination identity and selection',function(){$d=['context'=>['dataset_guid'=>'1','snapshot_guid'=>'2'],'plan'=>['selection'=>['file'],'target'=>'restore']];$s=zfsmRestoreSignature($d,'secret');$d['context']['dataset_guid']='3';same(false,hash_equals($s,zfsmRestoreSignature($d,'secret')));});
+ check('expired signed restore preview rejects before any ZFS or file helper',function(){$id='20261016-120000-111111111111';$d=['id'=>$id,'expires'=>time()-1,'context'=>[],'plan'=>[]];file_put_contents(zfsmRestorePreviewFile($id),json_encode($d));refusal(fn()=>zfsmQueueRestore($id,zfsmRestoreSignature($d,'secret'),'secret','1'),'/expired/i');same([], $GLOBALS['test_calls']);});
+ check('tampered and unconfirmed restore previews reject',function(){$id='20261016-120001-111111111111';$d=['id'=>$id,'expires'=>time()+600,'context'=>[],'plan'=>[]];file_put_contents(zfsmRestorePreviewFile($id),json_encode($d));refusal(fn()=>zfsmQueueRestore($id,str_repeat('a',64),'secret','1'),'/does not match/i');refusal(fn()=>zfsmQueueRestore($id,zfsmRestoreSignature($d,'secret'),'secret','0'),'/confirm/i');same([], $GLOBALS['test_calls']);});
+ check('missing snapshot and recreated identity are never mutation targets',function(){expectProcess('zfs',['list','-H','-p','-o','name,type,guid','-t','filesystem,volume,snapshot','cache/data@s1'],'',1);refusal(fn()=>zfsmRequireIdentity('cache/data@s1','123'),'/missing/i');foreach(['cache/data; rm','cache/data@x,y','cache/data@x%y']as $name)same(false,zfsmValidSnapshotName($name));});
+ finishTests();
+ `});assert.equal(r.exitCode,0,r.text);assert.equal(r.errors,'');console.log(r.text);}finally{php.exit();}
+});
