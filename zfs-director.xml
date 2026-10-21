@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Plugin>
+  <Name>ZFS Director</Name>
+  <PluginURL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs-director.plg</PluginURL>
+  <Beta>true</Beta>
+  <MinVer>7.3.3</MinVer>
+  <Category>Tools:Utilities</Category>
+  <Icon>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/src/icons/zfs-director.png</Icon>
+  <Support>https://github.com/d1-m4ss/zfs-director/issues</Support>
+  <Project>https://github.com/d1-m4ss/zfs-director</Project>
+  <ReadMe>https://github.com/d1-m4ss/zfs-director/blob/main/README.md</ReadMe>
+  <License>https://github.com/d1-m4ss/zfs-director/blob/main/LICENSE</License>
+  <Overview>
+    ZFS Director brings dataset and snapshot management, a Snapshot File Manager,
+    Sanoid snapshot policies and Syncoid replication into the Unraid WebGUI.
+
+    Browse snapshots, restore selected files, prepare ZIP archives and convert directories
+    to datasets. Follow operations, progress, errors and recovery in Jobs. Workspace and
+    Compact layouts support Black, Gray, White, Azure and the inherited Unraid theme.
+
+    RC1 release candidate, tested on Unraid 7.3.3 with OpenZFS 2.4.4. Sanoid/Syncoid is
+    optional, installed separately and OFF on a fresh configuration. Existing settings
+    and external schedules are preserved.
+
+    Developed and maintained by d1-m4ss, based on ZFS Master, using AI-assisted coding tools.
+  </Overview>
+  <ExtraSearchTerms>zfs snapshots sanoid syncoid replication restore file manager</ExtraSearchTerms>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/overview.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/datasets.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/file-manager.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/snapshot-policy.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/replication-wizard.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/jobs.png</Screenshot>
+</Plugin>
