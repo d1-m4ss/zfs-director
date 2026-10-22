@@ -36,7 +36,7 @@ The installer downloads and verifies the ready-made package, creates its own sto
 
 **Already installed RC1?** Select **Force Install** to apply the corrected package with the same version number. If the log says `not reinstalling same version`, the update was skipped and the old code is still installed.
 
-The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1) are also available. For existing legacy registrations, use the matching compatibility PLG described in [installation, upgrades and rollback](docs/INSTALLATION.md).
+The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1) are also available. The same installer replaces ZFS Master and cleans up old plugin registrations, retaining a rollback backup. Director settings, Jobs, recovery and schedules are preserved. See [installation, upgrades and rollback](docs/INSTALLATION.md).
 
 ## Snapshot File Manager
 

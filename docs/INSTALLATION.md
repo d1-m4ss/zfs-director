@@ -27,12 +27,14 @@ For local PLG selection, extract the ZIP and copy `zfs-director/zfs-director.plg
 ## Upgrade an existing installation
 
 - Make a verified private backup of the current plugin, settings, Jobs and recovery state.
-- Finish active Jobs and inspect pending recovery. Turn Sanoid / Syncoid integration OFF before this RC upgrade; the installer does not change that setting for you.
-- Keep the registered PLG filename. An existing `zfs.master.ui.plg` uses [its compatibility update](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs.master.ui.plg); an existing `zfs.master.ui.local.plg` uses [the local compatibility update](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs.master.ui.local.plg). These are included in the ZIP under `legacy-public` and `legacy-local`.
-- Do not add a second registration beside the existing one. New installations use `zfs-director.plg`.
+- Finish active Jobs and inspect pending recovery. The installer pauses Director during replacement and preserves the integration setting, including ON after a previous uninstall.
+- Use the same `zfs-director.plg` URL above. Existing ZFS Master code and duplicate Director registrations are backed up and removed from their active locations automatically. No manual directory cleanup is needed.
+- Director settings, Jobs, recovery and saved schedules are retained. Managed cron is moved to the installed registration's namespace with its exact content preserved; registration completes before services start. External Sanoid/Syncoid scripts and schedules are not changed.
 - To replace an already installed RC1 with the corrected package, select **Force Install** in Plugin Manager. A log ending with `not reinstalling same version` means the update was skipped: the old installer and removal handler are still installed. Force Install allows this same-version replacement; the plugin's safety checks still run.
 
 A successful healthy upgrade restarts the services automatically. Existing schedules stay with their owners; integration and individual definitions remain under explicit GUI control.
+
+Active ZFS Master operations, conflicting schedules, unrecognized hooks or unsafe filesystem paths stop installation with a visible reason. The installer does not terminate an active operation to force replacement. Old code and registration backups are recorded under `/boot/config/plugins-removed/zfs-director-*`; displaced runtime code is retained beside the live plugin.
 
 ## After reboot
 

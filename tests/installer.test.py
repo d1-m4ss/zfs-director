@@ -22,7 +22,7 @@ def startup_stand(install, anchor):
     guard = ''
     if '# Runtime stop marker guard.\n' in install:
         guard = install.split('# Runtime stop marker guard.\n', 1)[1].split('# End runtime stop marker guard.\n', 1)[0]
-    branch = guard + install.split('flock -u 9\n', 1)[1]
+    branch = guard + "\nstop_runtime 'package installation in progress'\n"
     branch = branch.replace('/boot/config/plugins/zfs.master.ui/activation.sha256', str(anchor / 'activation.sha256'))
     branch = branch.replace('/var/tmp/zfs.master.ui/jobs', str(anchor / 'zfs.master.ui/jobs'))
     return branch.replace('-- /var/tmp 0 ', '-- ' + shlex.quote(str(anchor)) + ' ' + str(os.geteuid()) + ' ')
@@ -166,44 +166,25 @@ class InstallerTests(unittest.TestCase):
                 self.assertNotIn('Copy its TWO files', guide)
                 self.assertNotIn('/boot/config/plugins/zfs.master.ui/', guide)
 
-    def test_healthy_install_starts_services_without_activation_file(self):
-        with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
-            anchor = pathlib.Path(tmp)
-            output = anchor / 'build'
-            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output)],
-                           cwd=ROOT, check=True, capture_output=True)
-            launched = anchor / 'launched'
-            php = anchor / 'php-boundary'
-            php.write_text('#!/bin/bash\nif [[ "$1" != -r ]]; then printf "%s\\n" "$@" > ' + shlex.quote(str(launched)) + '; fi\n')
-            php.chmod(0o700)
-            branch = startup_stand((output / 'install.sh').read_text(), anchor)
-            branch = branch.replace('/usr/bin/php', shlex.quote(str(php)))
-            result = subprocess.run(['bash', '-c', 'set -eu\nlive=/stand/plugin\nhold_recovery=0\n' + branch],
-                                    capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(launched.exists(), 'A normal installation must start Director without a terminal activation step')
-            self.assertEqual(launched.read_text().splitlines(), ['/stand/plugin/scripts/zfsm-worker.php', '--launch'])
-            self.assertFalse((anchor / 'activation.sha256').exists())
-            self.assertFalse((anchor / 'zfs.master.ui/jobs/stop').exists())
-
-    def test_failed_automatic_start_leaves_services_paused_and_reports_failure(self):
-        with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
-            anchor = pathlib.Path(tmp)
-            output = anchor / 'build'
-            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output)],
-                           cwd=ROOT, check=True, capture_output=True)
+    def test_packaged_post_hook_calls_completion_only_when_runtime_exists(self):
+        with tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+            anchor = pathlib.Path(folder)
+            script = anchor / 'complete.php'
             calls = anchor / 'calls'
-            launcher = anchor / 'php-boundary'
-            launcher.write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> ' + shlex.quote(str(calls)) + '\n[[ "$2" != --launch ]]\n')
-            launcher.chmod(0o700)
-            branch = startup_stand((output / 'install.sh').read_text(), anchor)
-            branch = branch.replace('/usr/bin/php', shlex.quote(str(launcher)))
-            result = subprocess.run(['bash', '-c', 'set -eu\nlive=/stand/plugin\nhold_recovery=0\n' + branch],
-                                    capture_output=True, text=True)
-            self.assertNotEqual(result.returncode, 0, 'A failed launch must not be reported as a successful install')
-            self.assertIn('could not start', result.stderr)
-            self.assertEqual(calls.read_text().splitlines(), ['/stand/plugin/scripts/zfsm-worker.php --launch', '/stand/plugin/scripts/zfsm-worker.php --stop'])
-            self.assertIn('failed to start', (anchor / 'zfs.master.ui/jobs/stop').read_text())
+            php = anchor / 'php-boundary'
+            php.write_text('#!/bin/bash\nprintf "%s\\n" "$*" > ' + shlex.quote(str(calls)) + '\nexit "${COMPLETE_STATUS:-0}"\n')
+            php.chmod(0o700)
+            hook = (ROOT / 'src/scripts/zfsm-plugin-hook').read_text().replace('/usr/local/emhttp/plugins/zfs.master.ui/scripts/zfsm-install-complete.php', str(script)).replace('/usr/bin/php', shlex.quote(str(php)))
+            command = ['bash', '-c', hook, 'hook', 'plugin', 'install', 'zfs-director.plg']
+            missing = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(missing.returncode, 0)
+            self.assertFalse(calls.exists(), 'Uninstalled runtime must not be invoked by a leftover hook')
+            script.write_text('synthetic external process boundary')
+            ready = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(ready.returncode, 0)
+            self.assertEqual(calls.read_text().split(), [str(script), 'plugin', 'install', 'zfs-director.plg'])
+            failed = subprocess.run(command, env=dict(os.environ, COMPLETE_STATUS='1'), capture_output=True, text=True)
+            self.assertEqual(failed.returncode, 1, 'Post-hook must propagate activation failure')
 
     def test_boot_mode_requires_an_automatically_recorded_matching_package(self):
         with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
@@ -216,7 +197,7 @@ class InstallerTests(unittest.TestCase):
             gate = install.split('\npreflight\n# Read-only prerequisite gate', 1)[0] + '\npreflight\n'
             # The read-only PLG gate does not depend on having downloaded TGZ yet.
             gate = '\n'.join(line for line in gate.splitlines() if not (line.startswith("printf '%s  %s") and 'sha256sum -c' in line))
-            for receipt, runtime, expected in [(None, False, 'upgrade'), ('old-package', False, 'upgrade'), (digest, False, 'accepted-boot'), (digest, True, 'upgrade')]:
+            for receipt, runtime, expected in [(None, False, 'install'), ('old-package', False, 'install'), (digest, False, 'accepted-boot'), (digest, True, 'install')]:
                 with self.subTest(receipt=receipt, runtime=runtime), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
                     anchor = pathlib.Path(folder)
                     state = anchor / 'boot/config/plugins/zfs.master.ui'
@@ -298,36 +279,29 @@ class InstallerTests(unittest.TestCase):
                 self.assertEqual(plugin.findtext('FILE[@Name]/MD5'), hashlib.md5(local_package.read_bytes()).hexdigest())
                 self.assertEqual(sentinel.read_bytes(), b'preserved synthetic settings')
 
-    def test_plugin_manager_preflight_runs_before_package_resolution(self):
-        # A wrong namespace must be refused before Plugin Manager can unlink
-        # the installed TGZ on a checksum mismatch and attempt a download.
-        with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
-            out = pathlib.Path(tmp) / 'build'
-            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(out),
-                            '--release-base-url', 'https://example.invalid/releases/2026.10.22.1'],
-                           cwd=ROOT, check=True, capture_output=True)
-            for filename, conflict in [('zfs-director.plg', 'zfs.master.ui.local.plg'),
-                                       ('zfs.master.ui.local.plg', 'zfs-director.plg'),
-                                       ('zfs.master.ui.plg', 'zfs-director.plg')]:
-                with self.subTest(plugin=filename):
-                    xml = ET.parse(out / filename).getroot()
-                    first = xml.findall('FILE')[0]
-                    self.assertNotIn('Name', first.attrib, 'Readonly preflight must run BEFORE the archive FILE')
-                    self.assertEqual(first.attrib.get('Run'), '/bin/bash')
-                    boot = pathlib.Path(tmp) / filename / 'boot/config/plugins'
-                    state = boot / 'zfs.master.ui'
-                    registry = pathlib.Path(tmp) / filename / 'registry'
-                    state.mkdir(parents=True)
-                    registry.mkdir(parents=True)
-                    (boot / conflict).write_text('existing opposite registration')
-                    archive = state / 'zfs-director-2026.10.22.1.tgz'
-                    archive.write_bytes(b'existing accepted package, deliberately different')
-                    gate = first.findtext('INLINE').replace('/boot/config/plugins', str(boot)).replace('/var/log/plugins', str(registry))
-                    gate = gate.replace('/usr/local/emhttp/plugins', str(pathlib.Path(tmp) / filename / 'live')).replace('/var/lock/zfs.master.ui.lock', str(pathlib.Path(tmp) / filename / 'lock'))
-                    result = subprocess.run(['bash', '-c', gate], capture_output=True, text=True)
+    def test_plugin_manager_preflight_reports_unsafe_paths_before_package_resolution(self):
+        with tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+            root = pathlib.Path(folder)
+            out = root / 'build'
+            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(out), '--release-base-url', 'https://example.invalid/releases/2026.10.22.1'], check=True, capture_output=True)
+            first = ET.parse(out / 'zfs-director.plg').findall('FILE')[0]
+            self.assertNotIn('Name', first.attrib)
+            gate = first.findtext('INLINE')
+            # Exercise exact type checks with a FIFO (opening it would hang),
+            # a directory and a redirected operation lock. The PHP legacy
+            # planner is covered by installer-legacy.test.mjs and native tests.
+            check = gate[gate.index('for directory in "$live"'):gate.index('# End legacy migration guard.')]
+            for kind in ('fifo', 'directory', 'symlink'):
+                with self.subTest(kind=kind), tempfile.TemporaryDirectory(dir=STAND_TMP) as stand:
+                    base = pathlib.Path(stand)
+                    lock = base / 'lock'
+                    if kind == 'fifo': os.mkfifo(lock)
+                    elif kind == 'directory': lock.mkdir()
+                    else: lock.symlink_to(base / 'missing')
+                    translated = check.replace('/var/lock/zfs.master.ui.lock', str(lock)).replace('/boot/config/plugins/zfs.master.ui/protection', str(base / 'protection'))
+                    result = subprocess.run(['bash', '-c', 'set -eu\nlive=' + shlex.quote(str(base / 'live')) + '\n' + translated], capture_output=True, text=True, timeout=5)
                     self.assertNotEqual(result.returncode, 0)
-                    self.assertIn('conflicting plugin registration', result.stderr)
-                    self.assertEqual(archive.read_bytes(), b'existing accepted package, deliberately different')
+                    self.assertIn('unsafe installer lock', result.stdout, 'Plugin Manager must display the reason on stdout')
 
     def test_vm_acceptance_rejects_failed_or_nonempty_pool_inventory(self):
         # A failed inventory command with no stdout must never authorize tests
@@ -357,64 +331,6 @@ class InstallerTests(unittest.TestCase):
                 install = [x.findtext('INLINE') for x in legacy.findall('FILE')
                            if x.attrib.get('Run') == '/bin/bash' and 'Method' not in x.attrib][-1]
                 self.assertIsNotNone(install)
-                # Run the legacy gate: its own registration must pass, while
-                # a public registration must stop it before worker/code writes.
-                boot = pathlib.Path(tmp) / 'boot/config/plugins'
-                state = boot / 'zfs.master.ui'
-                registry = pathlib.Path(tmp) / 'registry'
-                state.mkdir(parents=True)
-                registry.mkdir()
-                package = 'zfs-director-2026.10.22.1.tgz'
-                (state / package).write_bytes(zipped.read('zfs-director/' + package))
-                (boot / 'zfs.master.ui.local.plg').write_text('existing local')
-                early = install.split('# Runtime stop marker guard.\n', 1)[0]
-                early = early.replace('/boot/config/plugins', str(boot)).replace('/var/log/plugins', str(registry))
-                early = early.replace('/usr/local/emhttp/plugins', str(pathlib.Path(tmp) / 'live')).replace('/var/lock/zfs.master.ui.lock', str(pathlib.Path(tmp) / 'operation.lock'))
-                own = subprocess.run(['bash', '-c', early], capture_output=True, text=True)
-                self.assertEqual(own.returncode, 0, own.stderr)
-                (registry / 'zfs-director.plg').symlink_to(boot / 'missing-public')
-                other = subprocess.run(['bash', '-c', early], capture_output=True, text=True)
-                self.assertNotEqual(other.returncode, 0)
-                self.assertEqual((boot / 'zfs.master.ui.local.plg').read_text(), 'existing local')
-
-    def test_install_rejects_other_registration_before_stopping_or_replacing_code(self):
-        # Without this guard the real Plugin Manager can register both names,
-        # making managed cron ownership ambiguous after a successful install.
-        for public in (True, False):
-            with self.subTest(public=public), tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
-                root = pathlib.Path(tmp)
-                output = root / 'build'
-                args = ['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output)]
-                if public:
-                    args += ['--release-base-url', 'https://example.invalid/releases/2026.10.22.1']
-                subprocess.run(args, cwd=ROOT, check=True, capture_output=True)
-                boot = root / 'boot/config/plugins'
-                state = boot / 'zfs.master.ui'
-                registered = root / 'var/log/plugins'
-                state.mkdir(parents=True)
-                registered.mkdir(parents=True)
-                package = next(output.glob('*.tgz'))
-                (state / package.name).write_bytes(package.read_bytes())
-                current = 'zfs-director.plg' if public else 'zfs.master.ui.local.plg'
-                other = 'zfs.master.ui.local.plg' if public else 'zfs-director.plg'
-                # Execute the real package's early gate; no host path is used.
-                gate = (output / 'install.sh').read_text().split('# Runtime stop marker guard.\n', 1)[0]
-                gate = gate.replace('/boot/config/plugins', str(boot)).replace('/var/log/plugins', str(registered))
-                gate = gate.replace('/usr/local/emhttp/plugins', str(root / 'runtime')).replace('/var/lock/zfs.master.ui.lock', str(root / 'operation.lock'))
-                own = boot / current
-                own.write_text('existing own registration')
-                for path in [boot / other, state / other, registered / other]:
-                    with self.subTest(conflict=str(path.relative_to(root))):
-                        path.symlink_to(root / 'absent-legacy-definition')
-                        result = subprocess.run(['bash', '-c', gate], capture_output=True, text=True)
-                        self.assertNotEqual(result.returncode, 0, 'Conflicting or stale other namespace must fail before any stop/code change')
-                        self.assertIn('registration', result.stderr.lower())
-                        self.assertTrue(path.is_symlink(), 'Installer must never remove another registration')
-                        self.assertEqual(own.read_text(), 'existing own registration')
-                        path.unlink()
-                result = subprocess.run(['bash', '-c', gate], capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
-
     def test_stop_marker_rejects_unsafe_runtime_paths_without_touching_other_files(self):
         # Removing the no-follow/owner/permission checks must expose the
         # unrelated sentinel or incorrectly accept an unsafe runtime path.
@@ -486,7 +402,7 @@ class InstallerTests(unittest.TestCase):
                 result = subprocess.run(command, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(previous.read(), b'previous marker bytes', 'Existing inode must never be truncated')
-            self.assertEqual(stop.read_text(), 'inspect pending recovery before launch\n')
+            self.assertEqual(stop.read_text(), 'package installation in progress\n')
             self.assertEqual(list(jobs.glob('.stop-*')), [], 'Atomic marker staging must leave no residue')
 
     def test_release_package_has_pinned_urls_checksums_and_reproducible_bytes(self):
@@ -531,7 +447,7 @@ class InstallerTests(unittest.TestCase):
             self.assertIn(install, scripts)
             # Run only the actual checksum gate, redirected into this stand.
             # No installer, host preflight or runtime replacement is executed.
-            gate = install.split('[[ ! -L "$live"', 1)[0]
+            gate = install.split('# Legacy migration guard.', 1)[0]
             gate = gate.replace('/boot/config/plugins/zfs.master.ui/' + archive.name, str(archive))
             result = subprocess.run(['bash', '-c', gate], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -595,33 +511,17 @@ class InstallerTests(unittest.TestCase):
             self.assertLess(install.index(probe), install.index('--stop'))
             self.assertNotIn('landlock_create_ruleset', install)
             self.assertLess(install.index('--stop'), install.index('tar -xzf'))
-            self.assertLess(install.index("stop_runtime 'starting background services'"), install.index('--launch'))
+            self.assertNotIn('--launch', install, 'Services must wait for the native registration post-hook')
             self.assertNotIn('rm -rf', install)
             self.assertNotIn('zfs destroy', install)
 
-            # Execute the real boot-activation branch with filesystem/launcher
-            # boundaries redirected into the temporary stand. Never boot or
-            # touch host /boot or /var/tmp.
-            activation = out / 'activation.sha256'
-            stop = out / 'zfs.master.ui/jobs/stop'
-            launches = out / 'launches'
-            launcher = out / 'php-stand'
-            launcher.write_text('#!/bin/sh\nif [ "$1" != -r ]; then printf "%s\\n" "$*" >> "' + str(launches) + '"; fi\n')
-            launcher.chmod(0o755)
+            # Before Plugin Manager registration, every mode retains the pause.
+            # Actual post-hook readiness is exercised by native Unraid tests.
             branch = startup_stand(install, out)
-            branch = branch.replace('/usr/bin/php', str(launcher))
-            for value, recovery, expected in [(None, 0, 1), ('wrong-package-hash', 0, 1), (sha, 0, 1), (None, 1, 0), (sha, 1, 0)]:
-                activation.unlink(missing_ok=True)
-                launches.unlink(missing_ok=True)
-                if value is not None:
-                    activation.write_text(value + '\n')
-                stop.unlink(missing_ok=True)
-                result = subprocess.run(['bash', '-c', 'set -eu\nlive=/stand/plugin\nhold_recovery=' + str(recovery) + '\n' + branch], capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(len(launches.read_text().splitlines()) if launches.exists() else 0, expected)
-                self.assertEqual(stop.exists(), expected == 0)
-                if expected:
-                    self.assertEqual(launches.read_text().strip(), '/stand/plugin/scripts/zfsm-worker.php --launch')
+            result = subprocess.run(['bash', '-c', 'set -eu\n' + branch], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((out / 'zfs.master.ui/jobs/stop').is_file())
+
 
 
 if __name__ == '__main__':

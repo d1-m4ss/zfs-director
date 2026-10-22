@@ -58,7 +58,7 @@ capture > "$work/state-after.json"
   foreach($before as $name=>$hash)if(($after[$name]??null)!==$hash){fwrite(STDERR,"Existing state changed: ".$name."\n");exit(1);}
   foreach(array_diff_key($after,$before) as $name=>$hash){
     // First automatic startup creates these empty advisory lock files.
-    if(in_array($name,["zfs.master.ui/jobs/history.lock","zfs.master.ui/protection/config.lock"],true)&&$hash===hash("sha256","")){
+      if(in_array($name,["zfs.master.ui/jobs/history.lock","zfs.master.ui/protection/config.lock","zfs.master.ui/protection/execution.lock"],true)&&$hash===hash("sha256","")){
       echo "Observed first-start lock creation: ".$name,"\n";continue;
     }
     // Unraid API can finish its own first-boot initialization while a fresh

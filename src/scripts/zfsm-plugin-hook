@@ -1,0 +1,5 @@
+#!/bin/bash
+# Director-owned Plugin Manager post-hook. No work for unrelated plugins.
+script=/usr/local/emhttp/plugins/zfs.master.ui/scripts/zfsm-install-complete.php
+[[ -f "$script" && ! -L "$script" ]] || exit 0
+exec /usr/bin/php "$script" "$@"

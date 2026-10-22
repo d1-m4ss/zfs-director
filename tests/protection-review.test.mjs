@@ -43,6 +43,12 @@ test('creation date guards leave disabled and pruning-only policy edits intact',
 test('distinct overlapping definitions stay queued while same-definition cron runs deduplicate',async t=>{
  await scenario(t,`$policy=zfsmQueueProtection(['type'=>'policy','id'=>'def'],false);$replica=zfsmQueueProtection(['type'=>'replication','id'=>'abc'],false);$again=zfsmQueueProtection(['type'=>'replication','id'=>'abc'],false);ensure($policy['job']['id']!==$replica['job']['id'],'Replication occurrence was discarded');ensure($again['job']['id']===$replica['job']['id'],'Same definition duplicated');ensure(count(zfsmPendingJobs())===2,'Both definitions must remain queued');`);
 });
+test('installer maintenance refuses cron dispatch without creating Jobs or touching schedules',async t=>{
+ await scenario(t,`$beforeJobs=glob(dirname(zfsmJobFile('20261022-230000-ffffffffffff')).'/*.json');$before=integrationModel();$stop=$GLOBALS['plugin_runtime'].'/stop';if(!is_dir(dirname($stop)))mkdir(dirname($stop),0700,true);file_put_contents($stop,'package installation in progress');
+ foreach(['policy'=>'def','replication'=>'abc']as$type=>$id)rejected(fn()=>zfsmQueueProtection(['type'=>$type,'id'=>$id],false),'paused for maintenance');
+ ensure(glob(dirname(zfsmJobFile('20261022-230000-ffffffffffff')).'/*.json')===$beforeJobs,'Maintenance created a Job');ensure(integrationModel()===$before,'Maintenance launched a command or changed cron');
+ unlink($stop);$result=zfsmQueueProtection(['type'=>'policy','id'=>'def'],false);ensure($result['job']['state']==='queued','Dispatch did not recover after maintenance');`);
+});
 test('external local destination conflicts block preview activation run and dispatch',async t=>{
  await scenario(t,`file_put_contents('/etc/cron.d/external','* * * * * syncoid other/src '.$target."\n");
  rejected(fn()=>zfsmSyncoidPreview(['id'=>'abc','source'=>$source,'target'=>$target],'secret'),'External schedule');

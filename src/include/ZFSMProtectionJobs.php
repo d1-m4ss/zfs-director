@@ -143,6 +143,7 @@ function zfsmQueueProtection(array $request,bool $interactive=true): array {
     $type=$request['type']??'';$id=$request['id']??'';
     if(!in_array($type,['policy','replication'],true)||!is_string($id)||!preg_match('/^[a-f0-9]{1,32}$/D',$id))throw new InvalidArgumentException('Valid managed definition required.');
     return zfsmProtectionConfigLock(function()use($type,$id,$interactive){
+        if(zfsmWorkerStopRequested())throw new RuntimeException('Director is paused for maintenance; scheduled execution was not queued.');
         $store=zfsmProtectionReadStore();$d=$store[$type==='policy'?'policies':'replications'][$id]??null;if(!$d||!$d['enabled'])throw new RuntimeException('Definition is missing or disabled.');
         foreach(zfsmPendingJobs()as$j)if(($j['schema']??null)===4&&$j['type']===$type&&$j['definition_id']===$id)return ['succeeded'=>[$j['id']=>'Already queued/running for this definition'],'failed'=>[],'job'=>$j];
         $job=zfsmNewProtectionJob($type,$d);

@@ -101,9 +101,10 @@ copy the PLG to the USB flash drive's existing config/plugins folder, then choos
 it in Plugins → Install Plugin. The public PLG downloads its matching TGZ itself.
 Do not unpack the TGZ into the WebGUI directory.
 
-For an existing legacy PLG registration, use its matching file from legacy-public
-or legacy-local instead of adding a second registration. See INSTALLATION.md.
-Before upgrading, back up, turn integration OFF and resolve pending Jobs.
+Use the same zfs-director.plg for new installations and upgrades. Existing ZFS Master
+code and old registrations are backed up and removed automatically. Director settings,
+Jobs, recovery and schedules are retained. Resolve pending Jobs before upgrading.
+See INSTALLATION.md for the backup and rollback procedure.
 '''
     guide_ru = f'''ZFS Director {VERSION} RC1 — установка в Unraid
 
@@ -126,9 +127,10 @@ RC1 уже установлен? Отметьте Force Install при заме�
 его в Plugins → Install Plugin. Публичный PLG сам скачает соответствующий TGZ.
 Не распаковывайте TGZ в каталог WebGUI.
 
-Для прежней регистрации используйте соответствующий файл из legacy-public
-или legacy-local, не добавляя второй плагин. Подробности — в INSTALLATION.md.
-Перед обновлением сделайте backup, выключите интеграцию и разберите pending Jobs.
+Для установки и обновления используйте тот же zfs-director.plg. Старый код ZFS Master
+и прежние регистрации убираются автоматически с резервной копией. Настройки Director,
+Jobs, recovery и расписания сохраняются. Перед обновлением разберите pending Jobs.
+Порядок backup и rollback описан в INSTALLATION.md.
 '''
     members = {'INSTALL.txt': guide.encode(), 'INSTALL.ru.txt': guide_ru.encode(),
                'INSTALLATION.md': (ROOT / 'docs/INSTALLATION.md').read_bytes(),
@@ -184,27 +186,37 @@ def build(output, release_base=None):
     package = ET.SubElement(plugin, 'FILE', Name=f'/boot/config/plugins/zfs.master.ui/{archive.name}')
     ET.SubElement(package, 'URL' if release_base else 'LOCAL').text = release_base + '/' + archive.name if release_base else package.attrib['Name']
     ET.SubElement(package, 'MD5').text = hashlib.md5(archive.read_bytes()).hexdigest()
-    def conflict_paths(filename):
-        return ' '.join(folder + '/' + other for other in ('zfs-director.plg', 'zfs.master.ui.plg', 'zfs.master.ui.local.plg') if other != filename
-                        for folder in ('/boot/config/plugins', '/boot/config/plugins/zfs.master.ui', '/var/log/plugins'))
-    registrations = conflict_paths(plugin_name)
+    legacy_probe = shlex.quote((ROOT / 'tools/installer-legacy.php').read_text().removeprefix('<?php') + '\ntry { zfsdLegacyInstall($argv[1], $argv[2], $argv[3], $argv[4]); } catch (Throwable $error) { echo "ZFS Director: ".$error->getMessage()."\\n"; exit(1); }')
     directory_probe = shlex.quote(files['scripts/zfsm-directory.pl'][0].decode('utf-8'))
     upgrade_probe = shlex.quote(files['scripts/zfsm-upgrade-preflight.php'][0].decode('utf-8').removeprefix('<?php'))
+    hook_digest = hashlib.sha256(files['scripts/zfsm-plugin-hook'][0]).hexdigest()
     install = f'''set -euo pipefail
+# Plugin Manager displays stdout only; keep actionable errors in its dialog.
+exec 2>&1
+trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
 umask 077
 archive=/boot/config/plugins/zfs.master.ui/{archive.name}
 live=/usr/local/emhttp/plugins/zfs.master.ui
 stage=/usr/local/emhttp/plugins/.zfs-director-stage-{VERSION}-$$
 previous=/usr/local/emhttp/plugins/.zfs-director-previous-{VERSION}-$$
 printf '%s  %s\\n' '{digest}' "$archive" | sha256sum -c -
-# Do not create a second Plugin Manager registration for the same state.
-for registration in {registrations}; do
-  if [[ -e "$registration" || -L "$registration" ]]; then
-    echo 'ZFS Director: conflicting plugin registration; keep the existing .plg/.local.plg namespace and use its matching package. No code or worker changes made.' >&2
-    exit 1
-  fi
+# Legacy migration guard. Inspect now; cleanup runs after package validation.
+registration={plugin_name}
+legacy_backup=/boot/config/plugins-removed/zfs-director-{VERSION}-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_cleanup() {{
+  /usr/bin/php -r {legacy_probe} -- "$1" / "$registration" "$legacy_backup"
+}}
+legacy_cleanup check
+for directory in "$live" /boot/config/plugins/zfs.master.ui/protection; do
+  if [[ -L "$directory" || ( -e "$directory" && ! -d "$directory" ) ]]; then echo "ZFS Director: unsafe installer directory: $directory"; exit 1; fi
 done
-[[ ! -L "$live" && ! -L /var/lock/zfs.master.ui.lock ]]
+for object in /var/lock/zfs.master.ui.lock /boot/config/plugins/zfs.master.ui/protection/config.lock /boot/config/plugins/zfs.master.ui/protection/execution.lock; do
+  if [[ -L "$object" || ( -e "$object" && ! -f "$object" ) ]]; then echo "ZFS Director: unsafe installer lock: $object"; exit 1; fi
+done
+hook=/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director
+if [[ -L "$hook" || ( -e "$hook" && ! -f "$hook" ) ]]; then echo 'ZFS Director: unsafe Plugin Manager hook'; exit 1; fi
+if [[ -f "$hook" && "$(sha256sum "$hook" | cut -d ' ' -f 1)" != '{hook_digest}' ]]; then echo 'ZFS Director: existing post-hook has unknown ownership; retained unchanged'; exit 1; fi
+# End legacy migration guard.
 # Runtime stop marker guard.
 stop_runtime() {{
   /usr/bin/perl -e {shlex.quote(STOP_MARKER)} -- /var/tmp 0 "$1"
@@ -215,9 +227,11 @@ installed=/boot/config/plugins/zfs.master.ui/installed.sha256
 [[ ! -L "$installed" && ( ! -e "$installed" || -f "$installed" ) ]]
 restore_accepted=0
 hold_recovery=0
+old_receipt=
+if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
 if [[ ! -e "$live" && -f "$installed" && "$(cat "$installed")" == '{digest}' ]]; then restore_accepted=1; fi
 preflight() {{
-  local status=0 mode=upgrade
+  local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
   /usr/bin/php -r {upgrade_probe} -- /boot/config/plugins/zfs.master.ui "$mode" || status=$?
   if [[ "$status" == 10 && "$restore_accepted" == 1 ]]; then hold_recovery=1; elif [[ "$status" != 0 ]]; then return "$status"; fi
@@ -231,8 +245,12 @@ if ! /usr/bin/perl -e {directory_probe} <<< '{{"op":"probe"}}'; then
 fi
 stop_runtime 'package installation in progress'
 if [[ -f "$live/scripts/zfsm-worker.php" ]]; then /usr/bin/php "$live/scripts/zfsm-worker.php" --stop; fi
-exec 9>/var/lock/zfs.master.ui.lock
-flock -n 9
+exec 9>>/var/lock/zfs.master.ui.lock
+flock -n 9 || {{ echo 'ZFS Director: an operation is active; wait for it to finish and retry installation.'; exit 1; }}
+mkdir -p /boot/config/plugins/zfs.master.ui/protection
+exec 7>>/boot/config/plugins/zfs.master.ui/protection/config.lock
+exec 6>>/boot/config/plugins/zfs.master.ui/protection/execution.lock
+flock -n 7 && flock -n 6 || {{ echo 'ZFS Director: protection configuration or execution is busy; retry after it finishes.'; exit 1; }}
 # Recheck under the mutation lock: settings may have changed during preflight.
 preflight
 mkdir -m 0700 "$stage"
@@ -241,45 +259,49 @@ tar -xzf "$archive" -C "$stage"
 while IFS= read -r -d '' file; do /usr/bin/php -l "$file" >/dev/null; done < <(find "$stage/zfs.master.ui" -type f \\( -name '*.php' -o -name '*.page' \\) -print0)
 /usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl"
 find "$stage/zfs.master.ui" -type d -exec chmod 0755 {{}} +
-trap 'if [[ ! -d "$live" && -d "$previous" ]]; then mv -T "$previous" "$live"; fi' EXIT
+rollback_install() {{
+  local result=$?
+  if [[ "$result" != 0 ]]; then
+    if ! legacy_cleanup rollback; then echo "ZFS Director: automatic rollback needs inspection: $legacy_backup"; return; fi
+    if [[ -n "$old_receipt" ]]; then printf '%s\\n' "$old_receipt" > "$installed"; else rm -f -- "$installed"; fi
+    if [[ -d "$live" ]]; then mv -T "$live" "$stage.failed"; fi
+    if [[ -d "$previous" ]]; then mv -T "$previous" "$live"; fi
+    echo 'ZFS Director: previous code and registrations restored; state and recovery retained.'
+  fi
+}}
+trap rollback_install EXIT
 if [[ -d "$live" ]]; then mv -T "$live" "$previous"; fi
 mv -T "$stage/zfs.master.ui" "$live"
 rmdir "$stage"
-trap - EXIT
+legacy_cleanup apply
 # Automatic installation receipt distinguishes boot from an unrelated upgrade.
 if [[ "$hold_recovery" == 0 ]]; then
   receipt=$(mktemp "$installed.XXXXXX")
   printf '%s\\n' '{digest}' > "$receipt"
   mv -T -- "$receipt" "$installed"
 fi
+# Startup must follow Plugin Manager registration, not precede it.
+hook=/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director
+[[ ! -L "$hook" && ( ! -e "$hook" || -f "$hook" ) ]]
+mkdir -p "$(dirname "$hook")"
+cp "$live/scripts/zfsm-plugin-hook" "$hook"
+chmod 0755 "$hook"
+/usr/bin/php -r '
+  $path="/var/tmp/zfs.master.ui/jobs/install-pending.json";
+  if(is_link($path)||(file_exists($path)&&!is_file($path)))exit(1);
+  $json=json_encode(["registration"=>$argv[1],"sha256"=>$argv[2],"hold_recovery"=>$argv[3]==="1"],JSON_THROW_ON_ERROR);
+  $temporary=tempnam(dirname($path),".install-");
+  if($temporary===false||file_put_contents($temporary,$json)!==strlen($json)||!rename($temporary,$path))exit(1);
+' -- "$registration" '{digest}' "$hold_recovery"
+# No child service inherits the installer's operation/protection locks.
+flock -u 6
+flock -u 7
+exec 6>&- 7>&-
 flock -u 9
-if [[ "$hold_recovery" == 1 ]]; then
-  stop_runtime 'inspect pending recovery before launch'
-else
-  # Verify the private marker path before clearing the installer-owned pause.
-  stop_runtime 'starting background services'
-  rm -f -- /var/tmp/zfs.master.ui/jobs/stop
-  if ! /usr/bin/php "$live/scripts/zfsm-worker.php" --launch || ! /usr/bin/php -r '
-    $deadline=microtime(true)+15;
-    do {{
-      $ready=true;
-      foreach(["/var/lock/zfs.master.ui.service.lock","/var/lock/zfs.master.ui.worker.lock"]as$p){{
-        if(is_link($p)||!is_file($p)){{$ready=false;break;}}
-        $f=@fopen($p,"r+");if(!$f){{$ready=false;break;}}
-        if(flock($f,LOCK_EX|LOCK_NB)){{flock($f,LOCK_UN);$ready=false;}}
-        fclose($f);if(!$ready)break;
-      }}
-      if($ready)exit(0);usleep(100000);
-    }}while(microtime(true)<$deadline);
-    fwrite(STDERR,"Director services did not become ready.\\n");exit(1);
-  '; then
-    stop_runtime 'background services failed to start; inspect Jobs and logs'
-    /usr/bin/php "$live/scripts/zfsm-worker.php" --stop
-    echo 'ZFS Director installed, but background services could not start.' >&2
-    exit 1
-  fi
-fi
-echo 'ZFS Director {VERSION} installed; configuration and journals retained.'
+exec 9>&-
+trap - EXIT
+echo 'ZFS Director {VERSION} code installed; Plugin Manager will verify registration and start background services next.'
+
 '''
     # Plugin Manager resolves FILE entries in order and may unlink an existing
     # TGZ on a checksum mismatch. Refuse unsafe state BEFORE that can happen.
@@ -295,6 +317,7 @@ echo 'ZFS Director {VERSION} installed; configuration and journals retained.'
     # rebuilds cron afterward. Keep its persistent cron source and user state;
     # without registration those Director schedules are no longer published.
     remove = f'''set -euo pipefail
+exec 2>&1
 umask 077
 live=/usr/local/emhttp/plugins/zfs.master.ui
 installed=/boot/config/plugins/zfs.master.ui/installed.sha256
@@ -335,6 +358,8 @@ for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui
     exec 8>&-
   fi
 done
+hook=/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director
+if [[ ! -L /usr/local/emhttp/plugins/dynamix.plugin.manager && ! -L /usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks && -f "$live/scripts/zfsm-plugin-hook" && -f "$hook" && ! -L "$hook" ]] && cmp -s "$live/scripts/zfsm-plugin-hook" "$hook"; then rm -- "$hook"; fi
 # Reinstallation is a new install, never an accepted-boot reconstruction.
 # Do not remove settings, journals, archives, recovery or external schedules.
 rm -f -- "$installed"
@@ -352,7 +377,7 @@ echo 'ZFS Director removed. Settings, Jobs and recovery data retained; external 
             legacy = copy.deepcopy(plugin)
             legacy.set('pluginURL', release_base + '/' + legacy_name)
             for entry in legacy.findall("FILE[@Run='/bin/bash']/INLINE"):
-                entry.text = entry.text.replace(registrations, conflict_paths(legacy_name))
+                entry.text = entry.text.replace('registration=' + plugin_name + '\n', 'registration=' + legacy_name + '\n')
             legacy_path = output / legacy_name
             ET.ElementTree(legacy).write(legacy_path, encoding='utf-8', xml_declaration=True)
             checksums += hashlib.sha256(legacy_path.read_bytes()).hexdigest() + '  ' + legacy_path.name + '\n'
