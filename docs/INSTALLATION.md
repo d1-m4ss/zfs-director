@@ -44,6 +44,12 @@ Retain the previous matching PLG/TGZ and a verified private backup before upgrad
 
 The installer retains the displaced runtime in a uniquely named `.zfs-director-previous-*` directory beside the live code. This volatile copy is a recovery aid, not a substitute for a persistent backup. Validate the restored code and inspect Jobs before resuming operations.
 
+## Uninstall
+
+Use **Plugins → Installed Plugins → Remove**. Director stops its background services and removes its WebGUI code. If an operation is still active, removal reports the reason and keeps the plugin installed; wait for the operation to finish and retry. No active lock is deleted and no process is forcibly stopped.
+
+Settings, Jobs, audit and recovery data remain on the flash drive for a later reinstall. Datasets, snapshots and retained originals are untouched. Unraid removes the unregistered plugin's managed cron entries from the active scheduler; their saved definitions and all external Sanoid/Syncoid configuration and schedules remain unchanged. Reinstallation runs the usual safety checks.
+
 ## Compatibility and testing
 
 Installation, upgrade and normal reboot were evaluated in an isolated Unraid VM. An upgrade and temporary-dataset smoke test were also verified on a running Unraid host, preserving existing state and schedules without rebooting it. Power-loss recovery and native reboot with pending recovery require separate validation. See [Testing](https://github.com/d1-m4ss/zfs-director/blob/2026.10.22.1/docs/TESTING.md#rc1-verification-2026-10-22) and [the developer guide](https://github.com/d1-m4ss/zfs-director/blob/2026.10.22.1/docs/DEVELOPMENT.md).

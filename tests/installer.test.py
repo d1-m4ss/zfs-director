@@ -1,5 +1,6 @@
 """Exercise the real generated offline package; no host installation."""
 import hashlib
+import fcntl
 import json
 import os
 import pathlib
@@ -27,7 +28,130 @@ def startup_stand(install, anchor):
     return branch.replace('-- /var/tmp 0 ', '-- ' + shlex.quote(str(anchor)) + ' ' + str(os.geteuid()) + ' ')
 
 
+def removal_stand(output, anchor, filename='zfs-director.plg'):
+    script = ET.parse(output / filename).findtext("FILE[@Method='remove']/INLINE")
+    script = script.replace('/usr/local/emhttp/plugins/zfs.master.ui', str(anchor / 'live'))
+    script = script.replace('/boot/config/plugins/zfs.master.ui', str(anchor / 'state'))
+    script = script.replace('/var/lock/zfs.master.ui.lock', str(anchor / 'operation.lock'))
+    script = script.replace('/var/lock/zfs.master.ui.service.lock', str(anchor / 'service.lock'))
+    script = script.replace('/var/lock/zfs.master.ui.worker.lock', str(anchor / 'worker.lock'))
+    script = script.replace('/var/tmp/zfs.master.ui/jobs/monitor.lock', str(anchor / 'monitor.lock'))
+    script = script.replace('-- /var/tmp 0 ', '-- ' + shlex.quote(str(anchor)) + ' ' + str(os.geteuid()) + ' ')
+    return script.replace('/usr/bin/php', shlex.quote(str(anchor / 'php-boundary')))
+
+
 class InstallerTests(unittest.TestCase):
+    def removal_fixture(self, anchor):
+        output = anchor / 'build'
+        subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output),
+                        '--release-base-url', 'https://example.invalid/releases/2026.10.22.1'],
+                       cwd=ROOT, check=True, capture_output=True)
+        (anchor / 'live/scripts').mkdir(parents=True)
+        (anchor / 'live/scripts/zfsm-worker.php').write_text('synthetic worker boundary')
+        (anchor / 'php-boundary').write_text('#!/bin/bash\nprintf "%s\\n" "$*" >> ' + shlex.quote(str(anchor / 'worker-calls')) + '\nexit "${STOP_STATUS:-0}"\n')
+        (anchor / 'php-boundary').chmod(0o700)
+        # macOS has no flock CLI. Exercise kernel flock on the same inherited
+        # descriptor; native Unraid acceptance uses its real /usr/bin/flock.
+        (anchor / 'flock').write_text('#!/usr/bin/env python3\nimport fcntl,sys\ntry: fcntl.flock(int(sys.argv[-1]),fcntl.LOCK_EX|fcntl.LOCK_NB)\nexcept BlockingIOError: sys.exit(1)\n')
+        (anchor / 'flock').chmod(0o700)
+        retained = {}
+        for name, data in {'zfs.master.ui.cfg': b'[general]\nsanoid_integration=0\n',
+                           'jobs/completed.json': b'{"state":"completed"}',
+                           'jobs/recovery.json': b'{"state":"recovery_required"}',
+                           'audit/history.json': b'{"synthetic":"retained"}',
+                           'protection/config.json': b'{"policies":{},"replications":{}}',
+                           'protection.cron': b'# retained Director source\n'}.items():
+            target = anchor / 'state' / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            retained[target] = data
+        (anchor / 'state/installed.sha256').write_text('accepted-package\n')
+        for filename in ('zfs-director.plg', 'zfs.master.ui.plg', 'zfs.master.ui.local.plg'):
+            (anchor / 'state' / filename).write_text('cached installer code')
+        (anchor / 'external-sanoid.cron').write_text('0 3 * * * sanoid --cron\n')
+        retained[anchor / 'external-sanoid.cron'] = b'0 3 * * * sanoid --cron\n'
+        return output, retained, dict(os.environ, PATH=str(anchor) + os.pathsep + os.environ['PATH'])
+
+    def test_plugin_manager_remove_stops_services_removes_code_and_preserves_state(self):
+        for filename in ('zfs-director.plg', 'zfs.master.ui.plg', 'zfs.master.ui.local.plg'):
+            with self.subTest(plugin=filename), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+                anchor = pathlib.Path(folder)
+                output, retained, env = self.removal_fixture(anchor)
+                result = subprocess.run(['bash', '-c', removal_stand(output, anchor, filename)], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse((anchor / 'live').exists(), 'Removed plugin must not remain in the WebGUI')
+                self.assertFalse((anchor / 'state/installed.sha256').exists(), 'Reinstallation must not mistake removal for an accepted boot')
+                self.assertEqual(list((anchor / 'state').glob('*.plg')), [], 'Stale cached PLGs must not block a later reinstall')
+                self.assertIn('--stop', (anchor / 'worker-calls').read_text())
+                self.assertTrue((anchor / 'zfs.master.ui/jobs/stop').is_file())
+                for target, data in retained.items(): self.assertEqual(target.read_bytes(), data)
+
+    def test_remove_refuses_busy_worker_or_operation_without_removing_code(self):
+        for busy in ('worker', 'operation'):
+            with self.subTest(busy=busy), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+                anchor = pathlib.Path(folder)
+                output, retained, env = self.removal_fixture(anchor)
+                if busy == 'worker': env['STOP_STATUS'] = '1'
+                with (anchor / 'operation.lock').open('w') as lock:
+                    if busy == 'operation': fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    identity = os.fstat(lock.fileno()).st_ino
+                    result = subprocess.run(['bash', '-c', removal_stand(output, anchor)], env=env, capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0, 'Busy work must prevent removal')
+                    self.assertEqual((anchor / 'operation.lock').stat().st_ino, identity, 'Never replace an active lock inode')
+                self.assertTrue((anchor / 'live/scripts/zfsm-worker.php').is_file())
+                self.assertEqual((anchor / 'state/installed.sha256').read_text(), 'accepted-package\n')
+                for target, data in retained.items(): self.assertEqual(target.read_bytes(), data)
+
+    def test_remove_rejects_symlinked_runtime_or_receipt_before_stopping_worker(self):
+        for unsafe in ('live', 'state/installed.sha256', 'operation.lock'):
+            with self.subTest(unsafe=unsafe), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+                anchor = pathlib.Path(folder)
+                output, retained, env = self.removal_fixture(anchor)
+                if unsafe == 'live':
+                    (anchor / 'live').rename(anchor / 'unrelated')
+                    (anchor / 'live').symlink_to(anchor / 'unrelated', target_is_directory=True)
+                    sentinel = anchor / 'unrelated/scripts/zfsm-worker.php'
+                else:
+                    sentinel = anchor / 'unrelated'
+                    sentinel.write_text('unrelated bytes')
+                    target = anchor / unsafe
+                    if target.exists(): target.unlink()
+                    target.symlink_to(sentinel)
+                before = sentinel.read_bytes()
+                result = subprocess.run(['bash', '-c', removal_stand(output, anchor)], env=env, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((anchor / 'worker-calls').exists(), 'Unsafe paths must fail before process changes')
+                self.assertEqual(sentinel.read_bytes(), before)
+
+    def test_remove_refuses_orphan_services_even_when_worker_script_is_missing(self):
+        for name in ('service.lock', 'worker.lock', 'monitor.lock'):
+            with self.subTest(lock=name), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+                anchor = pathlib.Path(folder)
+                output, retained, env = self.removal_fixture(anchor)
+                (anchor / 'live/scripts/zfsm-worker.php').unlink()
+                with (anchor / name).open('w') as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    identity = os.fstat(lock.fileno()).st_ino
+                    result = subprocess.run(['bash', '-c', removal_stand(output, anchor)], env=env, capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0, 'Running service must block removal of incomplete code')
+                    self.assertEqual((anchor / name).stat().st_ino, identity)
+                self.assertTrue((anchor / 'live').is_dir())
+                self.assertTrue((anchor / 'state/installed.sha256').is_file())
+
+    def test_remove_rejects_nonregular_service_locks_before_worker_can_open_them(self):
+        for name in ('service.lock', 'worker.lock', 'monitor.lock'):
+            for kind in ('fifo', 'directory'):
+                with self.subTest(lock=name, kind=kind), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+                    anchor = pathlib.Path(folder)
+                    output, retained, env = self.removal_fixture(anchor)
+                    if kind == 'fifo': os.mkfifo(anchor / name)
+                    else: (anchor / name).mkdir()
+                    result = subprocess.run(['bash', '-c', removal_stand(output, anchor)], env=env, capture_output=True, text=True, timeout=5)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse((anchor / 'worker-calls').exists(), 'Worker fopen must not reach a FIFO and hang uninstall')
+                    self.assertTrue((anchor / 'live').is_dir())
+                    self.assertTrue((anchor / 'state/installed.sha256').is_file())
+
     def test_public_install_uses_director_url_without_manual_state_directory(self):
         with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
             output = pathlib.Path(tmp) / 'build'

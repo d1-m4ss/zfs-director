@@ -174,7 +174,7 @@ def build(output, release_base=None):
     plugin_url = release_base + '/' + plugin_name if release_base else 'file:///boot/config/plugins/zfs.master.ui/' + plugin_name
     plugin = ET.Element('PLUGIN', name='zfs.master.ui', author='d1-m4ss', version=VERSION, min='7.3.3',
                         icon='database', launch='Main/ZFSDirector', pluginURL=plugin_url)
-    ET.SubElement(plugin, 'CHANGES').text = f'### {VERSION}\nZFS Director: RC1 based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation.'
+    ET.SubElement(plugin, 'CHANGES').text = f'### {VERSION}\nZFS Director: RC1 based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.'
     package = ET.SubElement(plugin, 'FILE', Name=f'/boot/config/plugins/zfs.master.ui/{archive.name}')
     ET.SubElement(package, 'URL' if release_base else 'LOCAL').text = release_base + '/' + archive.name if release_base else package.attrib['Name']
     ET.SubElement(package, 'MD5').text = hashlib.md5(archive.read_bytes()).hexdigest()
@@ -285,8 +285,58 @@ echo 'ZFS Director {VERSION} installed; configuration and journals retained.'
     ET.SubElement(gate_file, 'INLINE').text = early
     plugin.insert(1, gate_file)
     ET.SubElement(ET.SubElement(plugin, 'FILE', Run='/bin/bash'), 'INLINE').text = install
-    # Removal is deliberately blocked: installation/rollback are controlled replacements.
-    ET.SubElement(ET.SubElement(plugin, 'FILE', Run='/bin/bash', Method='remove'), 'INLINE').text = "echo 'ZFS Director: use the reviewed replacement/rollback procedure; automatic removal is disabled.' >&2\nexit 1\n"
+    # Plugin Manager unregisters this PLG before running the handler and
+    # rebuilds cron afterward. Keep its persistent cron source and user state;
+    # without registration those Director schedules are no longer published.
+    remove = f'''set -euo pipefail
+umask 077
+live=/usr/local/emhttp/plugins/zfs.master.ui
+installed=/boot/config/plugins/zfs.master.ui/installed.sha256
+if [[ -L "$live" || ( -e "$live" && ! -d "$live" ) || -L "$(dirname "$installed")" || -L "$installed" || ( -e "$installed" && ! -f "$installed" ) || -L /var/lock/zfs.master.ui.lock || ( -e /var/lock/zfs.master.ui.lock && ! -f /var/lock/zfs.master.ui.lock ) ]]; then
+  echo 'ZFS Director: unsafe uninstall path; no code or services changed.' >&2
+  exit 1
+fi
+for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
+  if [[ -L "$service_lock" || ( -e "$service_lock" && ! -f "$service_lock" ) ]]; then
+    echo 'ZFS Director: untrusted service lock; no code or services changed.' >&2
+    exit 1
+  fi
+done
+/usr/bin/perl -e {shlex.quote(STOP_MARKER)} -- /var/tmp 0 'plugin removal in progress'
+if [[ -f "$live/scripts/zfsm-worker.php" ]]; then
+  if ! /usr/bin/php "$live/scripts/zfsm-worker.php" --stop; then
+    echo 'ZFS Director: background work has not stopped. Wait for the active operation, inspect Jobs, then retry removal. Code and recovery data retained.' >&2
+    exit 1
+  fi
+fi
+exec 9>>/var/lock/zfs.master.ui.lock
+if ! flock -n 9; then
+  echo 'ZFS Director: an operation is active. Retry removal when it finishes; no lock was deleted.' >&2
+  exit 1
+fi
+# Also cover an incomplete installation with no usable worker stop script.
+for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
+  if [[ -L "$service_lock" || ( -e "$service_lock" && ! -f "$service_lock" ) ]]; then
+    echo 'ZFS Director: untrusted service lock; code retained for inspection.' >&2
+    exit 1
+  fi
+  if [[ -f "$service_lock" ]]; then
+    exec 8>>"$service_lock"
+    if ! flock -n 8; then
+      echo 'ZFS Director: a background service is still running; retry removal after it stops. No process was killed.' >&2
+      exit 1
+    fi
+    exec 8>&-
+  fi
+done
+# Reinstallation is a new install, never an accepted-boot reconstruction.
+# Do not remove settings, journals, archives, recovery or external schedules.
+rm -f -- "$installed"
+rm -f -- /boot/config/plugins/zfs.master.ui/zfs-director.plg /boot/config/plugins/zfs.master.ui/zfs.master.ui.plg /boot/config/plugins/zfs.master.ui/zfs.master.ui.local.plg
+rm -rf -- "$live"
+echo 'ZFS Director removed. Settings, Jobs and recovery data retained; external Sanoid/Syncoid configuration unchanged.'
+'''
+    ET.SubElement(ET.SubElement(plugin, 'FILE', Run='/bin/bash', Method='remove'), 'INLINE').text = remove
     ET.indent(plugin)
     ET.ElementTree(plugin).write(output / plugin_name, encoding='utf-8', xml_declaration=True)
     checksums = digest + '  ' + archive.name + '\n' + hashlib.sha256((output / plugin_name).read_bytes()).hexdigest() + '  ' + plugin_name + '\n'
