@@ -87,6 +87,9 @@ def manual_bundle(output, archive, plugin_name, epoch, release_base=None):
    {url}
 3. Wait for installation to finish, then open Main → ZFS Director.
 
+Already installed RC1? Select Force Install when replacing this same version.
+The message "not reinstalling same version" means the old code was left installed.
+
 The installer downloads and checks the ready-made package, creates its own storage
 and starts the background services. No terminal command or manual activation is needed.
 No source build, developer tools or manual state-directory creation is required.
@@ -108,6 +111,9 @@ Before upgrading, back up, turn integration OFF and resolve pending Jobs.
 2. Вставьте URL плагина и нажмите Install:
    {url}
 3. Дождитесь завершения и откройте Main → ZFS Director.
+
+RC1 уже установлен? Отметьте Force Install при замене этой же версии.
+Строка "not reinstalling same version" означает, что остался прежний код.
 
 Установщик сам скачает и проверит готовый пакет, создаст своё хранилище
 и запустит фоновые службы. Терминал и ручная активация не нужны.

@@ -30,7 +30,7 @@ For local PLG selection, extract the ZIP and copy `zfs-director/zfs-director.plg
 - Finish active Jobs and inspect pending recovery. Turn Sanoid / Syncoid integration OFF before this RC upgrade; the installer does not change that setting for you.
 - Keep the registered PLG filename. An existing `zfs.master.ui.plg` uses [its compatibility update](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs.master.ui.plg); an existing `zfs.master.ui.local.plg` uses [the local compatibility update](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs.master.ui.local.plg). These are included in the ZIP under `legacy-public` and `legacy-local`.
 - Do not add a second registration beside the existing one. New installations use `zfs-director.plg`.
-- A deliberate same-version RC replacement may require **Force Install** in Plugin Manager. It does not bypass the safety checks.
+- To replace an already installed RC1 with the corrected package, select **Force Install** in Plugin Manager. A log ending with `not reinstalling same version` means the update was skipped: the old installer and removal handler are still installed. Force Install allows this same-version replacement; the plugin's safety checks still run.
 
 A successful healthy upgrade restarts the services automatically. Existing schedules stay with their owners; integration and individual definitions remain under explicit GUI control.
 

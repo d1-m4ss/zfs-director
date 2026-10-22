@@ -34,6 +34,8 @@ Manage ZFS in Unraid, browse snapshots in a **Snapshot File Manager**, automate 
 
 The installer downloads and verifies the ready-made package, creates its own storage and starts the background services. **No terminal activation or manual folder creation is needed.** Fresh configuration leaves Sanoid / Syncoid integration OFF. Existing settings, Jobs and schedules are preserved.
 
+**Already installed RC1?** Select **Force Install** to apply the corrected package with the same version number. If the log says `not reinstalling same version`, the update was skipped and the old code is still installed.
+
 The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1) are also available. For existing legacy registrations, use the matching compatibility PLG described in [installation, upgrades and rollback](docs/INSTALLATION.md).
 
 ## Snapshot File Manager
