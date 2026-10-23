@@ -2,6 +2,7 @@
 <Plugin>
   <Name>ZFS Director</Name>
   <PluginURL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs-director.plg</PluginURL>
+  <PluginAuthor>d1-m4ss</PluginAuthor>
   <Beta>true</Beta>
   <MinVer>7.3.3</MinVer>
   <Category>Tools:Utilities</Category>
