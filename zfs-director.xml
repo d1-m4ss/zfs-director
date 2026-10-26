@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Plugin>
   <Name>ZFS Director</Name>
-  <PluginURL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs-director.plg</PluginURL>
+  <PluginURL>https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg</PluginURL>
   <PluginAuthor>d1-m4ss</PluginAuthor>
-  <Beta>true</Beta>
+  <Beta>false</Beta>
   <MinVer>7.3.3</MinVer>
   <Category>Tools:Utilities</Category>
   <Icon>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/src/icons/zfs-director.png</Icon>
@@ -19,7 +19,7 @@
     to datasets. Follow operations, progress, errors and recovery in Jobs. Workspace and
     Compact layouts support Black, Gray, White, Azure and the inherited Unraid theme.
 
-    RC1 release candidate, tested on Unraid 7.3.3 with OpenZFS 2.4.4. Sanoid/Syncoid is
+    Tested on Unraid 7.3.3 with OpenZFS 2.4.4. Sanoid/Syncoid is
     optional, installed separately and OFF on a fresh configuration. Existing settings
     and external schedules are preserved.
 

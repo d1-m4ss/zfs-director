@@ -80,15 +80,15 @@ def release_base_url(value):
 
 def manual_bundle(output, archive, plugin_name, epoch, release_base=None):
     url = (release_base + '/' + plugin_name) if release_base else 'local PLG from this archive'
-    guide = f'''ZFS Director {VERSION} RC1 — Unraid installation
+    guide = f'''ZFS Director {VERSION} — Unraid installation
 
 1. Open Unraid WebGUI → Plugins → Install Plugin.
 2. Paste this plugin URL and click Install:
    {url}
 3. Wait for installation to finish, then open Main → ZFS Director.
 
-Already installed RC1? Select Force Install when replacing this same version.
-The message "not reinstalling same version" means the old code was left installed.
+Installed from an older release URL? Reinstall once with Force Install so update checks
+follow new releases. "not reinstalling same version" means the old code was left installed.
 
 The installer downloads and checks the ready-made package, creates its own storage
 and starts the background services. No terminal command or manual activation is needed.
@@ -106,15 +106,15 @@ code and old registrations are backed up and removed automatically. Director set
 Jobs, recovery and schedules are retained. Resolve pending Jobs before upgrading.
 See INSTALLATION.md for the backup and rollback procedure.
 '''
-    guide_ru = f'''ZFS Director {VERSION} RC1 — установка в Unraid
+    guide_ru = f'''ZFS Director {VERSION} — установка в Unraid
 
 1. Откройте Unraid WebGUI → Plugins → Install Plugin.
 2. Вставьте URL плагина и нажмите Install:
    {url}
 3. Дождитесь завершения и откройте Main → ZFS Director.
 
-RC1 уже установлен? Отметьте Force Install при замене этой же версии.
-Строка "not reinstalling same version" означает, что остался прежний код.
+Ставили по старому URL релиза? Переустановите один раз с Force Install, чтобы
+проверка обновлений видела новые релизы. "not reinstalling same version" — остался прежний код.
 
 Установщик сам скачает и проверит готовый пакет, создаст своё хранилище
 и запустит фоновые службы. Терминал и ручная активация не нужны.
@@ -141,7 +141,7 @@ Jobs, recovery и расписания сохраняются. Перед обн
             members[folder + '/' + legacy_name] = (output / legacy_name).read_bytes()
     members['SHA256SUMS'] = ''.join(hashlib.sha256(data).hexdigest() + '  ' + name + '\n'
                                    for name, data in sorted(members.items())).encode()
-    bundle = output / f'ZFS-Director-{VERSION}-Unraid-RC1.zip'
+    bundle = output / f'ZFS-Director-{VERSION}-Unraid.zip'
     timestamp = datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).timetuple()[:6]
     with zipfile.ZipFile(bundle, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipped:
         for name, data in sorted(members.items()):
@@ -153,7 +153,7 @@ Jobs, recovery и расписания сохраняются. Перед обн
     return bundle
 
 
-def build(output, release_base=None):
+def build(output, release_base=None, plugin_url_base=None):
     output.mkdir(parents=True, exist_ok=True)
     epoch = int(git('show', '-s', '--format=%ct', 'HEAD'))
     files = {}
@@ -165,7 +165,7 @@ def build(output, release_base=None):
         files[path.removeprefix('src/')] = (p.read_bytes(), mode)
     release = {'display_name': 'ZFS Director', 'version': VERSION, 'source_commit': git('rev-parse', 'HEAD'),
                'source_tree': git('rev-parse', 'HEAD:src'), 'plugin_id': 'zfs.master.ui',
-               'status': 'release-candidate' if release_base else 'local-candidate', 'maturity': 'RC1'}
+               'status': 'release' if release_base else 'local-candidate', 'maturity': 'stable'}
     files['release.json'] = ((json.dumps(release, indent=2) + '\n').encode(), 0o644)
     manifest = ''.join(hashlib.sha256(data).hexdigest() + '  ' + name + '\n' for name, (data, _) in sorted(files.items()))
     files['SHA256SUMS'] = (manifest.encode(), 0o644)
@@ -179,10 +179,12 @@ def build(output, release_base=None):
             tar.addfile(entry, io.BytesIO(data))
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     plugin_name = 'zfs-director.plg' if release_base else 'zfs.master.ui.local.plg'
-    plugin_url = release_base + '/' + plugin_name if release_base else 'file:///boot/config/plugins/zfs.master.ui/' + plugin_name
+    # pluginURL is what Plugin Manager polls for updates; a stable base lets it see newer versions.
+    update_base = plugin_url_base or release_base
+    plugin_url = update_base + '/' + plugin_name if release_base else 'file:///boot/config/plugins/zfs.master.ui/' + plugin_name
     plugin = ET.Element('PLUGIN', name='zfs.master.ui', author='d1-m4ss', version=VERSION, min='7.3.3',
                         icon='database', launch='Main/ZFSDirector', pluginURL=plugin_url)
-    ET.SubElement(plugin, 'CHANGES').text = f'### {VERSION}\nZFS Director: RC1 based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.'
+    ET.SubElement(plugin, 'CHANGES').text = f'### {VERSION}\nZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.'
     package = ET.SubElement(plugin, 'FILE', Name=f'/boot/config/plugins/zfs.master.ui/{archive.name}')
     ET.SubElement(package, 'URL' if release_base else 'LOCAL').text = release_base + '/' + archive.name if release_base else package.attrib['Name']
     ET.SubElement(package, 'MD5').text = hashlib.md5(archive.read_bytes()).hexdigest()
@@ -375,7 +377,7 @@ echo 'ZFS Director removed. Settings, Jobs and recovery data retained; external 
         # Keep existing registrations and their cron namespaces for upgrades.
         for legacy_name in ('zfs.master.ui.plg', 'zfs.master.ui.local.plg'):
             legacy = copy.deepcopy(plugin)
-            legacy.set('pluginURL', release_base + '/' + legacy_name)
+            legacy.set('pluginURL', update_base + '/' + legacy_name)
             for entry in legacy.findall("FILE[@Run='/bin/bash']/INLINE"):
                 entry.text = entry.text.replace('registration=' + plugin_name + '\n', 'registration=' + legacy_name + '\n')
             legacy_path = output / legacy_name
@@ -396,5 +398,9 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=pathlib.Path, required=True)
     parser.add_argument('--release-base-url', type=release_base_url,
                         help='explicit HTTPS release asset directory; omit for local-only output')
+    parser.add_argument('--plugin-url-base', type=release_base_url,
+                        help='stable HTTPS directory serving the current PLG files for update checks; defaults to the release base')
     args = parser.parse_args()
-    build(args.output, args.release_base_url)
+    if args.plugin_url_base and not args.release_base_url:
+        parser.error('--plugin-url-base requires --release-base-url')
+    build(args.output, args.release_base_url, args.plugin_url_base)

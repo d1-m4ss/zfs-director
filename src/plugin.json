@@ -23,7 +23,7 @@
     "icons/zfs.master.ui-256.png",
     "images/zfs.master.png"
   ],
-  "distribution": "source-only release candidate; descriptive metadata, not an installable .plg",
+  "distribution": "descriptive metadata, not an installable .plg",
   "branding_date": "2026-10-16",
   "author_url": "https://github.com/d1-m4ss"
 }

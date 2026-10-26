@@ -8,9 +8,9 @@ Manage ZFS in Unraid, browse snapshots in a **Snapshot File Manager**, automate 
 - **[Sanoid integration](#sanoid-snapshot-policies):** choose snapshot creation times, retention and protected removal of old snapshots; review External and Managed policies.
 - **[Syncoid integration](#syncoid-replication):** create local or SSH replication jobs through Source → Destination → Schedule → Review, with progress and verified results in Jobs.
 
-**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid-RC1.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
+**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
 
-**RC1 2026.10.22.1** was tested on a physical Unraid 7.3.3 server with OpenZFS 2.4.4 and in an isolated VM. See the [verification results](docs/TESTING.md#rc1-verification-2026-10-22) for installation, upgrades, ZFS operations and GUI checks.
+**Version 2026.10.22.1** was tested on a physical Unraid 7.3.3 server with OpenZFS 2.4.4 and in an isolated VM. See the [verification results](docs/TESTING.md#rc1-verification-2026-10-22) for installation, upgrades, ZFS operations and GUI checks.
 
 <table>
 <tr><th>Snapshot File Manager</th><th>Sanoid snapshot policies</th><th>Syncoid Replication Wizard</th></tr>
@@ -23,20 +23,29 @@ Manage ZFS in Unraid, browse snapshots in a **Snapshot File Manager**, automate 
 
 ## Install in Unraid
 
-1. Open **Plugins → Install Plugin**.
-2. Paste the following URL and click **Install**:
+### From Community Applications (recommended)
 
-   ```text
-   https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs-director.plg
-   ```
-
+1. Open the **Apps** tab and search for **ZFS Director**.
+2. Click **Install**.
 3. Open **Main → ZFS Director**.
+
+### By plugin URL
+
+Open **Plugins → Install Plugin**, paste this URL and click **Install**:
+
+```text
+https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg
+```
 
 The installer downloads and verifies the ready-made package, creates its own storage and starts the background services. **No terminal activation or manual folder creation is needed.** Fresh configuration leaves Sanoid / Syncoid integration OFF. Existing settings, Jobs and schedules are preserved.
 
-**Already installed RC1?** Select **Force Install** to apply the corrected package with the same version number. If the log says `not reinstalling same version`, the update was skipped and the old code is still installed.
+> **Replaces ZFS Master.** ZFS Director is a successor of ZFS Master and does not run alongside it. The installer backs up and removes ZFS Master code and old plugin registrations; Director settings, Jobs, recovery and schedules are preserved.
 
-The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1) are also available. The same installer replaces ZFS Master and cleans up old plugin registrations, retaining a rollback backup. Director settings, Jobs, recovery and schedules are preserved. See [installation, upgrades and rollback](docs/INSTALLATION.md).
+### Updates
+
+New versions appear in **Plugins → Check for Updates** and in Community Applications. Installed from an older release URL (`…/releases/download/…/zfs-director.plg`)? Reinstall once from the URL above with **Force Install** so update checks follow new releases.
+
+The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1) are also available. See [installation, upgrades and rollback](docs/INSTALLATION.md).
 
 ## Snapshot File Manager
 

@@ -1,14 +1,16 @@
 # Install ZFS Director in Unraid
 
-RC1 2026.10.22.1 targets Unraid 7.3.3 / OpenZFS 2.4.4. No source build, developer tools, terminal activation or manual state-directory creation is required.
+Version 2026.10.22.1 targets Unraid 7.3.3 / OpenZFS 2.4.4. No source build, developer tools, terminal activation or manual state-directory creation is required.
 
 ## Install
+
+The simplest way is **Apps → search "ZFS Director" → Install** in Community Applications. To install by URL instead:
 
 1. Open **Plugins → Install Plugin** in the Unraid WebGUI.
 2. Paste this URL into the plugin URL field:
 
    ```text
-   https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs-director.plg
+   https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg
    ```
 
 3. Click **Install** and wait for completion.
@@ -20,7 +22,7 @@ Existing settings, Jobs, recovery files and schedules are retained. If the insta
 
 ## ZIP download
 
-The release also provides a [ready-made ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid-RC1.zip) and [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS), containing matching PLG/TGZ files and short English/Russian guides. The plugin URL above is the normal installation method.
+The release also provides a [ready-made ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid.zip) and [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS), containing matching PLG/TGZ files and short English/Russian guides. The plugin URL above is the normal installation method.
 
 For local PLG selection, extract the ZIP and copy `zfs-director/zfs-director.plg` to the flash drive's existing `config/plugins` folder. Select that file in **Plugins → Install Plugin**. The public PLG downloads its matching TGZ itself. You do not need to create a separate plugin directory or unpack the TGZ into WebGUI.
 
@@ -30,7 +32,7 @@ For local PLG selection, extract the ZIP and copy `zfs-director/zfs-director.plg
 - Finish active Jobs and inspect pending recovery. The installer pauses Director during replacement and preserves the integration setting, including ON after a previous uninstall.
 - Use the same `zfs-director.plg` URL above. Existing ZFS Master code and duplicate Director registrations are backed up and removed from their active locations automatically. No manual directory cleanup is needed.
 - Director settings, Jobs, recovery and saved schedules are retained. Managed cron is moved to the installed registration's namespace with its exact content preserved; registration completes before services start. External Sanoid/Syncoid scripts and schedules are not changed.
-- To replace an already installed RC1 with the corrected package, select **Force Install** in Plugin Manager. A log ending with `not reinstalling same version` means the update was skipped: the old installer and removal handler are still installed. Force Install allows this same-version replacement; the plugin's safety checks still run.
+- If the plugin was installed from an older release URL (`…/releases/download/…/zfs-director.plg`), reinstall it once from the URL above with **Force Install** in Plugin Manager so update checks follow new releases. A log ending with `not reinstalling same version` means the update was skipped: the old installer and removal handler are still installed. Force Install allows this same-version replacement; the plugin's safety checks still run.
 
 A successful healthy upgrade restarts the services automatically. Existing schedules stay with their owners; integration and individual definitions remain under explicit GUI control.
 

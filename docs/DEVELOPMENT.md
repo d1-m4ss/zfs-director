@@ -9,10 +9,11 @@ The package builder supports **local evaluation and an explicitly configured pub
 ```sh
 python3 tools/build-installer.py --output dist/local
 RELEASE_BASE_URL='https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1'
-python3 tools/build-installer.py --output dist/release --release-base-url "$RELEASE_BASE_URL"
+python3 tools/build-installer.py --output dist/release --release-base-url "$RELEASE_BASE_URL" \
+  --plugin-url-base https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin
 ```
 
-Build from a committed checkout. Local output includes a TGZ, `zfs.master.ui.local.plg`, `SHA256SUMS` and the exact installer script. Public mode emits `zfs-director.plg` and compatible `zfs.master.ui.plg` / `zfs.master.ui.local.plg`, all using one matching TGZ with pinned HTTPS URLs and package checksums. Public builds target `d1-m4ss/zfs-director`; upload every matching asset to the release directory used by the build. A version-specific directory pins RC1 rather than following future releases.
+Build from a committed checkout. Local output includes a TGZ, `zfs.master.ui.local.plg`, `SHA256SUMS` and the exact installer script. Public mode emits `zfs-director.plg` and compatible `zfs.master.ui.plg` / `zfs.master.ui.local.plg`, all using one matching TGZ with pinned HTTPS URLs and package checksums. Public builds target `d1-m4ss/zfs-director`; upload every matching asset to the release directory used by the build. Packages stay pinned to that version-specific directory, while `pluginURL` points to `--plugin-url-base`, which Plugin Manager polls for updates. After publishing the release assets, commit the three built PLG files to `plugin/` on `main`; Community Applications installs `plugin/zfs-director.plg` from there.
 
 Use the release tag to reproduce the published source. The release tag and packaged `source_commit` identify the final squashed release commit. The privacy check scans every reachable commit and blob.
 
@@ -46,6 +47,6 @@ The preview uses the real frontend with a read-only synthetic response adapter. 
 
 ## Manual-install ZIP
 
-Every build also produces `ZFS-Director-2026.10.22.1-Unraid-RC1.zip`. It contains the matching PLG/TGZ pair, two short installation guides, the full installation guide and an internal SHA-256 manifest. No source tree, settings, Jobs or datasets are included. Release mode places `zfs-director.plg` in `zfs-director` and includes the compatibility definitions under `legacy-public` and `legacy-local` for existing local registrations; all use the common TGZ. Local mode contains only `zfs.master.ui.local.plg`. Never mix assets from different builds.
+Every build also produces `ZFS-Director-2026.10.22.1-Unraid.zip`. It contains the matching PLG/TGZ pair, two short installation guides, the full installation guide and an internal SHA-256 manifest. No source tree, settings, Jobs or datasets are included. Release mode places `zfs-director.plg` in `zfs-director` and includes the compatibility definitions under `legacy-public` and `legacy-local` for existing local registrations; all use the common TGZ. Local mode contains only `zfs.master.ui.local.plg`. Never mix assets from different builds.
 
 ZIP member names, timestamps and modes are deterministic. Publish the ZIP and external `SHA256SUMS` together with the matching public PLG, compatibility PLG and TGZ release assets. The ZIP is the primary download for manual installation; GitHub's source-code archives are for development.

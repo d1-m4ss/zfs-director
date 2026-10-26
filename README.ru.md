@@ -8,9 +8,9 @@
 - **[Интеграция Sanoid](#политики-sanoid):** задайте время создания snapshots, хранение и безопасное удаление старых копий; просматривайте External и Managed policies.
 - **[Интеграция Syncoid](#репликация-syncoid):** настройте локальную или SSH-репликацию через Source → Destination → Schedule → Review; progress и проверенный результат доступны в Jobs.
 
-**[Скачать установочный ZIP для Unraid](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid-RC1.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Установка и rollback](docs/INSTALLATION.md)
+**[Скачать установочный ZIP для Unraid](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Установка и rollback](docs/INSTALLATION.md)
 
-**RC1 2026.10.22.1** проверен на физическом сервере Unraid 7.3.3 с OpenZFS 2.4.4 и в изолированной VM. Установка, обновления, ZFS-операции и GUI описаны в [результатах проверки](docs/TESTING.md#rc1-verification-2026-10-22).
+**Версия 2026.10.22.1** проверена на физическом сервере Unraid 7.3.3 с OpenZFS 2.4.4 и в изолированной VM. Установка, обновления, ZFS-операции и GUI описаны в [результатах проверки](docs/TESTING.md#rc1-verification-2026-10-22).
 
 <table>
 <tr><th>Snapshot File Manager</th><th>Sanoid snapshot policies</th><th>Syncoid Replication Wizard</th></tr>
@@ -23,20 +23,29 @@
 
 ## Установка в Unraid
 
-1. Откройте **Plugins → Install Plugin**.
-2. Вставьте URL и нажмите **Install**:
+### Через Community Applications (рекомендуется)
 
-   ```text
-   https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs-director.plg
-   ```
-
+1. Откройте вкладку **Apps** и найдите **ZFS Director**.
+2. Нажмите **Install**.
 3. Откройте **Main → ZFS Director**.
+
+### По URL плагина
+
+Откройте **Plugins → Install Plugin**, вставьте URL и нажмите **Install**:
+
+```text
+https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg
+```
 
 Установщик сам скачает и проверит готовый пакет, создаст своё хранилище и запустит фоновые службы. **Терминал, отдельная активация и ручное создание папок не нужны.** В новой конфигурации интеграция Sanoid / Syncoid выключена. Существующие настройки, Jobs и расписания сохраняются.
 
-Также доступны [ZIP и контрольные суммы](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1). Тот же установщик заменяет ZFS Master и убирает прежние регистрации плагина, сохраняя резервную копию для отката. Настройки Director, Jobs, recovery и расписания сохраняются. Подробнее — в [инструкции установки, обновления и rollback](docs/INSTALLATION.md).
+> **Заменяет ZFS Master.** ZFS Director — преемник ZFS Master и не работает рядом с ним. Установщик убирает код ZFS Master и прежние регистрации плагина, сохраняя резервную копию для отката; настройки Director, Jobs, recovery и расписания сохраняются.
 
-**RC1 уже установлен?** Отметьте **Force Install**, чтобы применить исправленный пакет с тем же номером версии. Строка `not reinstalling same version` означает, что обновление пропущено и остался прежний код.
+### Обновления
+
+Новые версии появляются в **Plugins → Check for Updates** и в Community Applications. Ставили плагин по старому URL релиза (`…/releases/download/…/zfs-director.plg`)? Один раз переустановите его по URL выше с **Force Install**, чтобы проверка обновлений видела новые релизы.
+
+Также доступны [ZIP и контрольные суммы](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1). Подробнее — в [инструкции установки, обновления и rollback](docs/INSTALLATION.md).
 
 ## Snapshot File Manager
 
