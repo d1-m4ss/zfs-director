@@ -1,0 +1,1533 @@
+<?xml version='1.0' encoding='utf-8'?>
+<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.10.22.1" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg">
+  <CHANGES>### 2026.10.22.1
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.</CHANGES>
+  <FILE Run="/bin/bash">
+    <INLINE>set -euo pipefail
+# Plugin Manager displays stdout only; keep actionable errors in its dialog.
+exec 2&gt;&amp;1
+trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
+umask 077
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.10.22.1.tgz
+live=/usr/local/emhttp/plugins/zfs.master.ui
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.10.22.1-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.10.22.1-$$
+# Legacy migration guard. Inspect now; cleanup runs after package validation.
+registration=zfs-director.plg
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.10.22.1-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_cleanup() {
+  /usr/bin/php -r '
+// Embedded in the PLG: only known plugin code/registrations are replaced.
+// Director settings, journals and recovery never enter the cleanup list.
+function zfsdLegacyPath(string $path,bool $registration=false): void {
+    if(!str_starts_with($path,'"'"'/'"'"')||preg_match('"'"'~(?:^|/)\.\.?(/|$)~'"'"',$path))throw new RuntimeException('"'"'Unsafe installer path'"'"');
+    for($parent=dirname($path);$parent!=='"'"'/'"'"';$parent=dirname($parent)){
+        if(is_link($parent)||(file_exists($parent)&amp;&amp;!is_dir($parent)))throw new RuntimeException('"'"'Unsafe installer parent: '"'"'.$parent);
+    }
+    if(is_link($path)){
+        if(!$registration||readlink($path)!=='"'"'/boot/config/plugins/'"'"'.basename($path))throw new RuntimeException('"'"'Unsafe plugin link: '"'"'.$path);
+    }elseif(file_exists($path)&amp;&amp;!is_file($path)&amp;&amp;!is_dir($path))throw new RuntimeException('"'"'Unsafe installer object: '"'"'.$path);
+}
+function zfsdLegacyPlan(string $root,string $keep): array {
+    if(!in_array($keep,['"'"'zfs-director.plg'"'"','"'"'zfs.master.ui.plg'"'"','"'"'zfs.master.ui.local.plg'"'"'],true))throw new RuntimeException('"'"'Unknown installer registration'"'"');
+    $root=rtrim($root,'"'"'/'"'"');$moves=[];$cron=[];
+    zfsdLegacyPath($root.'"'"'/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director'"'"');
+    $mounts=@file_get_contents($root.'"'"'/proc/self/mountinfo'"'"');
+    if($mounts===false&amp;&amp;$root==='"'"''"'"')throw new RuntimeException('"'"'Cannot verify legacy directory mount boundaries'"'"');
+    foreach(explode("\n",(string)$mounts)as$line){
+        $fields=explode('"'"' '"'"',$line);if(count($fields)&lt;6)continue;
+        $mount=preg_replace_callback('"'"'/\\\\([0-7]{3})/'"'"',static fn($m)=&gt;chr(octdec($m[1])),$fields[4]);
+        foreach(['"'"'/usr/local/emhttp/plugins/zfs.master'"'"','"'"'/usr/local/emhttp/plugins/zfs.master.ui'"'"','"'"'/boot/config/plugins/zfs.master'"'"']as$tree){
+            $tree=$root.$tree;if($mount===$tree||str_starts_with($mount,$tree.'"'"'/'"'"'))throw new RuntimeException('"'"'Mounted data inside a plugin directory requires inspection: '"'"'.$mount);
+        }
+    }
+    foreach(['"'"'zfs.master.plg'"'"','"'"'zfs-director.plg'"'"','"'"'zfs.master.ui.plg'"'"','"'"'zfs.master.ui.local.plg'"'"']as$name){
+        if($name===$keep)continue;
+        foreach(['"'"'/boot/config/plugins/'"'"','"'"'/var/log/plugins/'"'"','"'"'/boot/config/plugins/zfs.master.ui/'"'"']as$folder){
+            $p=$root.$folder.$name;zfsdLegacyPath($p,$folder==='"'"'/var/log/plugins/'"'"');
+            if(is_dir($p)&amp;&amp;!is_link($p))throw new RuntimeException('"'"'Plugin registration is a directory: '"'"'.$p);
+            if(file_exists($p)||is_link($p))$moves[]=$p;
+        }
+    }
+    foreach(['"'"'/usr/local/emhttp/plugins/zfs.master'"'"','"'"'/boot/config/plugins/zfs.master'"'"']as$folder){
+        $p=$root.$folder;zfsdLegacyPath($p);
+        if(is_link($p)||(file_exists($p)&amp;&amp;!is_dir($p)))throw new RuntimeException('"'"'Unsafe legacy plugin directory: '"'"'.$p);
+        if(is_dir($p)){
+            if(glob($p.'"'"'/*.cron'"'"'))throw new RuntimeException('"'"'Legacy ZFS Master has custom schedules; inspect them before replacing its configuration'"'"');
+            $moves[]=$p;
+        }
+    }
+    // Obsolete packages are code, not user state. Retain them in the same
+    // rollback backup instead of leaving old installers in the state folder.
+    foreach(glob($root.'"'"'/boot/config/plugins/zfs.master.ui/zfs.master.ui-*.tgz'"'"')?:[]as$p){
+        if(!preg_match('"'"'/^zfs\.master\.ui-[0-9.]+\.tgz$/D'"'"',basename($p)))continue;
+        zfsdLegacyPath($p);if(!is_file($p)||is_link($p))throw new RuntimeException('"'"'Unsafe legacy package: '"'"'.$p);$moves[]=$p;
+    }
+    foreach(['"'"'zfs-director'"'"','"'"'zfs.master.ui'"'"','"'"'zfs.master.ui.local'"'"']as$namespace){
+        $p=$root.'"'"'/boot/config/plugins/'"'"'.$namespace.'"'"'/protection.cron'"'"';zfsdLegacyPath($p);
+        foreach(glob(dirname($p).'"'"'/*.cron'"'"')?:[]as$other)if($other!==$p)throw new RuntimeException('"'"'Custom schedules in an old Director namespace require inspection: '"'"'.$other);
+        if(is_link($p)||(file_exists($p)&amp;&amp;(!is_file($p)||filesize($p)&gt;1048576)))throw new RuntimeException('"'"'Unsafe Director cron source: '"'"'.$p);
+        if(is_file($p))$cron[$p]=file_get_contents($p);
+    }
+    $destination=$root.'"'"'/boot/config/plugins/'"'"'.basename($keep,'"'"'.plg'"'"').'"'"'/protection.cron'"'"';
+    $selected=null;$active=[];
+    foreach($cron as$p=&gt;$text){
+        $lines=array_values(array_filter(explode("\n",$text),static fn($line)=&gt;trim($line)!=='"'"''"'"'&amp;&amp;!str_starts_with(ltrim($line),'"'"'#'"'"')));
+        if($lines)$active[$p]=$text;
+    }
+    if(count(array_unique($active))&gt;1)throw new RuntimeException('"'"'Conflicting Director schedules; no registration or schedule was removed'"'"');
+    if($active)$selected=array_key_first($active);
+    elseif(isset($cron[$destination]))$selected=$destination;
+    elseif($cron)$selected=array_key_first($cron);
+    foreach($cron as$p=&gt;$text)if($p!==$destination)$moves[]=$p;
+    // A different empty destination may be replaced by the existing active
+    // source, but is backed up just like every displaced registration.
+    if($selected!==null&amp;&amp;$selected!==$destination&amp;&amp;isset($cron[$destination]))$moves[]=$destination;
+    return ['"'"'moves'"'"'=&gt;array_values(array_unique($moves)),'"'"'cron_target'"'"'=&gt;$destination,'"'"'cron_text'"'"'=&gt;$selected!==null?$cron[$selected]:null,
+            '"'"'write_cron'"'"'=&gt;$selected!==null&amp;&amp;($cron[$destination]??null)!==$cron[$selected]];
+}
+function zfsdLegacyProcesses(string $root): array {
+    $nchan=[];$legacy=rtrim($root,'"'"'/'"'"').'"'"'/usr/local/emhttp/plugins/zfs.master/'"'"';
+    foreach(glob(rtrim($root,'"'"'/'"'"').'"'"'/proc/[0-9]*/cmdline'"'"')?:[]as$file){
+        $args=explode("\0",(string)@file_get_contents($file));$matched=false;
+        foreach($args as$arg)if(str_starts_with($arg,$legacy))$matched=true;
+        if(!$matched)continue;
+        $script=$args[1]??'"'"''"'"';if($script==='"'"'-q'"'"')$script=$args[2]??'"'"''"'"';
+        if(basename($args[0])!=='"'"'php'"'"'||$script!==$legacy.'"'"'nchan/zfs_master'"'"')throw new RuntimeException('"'"'An operation from ZFS Master is still running; finish it before installation'"'"');
+        $nchan[(int)basename(dirname($file))]=(string)file_get_contents($file);
+    }
+    return $nchan;
+}
+function zfsdLegacyInstall(string $mode,string $root,string $keep,string $backup): void {
+    $root=rtrim($root,'"'"'/'"'"');
+    if($mode==='"'"'check'"'"'){zfsdLegacyPlan($root,$keep);zfsdLegacyProcesses($root);return;}
+    zfsdLegacyPath($backup);
+    if($mode==='"'"'rollback'"'"'){
+        $journal=$backup.'"'"'/migration.json'"'"';if(!is_file($journal))return;
+        $state=json_decode(file_get_contents($journal),true,64,JSON_THROW_ON_ERROR);
+        if(!empty($state['"'"'rolled_back'"'"']))return;
+        if(isset($state['"'"'created_cron'"'"'])){
+            [$target,$sha]=$state['"'"'created_cron'"'"'];zfsdLegacyPath($target);
+            if(file_exists($target)){
+                $restored=false;$current=lstat($target);
+                foreach($state['"'"'done'"'"']as$item)if($item[0]===$target&amp;&amp;[$current['"'"'dev'"'"'],$current['"'"'ino'"'"']]===$item[3]&amp;&amp;!file_exists($item[1]))$restored=true;
+                if(!$restored){
+                    if(is_link($target)||!is_file($target)||hash_file('"'"'sha256'"'"',$target)!==$sha)throw new RuntimeException('"'"'Cron changed after installation; retained backup: '"'"'.$backup);
+                    if(!unlink($target))throw new RuntimeException('"'"'Cannot undo Director cron relocation'"'"');
+                }
+            }
+        }
+        foreach(array_reverse($state['"'"'done'"'"'])as$item){
+            [$from,$to,$link,$identity]=$item;clearstatcache();
+            if(file_exists($from)||is_link($from)){
+                $stat=lstat($from);
+                if(($link!==null&amp;&amp;is_link($from)&amp;&amp;readlink($from)===$link)||($link===null&amp;&amp;[$stat['"'"'dev'"'"'],$stat['"'"'ino'"'"']]===$identity&amp;&amp;!file_exists($to)))continue;
+                throw new RuntimeException('"'"'Rollback target changed; retained backup: '"'"'.$backup);
+            }
+            if($link!==null){if(!symlink($link,$from))throw new RuntimeException('"'"'Cannot restore plugin registration'"'"');}
+            elseif(!rename($to,$from))throw new RuntimeException('"'"'Cannot restore displaced plugin file'"'"');
+        }
+        $state['"'"'rolled_back'"'"']=true;
+        if(file_put_contents($journal.'"'"'.tmp'"'"',json_encode($state,JSON_THROW_ON_ERROR),LOCK_EX)===false||!rename($journal.'"'"'.tmp'"'"',$journal))throw new RuntimeException('"'"'Cannot record completed rollback'"'"');
+        return;
+    }
+    if($mode!=='"'"'apply'"'"')throw new RuntimeException('"'"'Unknown legacy cleanup action'"'"');
+    $plan=zfsdLegacyPlan($root,$keep);$processes=zfsdLegacyProcesses($root);
+    if($processes&amp;&amp;$root!=='"'"''"'"')throw new RuntimeException('"'"'Process changes require the live system root'"'"');
+    foreach($processes as$pid=&gt;$cmd){
+        if((string)@file_get_contents('"'"'/proc/'"'"'.$pid.'"'"'/cmdline'"'"')!==$cmd)throw new RuntimeException('"'"'Legacy monitor identity changed'"'"');
+        if(!posix_kill($pid,15))throw new RuntimeException('"'"'Unable to stop the legacy ZFS Master monitor'"'"');
+    }
+    $deadline=microtime(true)+5;
+    do{$running=zfsdLegacyProcesses($root);if(!$running)break;usleep(100000);}while(microtime(true)&lt;$deadline);
+    if($running)throw new RuntimeException('"'"'Legacy ZFS Master monitor has not stopped'"'"');
+    if(!$plan['"'"'moves'"'"']&amp;&amp;!$plan['"'"'write_cron'"'"'])return;
+    if(file_exists($backup)||!mkdir($backup,0700,true))throw new RuntimeException('"'"'Cannot create legacy plugin backup'"'"');
+    $state=['"'"'done'"'"'=&gt;[]];$journal=$backup.'"'"'/migration.json'"'"';
+    $save=static function()use(&amp;$state,$journal){$json=json_encode($state,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);if(file_put_contents($journal.'"'"'.tmp'"'"',$json,LOCK_EX)!==strlen($json)||!rename($journal.'"'"'.tmp'"'"',$journal))throw new RuntimeException('"'"'Cannot save installer rollback journal'"'"');};
+    $save();
+    try{
+        foreach($plan['"'"'moves'"'"']as$i=&gt;$from){
+            $link=is_link($from)?readlink($from):null;
+            $to=is_dir($from)&amp;&amp;str_starts_with($from,$root.'"'"'/usr/local/emhttp/plugins/'"'"')?dirname($from).'"'"'/.zfs-director-legacy-'"'"'.basename($backup).'"'"'-'"'"'.$i:$backup.'"'"'/item-'"'"'.$i;
+            if(file_exists($to)||is_link($to))throw new RuntimeException('"'"'Legacy backup destination exists'"'"');
+            $stat=lstat($from);$state['"'"'done'"'"'][]=[$from,$to,$link,[$stat['"'"'dev'"'"'],$stat['"'"'ino'"'"']]];$save();
+            if($link!==null){if(!unlink($from))throw new RuntimeException('"'"'Cannot remove old registration'"'"');}
+            elseif(!rename($from,$to))throw new RuntimeException('"'"'Cannot retain old plugin file'"'"');
+        }
+        if($plan['"'"'write_cron'"'"']){
+            $target=$plan['"'"'cron_target'"'"'];if(!is_dir(dirname($target))&amp;&amp;!mkdir(dirname($target),0700,true))throw new RuntimeException('"'"'Cannot preserve Director cron namespace'"'"');
+            if(file_exists($target)||is_link($target))throw new RuntimeException('"'"'Director cron changed during installation'"'"');
+            $text=$plan['"'"'cron_text'"'"'];$state['"'"'created_cron'"'"']=[$target,hash('"'"'sha256'"'"',$text)];$save();
+            $temporary=tempnam(dirname($target),'"'"'.director-cron-'"'"');
+            if($temporary===false)throw new RuntimeException('"'"'Cannot stage Director cron'"'"');
+            try{if(file_put_contents($temporary,$text,LOCK_EX)!==strlen($text)||!rename($temporary,$target)||file_get_contents($target)!==$text)throw new RuntimeException('"'"'Director cron readback failed'"'"');}
+            finally{if(is_file($temporary))unlink($temporary);}
+        }
+        echo '"'"'ZFS Director: old ZFS Master code and duplicate registrations removed; rollback backup: '"'"'.$backup."\n";
+    }catch(Throwable$error){
+        zfsdLegacyInstall('"'"'rollback'"'"',$root,$keep,$backup);throw $error;
+    }
+}
+
+try { zfsdLegacyInstall($argv[1], $argv[2], $argv[3], $argv[4]); } catch (Throwable $error) { echo "ZFS Director: ".$error-&gt;getMessage()."\n"; exit(1); }' -- "$1" / "$registration" "$legacy_backup"
+}
+legacy_cleanup check
+for directory in "$live" /boot/config/plugins/zfs.master.ui/protection; do
+  if [[ -L "$directory" || ( -e "$directory" &amp;&amp; ! -d "$directory" ) ]]; then echo "ZFS Director: unsafe installer directory: $directory"; exit 1; fi
+done
+for object in /var/lock/zfs.master.ui.lock /boot/config/plugins/zfs.master.ui/protection/config.lock /boot/config/plugins/zfs.master.ui/protection/execution.lock; do
+  if [[ -L "$object" || ( -e "$object" &amp;&amp; ! -f "$object" ) ]]; then echo "ZFS Director: unsafe installer lock: $object"; exit 1; fi
+done
+hook=/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director
+if [[ -L "$hook" || ( -e "$hook" &amp;&amp; ! -f "$hook" ) ]]; then echo 'ZFS Director: unsafe Plugin Manager hook'; exit 1; fi
+if [[ -f "$hook" &amp;&amp; "$(sha256sum "$hook" | cut -d ' ' -f 1)" != 'f16a1c7f2e5fd19ec09bc9eb6e7c2b396fa28253e3269f9e31d08d10237cb3c3' ]]; then echo 'ZFS Director: existing post-hook has unknown ownership; retained unchanged'; exit 1; fi
+# End legacy migration guard.
+# Runtime stop marker guard.
+stop_runtime() {
+  /usr/bin/perl -e 'use strict;
+use warnings;
+use Fcntl qw(:DEFAULT :mode);
+my ($base, $owner, $message) = @ARGV;
+die "Invalid runtime guard arguments\n" unless defined($message) &amp;&amp; $owner =~ /\A[0-9]+\z/ &amp;&amp; $base =~ m{\A/} &amp;&amp; $base !~ m{(?:\A|/)\.\.?(/|\z)};
+sub enter_directory {
+    my ($name, $uid, $shared) = @_;
+    sysopen(my $directory, $name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW) or die "Runtime directory requires inspection\n";
+    my @stat = stat($directory);
+    die "Untrusted runtime directory\n" unless @stat &amp;&amp; S_ISDIR($stat[2]) &amp;&amp; $stat[4] == $uid
+        &amp;&amp; (!(($stat[2]) &amp; 0022) || ($shared &amp;&amp; ($stat[2] &amp; 01000)));
+    chdir($directory) or die "Unable to enter trusted runtime directory\n";
+}
+enter_directory('"'"'/'"'"', 0, 0);
+my @parents = grep { length } split m{/}, $base;
+for my $index (0 .. $#parents) {
+    enter_directory($parents[$index], $index == $#parents ? $owner : 0, 1);
+}
+for my $name ('"'"'zfs.master.ui'"'"', '"'"'jobs'"'"') {
+    if (!lstat($name)) { mkdir($name, 0700) or die "Unable to create runtime directory\n"; }
+    enter_directory($name, $owner, 0);
+}
+my @stop = lstat('"'"'stop'"'"');
+die "Stop marker requires inspection\n" if @stop &amp;&amp; (!S_ISREG($stop[2]) || $stop[4] != $owner || ($stop[2] &amp; 0022) || $stop[3] != 1);
+my $temporary = '"'"'.stop-'"'"' . $$ . '"'"'-'"'"' . int(rand(1000000000));
+sysopen(my $marker, $temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600) or die "Unable to create stop marker\n";
+eval {
+    print {$marker} $message, "\n" or die "Unable to write stop marker\n";
+    close($marker) or die "Unable to close stop marker\n";
+    rename($temporary, '"'"'stop'"'"') or die "Unable to publish stop marker\n";
+    1;
+} or do {
+    my $error = $@;
+    close($marker) if defined(fileno($marker));
+    unlink($temporary);
+    die $error;
+};
+' -- /var/tmp 0 "$1"
+}
+# End runtime stop marker guard.
+# Boot reconstruction restores the UI even when recovery must stay stopped.
+installed=/boot/config/plugins/zfs.master.ui/installed.sha256
+[[ ! -L "$installed" &amp;&amp; ( ! -e "$installed" || -f "$installed" ) ]]
+restore_accepted=0
+hold_recovery=0
+old_receipt=
+if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '4de34ae7ee8824af4b59f9676384ce5ae1db028b826f40c3998164210f279018' ]]; then restore_accepted=1; fi
+preflight() {
+  local status=0 mode=install
+  if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
+  /usr/bin/php -r '
+// Read-only installer prerequisite. No plugin includes, worker or scheduler calls.
+if(PHP_SAPI!=='"'"'cli'"'"')exit(2);
+$root=$argv[1]??'"'"'/boot/config/plugins/zfs.master.ui'"'"';
+$acceptedBoot=($argv[2]??'"'"''"'"')==='"'"'accepted-boot'"'"';
+$managedInstall=($argv[2]??'"'"''"'"')==='"'"'install'"'"';
+$requireRecovery=static function($message)use($acceptedBoot){fwrite(STDERR,'"'"'ZFS Director preflight: '"'"'.$message."\n");exit($acceptedBoot?10:1);};
+try{
+    if(!is_string($root)||!str_starts_with($root,'"'"'/'"'"')||str_contains($root,"\0")||str_contains($root,'"'"'..'"'"')||is_link($root))throw new RuntimeException('"'"'Unsafe persistent state path'"'"');
+    $config=$root.'"'"'/zfs.master.ui.cfg'"'"';
+    if(file_exists($config)||is_link($config)){
+        if(is_link($config)||!is_file($config)||filesize($config)&gt;1048576)throw new RuntimeException('"'"'Settings require inspection'"'"');
+        $parsed=@parse_ini_file($config,true,INI_SCANNER_RAW);if(!is_array($parsed))$requireRecovery('"'"'Settings cannot be parsed; restore stopped for inspection'"'"');
+        $flag=$parsed['"'"'general'"'"']['"'"'sanoid_integration'"'"']??'"'"'0'"'"';if((string)$flag!=='"'"'0'"'"'&amp;&amp;!(($acceptedBoot||$managedInstall)&amp;&amp;(string)$flag==='"'"'1'"'"'))$requireRecovery('"'"'Integration settings require inspection before upgrade'"'"');
+    }
+    $jobs=$root.'"'"'/jobs'"'"';if(is_link($jobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
+    if(is_dir($jobs)){
+        $scan=opendir($jobs);$count=0;
+        try{while(($name=readdir($scan))!==false){if(++$count&gt;4096)$requireRecovery('"'"'Jobs scan incomplete; restore stopped for inspection'"'"');if(!preg_match('"'"'/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\.json$/D'"'"',$name))continue;$file=$jobs.'"'"'/'"'"'.$name;
+            if(is_link($file)||!is_file($file)||filesize($file)&gt;131072)throw new RuntimeException('"'"'Job requires inspection before upgrade'"'"');$j=json_decode(file_get_contents($file),true,32);if(!is_array($j))$requireRecovery('"'"'Malformed job requires inspection'"'"');
+            if(!is_array($j)||!is_string($j['"'"'state'"'"']??null)||in_array($j['"'"'state'"'"'],['"'"'queued'"'"','"'"'running'"'"'],true))$requireRecovery('"'"'Pending or unverified jobs require inspection; worker stays stopped'"'"');
+            // Terminal file jobs can still release holds or delete ZIP staging.
+            // Future expiry/retry times only defer that work after activation.
+            if(in_array($j['"'"'type'"'"']??null,['"'"'restore'"'"','"'"'archive'"'"'],true)&amp;&amp;($j['"'"'hold_owned'"'"']??null)!==false)$requireRecovery('"'"'File job protection requires inspection; worker stays stopped'"'"');
+            if(($j['"'"'type'"'"']??null)==='"'"'archive'"'"'&amp;&amp;($j['"'"'archive_removed'"'"']??null)!==true)$requireRecovery('"'"'Retained ZIP cleanup requires inspection; worker stays stopped'"'"');
+        }}finally{closedir($scan);}
+    }
+    echo "ZFS Director preflight: no pending execution or file cleanup. Settings and schedules retained.\n";
+}catch(Throwable$e){fwrite(STDERR,'"'"'ZFS Director upgrade blocked: '"'"'.$e-&gt;getMessage()."\n");exit(1);}
+' -- /boot/config/plugins/zfs.master.ui "$mode" || status=$?
+  if [[ "$status" == 10 &amp;&amp; "$restore_accepted" == 1 ]]; then hold_recovery=1; elif [[ "$status" != 0 ]]; then return "$status"; fi
+}
+preflight
+# Read-only prerequisite gate, before stopping the installed implementation.
+# Execute the exact packaged helper; the generic probe creates no files.
+if ! /usr/bin/perl -e '#!/usr/bin/perl
+# Linux directory mutations. Every destructive name is first captured into a
+# root-owned private directory and checked by dev/ino. A complete filesystem
+# root confines renames; FAN_CREATE handles authenticate the private parent.
+use strict;
+use warnings;
+use JSON::PP;
+use Fcntl qw(:DEFAULT :mode);
+use POSIX qw(uname);
+use Encode qw(encode decode FB_CROAK LEAVE_SRC);
+use IO::Handle;
+use Errno qw(EBADF);
+use Digest::SHA ();
+use MIME::Base64 ();
+use Time::HiRes ();
+
+my $json=JSON::PP-&gt;new-&gt;utf8-&gt;canonical;
+my %nr;
+my ($root,$container,$container_name,$root_path,$journal,$source_location,$publication,$boundary);
+my $serial=0;
+my ($delete_total,$delete_removed,$delete_tick)=(0,0,0);
+sub deletion_progress {
+    $delete_removed++;
+    if (Time::HiRes::time()-$delete_tick&gt;=0.5||$delete_removed==$delete_total) {
+        emit({phase=&gt;'"'"'deleting'"'"',removed=&gt;$delete_removed,total=&gt;$delete_total});$delete_tick=Time::HiRes::time();
+    }
+}
+use constant O_PATH_LINUX =&gt; 0x200000;
+use constant O_CLOEXEC_LINUX =&gt; 0x80000;
+sub fail { die $_[0]."\n" }
+sub raw { encode('"'"'UTF-8'"'"',$_[0],FB_CROAK|LEAVE_SRC) }
+sub emit { print $json-&gt;encode($_[0])."\n" or fail('"'"'Progress channel closed'"'"'); STDOUT-&gt;flush; }
+sub identity { my @s=stat($_[0]); fail('"'"'Pinned object unavailable'"'"') unless @s; return {dev=&gt;"$s[0]",ino=&gt;"$s[1]"}; }
+sub same { my ($a,$b)=@_; return ref($b) eq '"'"'HASH'"'"' &amp;&amp; defined($b-&gt;{dev}) &amp;&amp; defined($b-&gt;{ino}) &amp;&amp; $a-&gt;{dev} eq "$b-&gt;{dev}" &amp;&amp; $a-&gt;{ino} eq "$b-&gt;{ino}"; }
+sub path {
+    my ($value)=@_; fail('"'"'Invalid directory path'"'"') if !defined($value)||ref($value)||length($value)&gt;4096||$value=~m{^/|\0};
+    my @parts=split m{/},$value,-1;
+    fail('"'"'Invalid directory path'"'"') if !@parts||@parts&gt;128||grep { $_ eq '"'"''"'"'||$_ eq '"'"'.'"'"'||$_ eq '"'"'..'"'"'||$_ eq '"'"'.zfs'"'"'||/^\.zfsm-/ } @parts;
+    return $value;
+}
+sub openat {
+    my ($parent,$name,$flags,$allow_mount)=@_;
+    my $how=pack('"'"'Q&lt;Q&lt;Q&lt;'"'"',$flags,0,8|4|($allow_mount?0:1)); my $p=raw($name);
+    my $fd=syscall($nr{openat2},fileno($parent),$p,$how,length($how));
+    fail('"'"'Path is unavailable, contains a symbolic link, or crosses a mount: '"'"'.$name) if $fd&lt;0;
+    open(my $fh,'"'"'&lt;&amp;='"'"',$fd) or fail('"'"'Unable to retain directory handle'"'"'); return $fh;
+}
+sub anchor { '"'"'/proc/self/fd/'"'"'.fileno($_[0]) }
+sub entries {
+    my ($dir)=@_; opendir(my $dh,anchor($dir)) or fail('"'"'Unable to inspect pinned directory'"'"'); my @out;
+    while(defined(my $p=readdir($dh))) { next if $p eq '"'"'.'"'"'||$p eq '"'"'..'"'"'; push @out,decode('"'"'UTF-8'"'"',$p,FB_CROAK); fail('"'"'Directory exceeds 100000 entries'"'"') if @out&gt;100000; }
+    closedir($dh); return sort @out;
+}
+sub renamed {
+    my ($from,$old,$to,$new)=@_; my $a=raw($old); my $b=raw($new);
+    return syscall($nr{renameat2},fileno($from),$a,fileno($to),$b,1)==0;
+}
+sub parent {
+    my ($name)=@_; my @parts=split m{/},$name; my $leaf=pop @parts;
+    return (openat($root,@parts?join('"'"'/'"'"',@parts):'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0),$leaf);
+}
+sub canonical_parent {
+    my ($path,$pinned)=@_;my ($current)=parent($path);
+    return same(identity($current),identity($pinned));
+}
+sub recovery {
+    return undef unless $container;
+    my $where=readlink(anchor($container));
+    my $details={container=&gt;$container_name,location=&gt;defined($where)?$where:'"'"'unavailable'"'"',identity=&gt;identity($container),journal=&gt;'"'"'journal.jsonl'"'"',retained=&gt;JSON::PP::true};
+    $details-&gt;{source}=$source_location if $source_location;
+    if ($publication) {
+        my $actual=readlink(anchor($publication-&gt;{handle}));
+        $details-&gt;{publication}={requested=&gt;$publication-&gt;{requested},location=&gt;defined($actual)?$actual:'"'"'unavailable'"'"',identity=&gt;identity($publication-&gt;{handle})};
+    }
+    return $details;
+}
+sub record {
+    my ($row)=@_; print $journal $json-&gt;encode($row)."\n" or fail('"'"'Unable to write recovery journal'"'"');
+    $journal-&gt;flush &amp;&amp; $journal-&gt;sync or fail('"'"'Unable to flush recovery journal'"'"');
+}
+sub mount_id {
+    my ($dir)=@_; open(my $info,'"'"'&lt;'"'"','"'"'/proc/self/fdinfo/'"'"'.fileno($dir)) or fail('"'"'Unable to inspect pinned mount identity'"'"');
+    local $/; my $value=&lt;$info&gt;; close($info);
+    fail('"'"'Pinned mount identity unavailable'"'"') unless $value=~/^mnt_id:\s*(\d+)\s*$/m; return "$1";
+}
+sub full_root {
+    my ($dir)=@_; my $id=mount_id($dir); my $found;
+    open(my $info,'"'"'&lt;'"'"','"'"'/proc/self/mountinfo'"'"') or fail('"'"'Unable to inspect filesystem mount roots'"'"');
+    while(my $line=&lt;$info&gt;) {
+        my @fields=split / /,$line; next unless $fields[0] eq $id;
+        fail('"'"'Dataset mutation root must be a complete filesystem root'"'"') unless $fields[3] eq '"'"'/'"'"';
+        my $point=$fields[4]; $point=~s/\\([0-7]{3})/chr(oct($1))/ge; $point=decode('"'"'UTF-8'"'"',$point,FB_CROAK);
+        sysopen(my $slash,'"'"'/'"'"',O_RDONLY|O_DIRECTORY) or fail('"'"'Unable to inspect filesystem mount root'"'"');
+        my $mounted=$point eq '"'"'/'"'"'?$slash:openat($slash,substr($point,1),O_RDONLY|O_DIRECTORY,1);
+        fail('"'"'Dataset mutation root must be a complete filesystem root'"'"') unless same(identity($mounted),identity($dir)) &amp;&amp; mount_id($mounted) eq $id;
+        $found=1; last;
+    }
+    close($info); fail('"'"'Pinned filesystem mount root unavailable'"'"') unless $found; return $id;
+}
+sub file_handle {
+    my ($dir)=@_; my $handle=pack('"'"'L&lt;l&lt;'"'"',128,0).("\0"x128); my $mount=pack('"'"'l&lt;'"'"',0); my $empty='"'"''"'"';
+    fail('"'"'Filesystem object handles are required'"'"') if syscall($nr{name_to_handle_at},fileno($dir),$empty,$handle,$mount,0x1000)!=0;
+    my ($length,$type)=unpack('"'"'L&lt;l&lt;'"'"',$handle); fail('"'"'Invalid filesystem object handle'"'"') if !$length||$length&gt;128;
+    return pack('"'"'l&lt;'"'"',$type).substr($handle,8,$length);
+}
+sub filesystem_id {
+    my ($dir)=@_; my $value="\0"x128;
+    fail('"'"'Unable to inspect owning filesystem identity'"'"') if syscall($nr{fstatfs},fileno($dir),$value)!=0;
+    return substr($value,56,8);
+}
+sub fanotify {
+    # Directory entry notifications must include both the parent and target FID.
+    my $fd=syscall($nr{fanotify_init},0x1e03,O_RDONLY|O_CLOEXEC_LINUX);
+    fail('"'"'Safe directory mutations require fanotify target object handles'"'"') if $fd&lt;0;
+    open(my $fan,'"'"'&lt;&amp;='"'"',$fd) or fail('"'"'Unable to retain creation notification handle'"'"'); return $fan;
+}
+sub prepare_boundary {
+    my ($dir)=@_; my $id=full_root($dir); my $handle=file_handle($dir); my $fsid=filesystem_id($dir); my $fan=fanotify(); my $dot='"'"'.'"'"';
+    fail('"'"'Filesystem creation notifications are required'"'"') if syscall($nr{fanotify_mark},fileno($fan),1|8,0x48000100,fileno($dir),$dot)!=0;
+    return {mount_id=&gt;$id,handle=&gt;$handle,fsid=&gt;$fsid,fan=&gt;$fan};
+}
+sub creation_handle {
+    my ($policy,$name)=@_; my $ready='"'"''"'"'; vec($ready,fileno($policy-&gt;{fan}),1)=1;
+    fail('"'"'Private directory creation notification unavailable'"'"') unless select($ready,undef,undef,2)&gt;0;
+    my $bytes='"'"''"'"'; my $length=sysread($policy-&gt;{fan},$bytes,65536);
+    fail('"'"'Unable to read private directory creation notification'"'"') unless defined($length)&amp;&amp;$length&gt;0;
+    my ($offset,$target)=(0,undef);
+    while($offset&lt;$length) {
+        fail('"'"'Malformed private directory creation notification'"'"') if $length-$offset&lt;24;
+        my ($event_length,$version,$reserved,$metadata_length,$mask,$fd,$pid)=unpack('"'"'L&lt;CCS&lt;Q&lt;l&lt;l&lt;'"'"',substr($bytes,$offset,24));
+        fail('"'"'Invalid private directory creation notification'"'"') if $version!=3||$reserved||$metadata_length!=24||$event_length&lt;$metadata_length||$offset+$event_length&gt;$length||($mask&amp;0x4000)||$fd!=-1;
+        my (%records,$position); $position=$offset+$metadata_length;
+        while($position&lt;$offset+$event_length) {
+            fail('"'"'Malformed creation identity record'"'"') if $offset+$event_length-$position&lt;20;
+            my ($kind,$pad,$size)=unpack('"'"'CCS&lt;'"'"',substr($bytes,$position,4));
+            fail('"'"'Unexpected creation identity record'"'"') if $pad||($kind!=1&amp;&amp;$kind!=2)||$size&lt;20||$position+$size&gt;$offset+$event_length||exists($records{$kind});
+            my $fsid=substr($bytes,$position+4,8); my ($handle_length,$type)=unpack('"'"'L&lt;l&lt;'"'"',substr($bytes,$position+12,8));
+            fail('"'"'Invalid creation filesystem identity'"'"') if $fsid ne $policy-&gt;{fsid}||!$handle_length||$handle_length&gt;128||20+$handle_length&gt;$size;
+            my $tail=substr($bytes,$position+20+$handle_length,$size-20-$handle_length);
+            fail('"'"'Malformed target creation identity'"'"') if $kind==1&amp;&amp;$tail=~/[^\0]/;
+            $records{$kind}={handle=&gt;pack('"'"'l&lt;'"'"',$type).substr($bytes,$position+20,$handle_length),tail=&gt;$tail};
+            $position+=$size;
+        }
+        fail('"'"'Missing creation identity records'"'"') unless $position==$offset+$event_length&amp;&amp;keys(%records)==2&amp;&amp;$records{1}&amp;&amp;$records{2};
+        my $tail=$records{2}{tail}; fail('"'"'Malformed created directory name'"'"') unless $tail=~/\A([^\0]*)\0\0*\z/s;
+        my $event_name=$1;
+        if ($pid==$$ &amp;&amp; $mask==0x40000100 &amp;&amp; $event_name eq raw($name)) {
+            fail('"'"'Private directory creation parent changed'"'"') unless $records{2}{handle} eq $policy-&gt;{handle};
+            fail('"'"'Ambiguous private directory creation identity'"'"') if defined($target); $target=$records{1}{handle};
+        }
+        $offset+=$event_length;
+    }
+    fail('"'"'Private directory creation identity unavailable'"'"') unless defined($target); return $target;
+}
+sub probe {
+    my ($args)=@_;
+    sysopen(my $slash,'"'"'/'"'"',O_RDONLY|O_DIRECTORY) or fail('"'"'Unable to pin filesystem root'"'"');
+    my $pinned=openat($slash,'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0);
+    my $a='"'"'zfsm-readonly-probe'"'"';my $b='"'"'zfsm-readonly-probe'"'"';
+    my $result=syscall($nr{renameat2},-1,$a,-1,$b,1);
+    fail('"'"'Safe directory mutations require renameat2 RENAME_NOREPLACE'"'"') unless $result&lt;0 &amp;&amp; $!==EBADF;
+    my $fan=fanotify(); my $handle=pack('"'"'L&lt;l&lt;'"'"',128,0).("\0"x128);my $mount=pack('"'"'l&lt;'"'"',0);my $empty='"'"''"'"';
+    my $result_handle=syscall($nr{name_to_handle_at},-1,$empty,$handle,$mount,0x1000);
+    fail('"'"'Safe directory mutations require name_to_handle_at'"'"') unless $result_handle&lt;0&amp;&amp;$!==EBADF;
+    my $dot='"'"'.'"'"'; my $result_mark=syscall($nr{fanotify_mark},-1,1|8,0x48000100,-1,$dot);
+    fail('"'"'Safe directory mutations require fanotify_mark'"'"') unless $result_mark&lt;0&amp;&amp;$!==EBADF;
+    my $row={ok=&gt;JSON::PP::true,op=&gt;'"'"'probe'"'"',fanotify_target_fid=&gt;JSON::PP::true};
+    if (exists($args-&gt;{root})) { my $dir=request_root($args); my $policy=prepare_boundary($dir); $row-&gt;{root_mount_id}=$policy-&gt;{mount_id}; }
+    emit($row);
+}
+sub container {
+    sysopen(my $random,'"'"'/dev/urandom'"'"',O_RDONLY) or fail('"'"'Unable to obtain private claim name'"'"');
+    read($random,my $bytes,24)==24 or fail('"'"'Unable to obtain private claim name'"'"'); close($random);
+    $container_name='"'"'.zfsm-mutation-'"'"'.unpack('"'"'H*'"'"',$bytes); my $name=raw($container_name);
+    fail('"'"'Unable to create private recovery container'"'"') if syscall($nr{mkdirat},fileno($root),$name,0700)!=0;
+    my $created=creation_handle($boundary,$container_name);
+    my $candidate=openat($root,$container_name,O_RDONLY|O_DIRECTORY,0); my @s=stat($candidate);
+    fail('"'"'Private recovery container creation identity changed'"'"') unless mount_id($candidate) eq $boundary-&gt;{mount_id} &amp;&amp; file_handle($candidate) eq $created;
+    fail('"'"'Private recovery container ownership changed'"'"') unless $s[4]==0 &amp;&amp; ($s[2]&amp;0777)==0700 &amp;&amp; !($s[2]&amp;01000);
+    $container=$candidate;
+    # A setgid dataset parent can contribute its group bit; clear it only after
+    # authenticating the created inode, never on an unrelated substituted dir.
+    chmod(0700,$container)==1 or fail('"'"'Unable to secure proven private recovery container'"'"');
+    fail('"'"'Private recovery container is not empty; no metadata written'"'"') if entries($container);
+    # The public parent may be0777. Never unlink the public container name:
+    # Linux lacks inode-conditional unlinkat. Retain the journal on success too.
+    my $file=anchor($container).'"'"'/journal.jsonl'"'"';
+    sysopen($journal,$file,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW,0600) or fail('"'"'Unable to create recovery journal'"'"');
+    record({event=&gt;'"'"'created'"'"',container_identity=&gt;identity($container)});
+    $container-&gt;sync &amp;&amp; $root-&gt;sync or fail('"'"'Unable to flush private recovery container'"'"');
+    emit({phase=&gt;'"'"'prepared'"'"',recovery=&gt;recovery()});
+}
+sub capture {
+    my ($from,$name,$expected,$original)=@_; my $slot='"'"'object-'"'"'.(++$serial);
+    record({event=&gt;'"'"'intent'"'"',slot=&gt;$slot,path=&gt;$original,identity=&gt;$expected});
+    fail('"'"'Directory changed or cannot be claimed; no destination was overwritten'"'"') unless renamed($from,$name,$container,$slot);
+    $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush claim; inspect recovery journal'"'"');
+    my $captured;
+    eval { $captured=openat($container,$slot,O_PATH_LINUX|O_NOFOLLOW,0); 1 } or do {
+        my $error=$@; my $restored=renamed($container,$slot,$from,$name);
+        $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush rollback; inspect recovery journal'"'"');
+        record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$original});
+        fail($restored?'"'"'Captured object is unavailable; original name restored'"'"':$error.'"'"'; object retained; original name occupied or moved'"'"');
+    };
+    if (!same(identity($captured),$expected)) {
+        my $restored=renamed($container,$slot,$from,$name);
+        $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush rollback; inspect recovery journal'"'"');
+        record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$original,identity=&gt;identity($captured)});
+        fail($restored?'"'"'Directory identity changed; unexpected object restored'"'"':'"'"'Directory identity changed; unexpected object retained; original name occupied or moved'"'"');
+    }
+    my @captured_stat=stat($captured);
+    $captured=openat($captured,'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0) if S_ISDIR($captured_stat[2]);
+    my $where=readlink(anchor($from));
+    my $observed=defined($where)?$where.'"'"'/'"'"'.$name:'"'"'unavailable'"'"';
+    $source_location={requested=&gt;$original,location=&gt;$observed} if $serial==1;
+    record({event=&gt;'"'"'captured'"'"',slot=&gt;$slot,path=&gt;$original,source_location=&gt;$observed,identity=&gt;$expected});
+    return ($captured,$slot);
+}
+sub inspect_tree {
+    my ($dir,$relative,$manifest,$recursive)=@_;
+    for my $name (entries($dir)) {
+        fail('"'"'Reserved directory entry cannot be mutated'"'"') if $name eq '"'"'.zfs'"'"'||$name=~/^\.zfsm-/;
+        my $child=openat($dir,$name,O_PATH_LINUX|O_NOFOLLOW,0); my @s=stat($child);
+        $child=openat($child,'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0) if S_ISDIR($s[2]);
+        # Non-directories (including links, FIFOs, sockets and device nodes)
+        # are pinned only with O_PATH|O_NOFOLLOW; never opened for I/O.
+        fail('"'"'Directory is not empty; recursive deletion is required'"'"') unless $recursive;
+        my $p=$relative eq '"'"''"'"'?$name:$relative.'"'"'/'"'"'.$name;
+        # Names preserve the preflight entry set. Child identities are pinned
+        # freshly immediately before their individual private claims.
+        $manifest-&gt;{$p}={directory=&gt;S_ISDIR($s[2])?1:0} if $manifest;
+        inspect_tree($child,$p,$manifest,$recursive) if S_ISDIR($s[2]);
+    }
+}
+sub remove_tree {
+    my ($dir,$slot,$relative,$manifest)=@_;
+    for my $name (entries($dir)) {
+        my $p=$relative eq '"'"''"'"'?$name:$relative.'"'"'/'"'"'.$name; my $known=$manifest-&gt;{$p};
+        fail('"'"'Directory contents changed; remaining objects retained'"'"') unless $known;
+        # Selected-root authorization covers current contents. Pin each
+        # current child through capture/verification, preventing inode reuse
+        # without retaining one descriptor for every file in a large tree.
+        my $current=openat($dir,$name,O_PATH_LINUX|O_NOFOLLOW,0);
+        my @current_stat=stat($current);
+        fail('"'"'Directory entry type changed; remaining objects retained'"'"') if !!S_ISDIR($current_stat[2]) != !!$known-&gt;{directory};
+        my ($child,$captured)=capture($dir,$name,identity($current),$p);
+        close($current); # The verified captured handle now pins this inode.
+        if ($known-&gt;{directory}) { remove_tree($child,$captured,$p,$manifest); }
+        else {
+            my $raw=raw($captured);
+            fail('"'"'Unable to delete captured file; remaining objects retained'"'"') if syscall($nr{unlinkat},fileno($container),$raw,0)!=0;
+            record({event=&gt;'"'"'deleted'"'"',slot=&gt;$captured,path=&gt;$p});
+            deletion_progress();
+        }
+    }
+    my $raw=raw($slot);
+    fail('"'"'Directory received new files or left its boundary; remaining objects retained'"'"') if syscall($nr{unlinkat},fileno($container),$raw,512)!=0;
+    record({event=&gt;'"'"'deleted'"'"',slot=&gt;$slot,path=&gt;$relative});
+    deletion_progress();
+}
+sub request_root {
+    my ($args)=@_; my $root_path=$args-&gt;{root}; fail('"'"'Invalid dataset root'"'"') unless defined($root_path)&amp;&amp;!ref($root_path)&amp;&amp;$root_path=~m{^/[^/]}&amp;&amp;$root_path!~/\0/&amp;&amp;$root_path!~m{/$};
+    sysopen(my $slash,'"'"'/'"'"',O_RDONLY|O_DIRECTORY) or fail('"'"'Unable to pin filesystem root'"'"');
+    my $dir=openat($slash,substr($root_path,1),O_RDONLY|O_DIRECTORY,1);
+    fail('"'"'The filesystem root cannot be a dataset mutation root'"'"') if same(identity($dir),identity($slash));
+    fail('"'"'Dataset root identity changed'"'"') unless same(identity($dir),$args-&gt;{root_identity}); return $dir;
+}
+# Only journal-only completed mutation containers are eligible. Never recurse.
+sub cleanup_inspect {
+    my ($dir)=@_; my @s=stat($dir);
+    fail('"'"'Recovery container must be root-owned and private0700'"'"') unless $s[4]==0 &amp;&amp; ($s[2]&amp;07777)==0700;
+    my @names=entries($dir); fail('"'"'Recovery data is retained or the journal is missing; cleanup blocked'"'"') unless @names==1 &amp;&amp; $names[0] eq '"'"'journal.jsonl'"'"';
+    my $file=openat($dir,'"'"'journal.jsonl'"'"',O_RDONLY|O_NOFOLLOW|O_NONBLOCK,0);my @f=stat($file);
+    fail('"'"'Recovery journal must be a private root-owned regular file with one link'"'"') unless S_ISREG($f[2]) &amp;&amp; $f[4]==0 &amp;&amp; ($f[2]&amp;07777)==0600 &amp;&amp; $f[3]==1 &amp;&amp; $f[7]&gt;0 &amp;&amp; $f[7]&lt;=262144;
+    my $bytes='"'"''"'"';while(read($file,my $chunk,16384)){ $bytes.=$chunk;fail('"'"'Recovery journal exceeds read bound'"'"') if length($bytes)&gt;262144; }
+    fail('"'"'Recovery journal changed while reading'"'"') unless length($bytes)==$f[7] &amp;&amp; same(identity($file),identity(openat($dir,'"'"'journal.jsonl'"'"',O_PATH_LINUX|O_NOFOLLOW,0)));
+    fail('"'"'Incomplete recovery journal'"'"') unless $bytes=~/\n\z/;
+    my @lines=split /\n/,$bytes;fail('"'"'Recovery journal exceeds record limit'"'"') if @lines&gt;4096;
+    my (%slots,$created,$complete,$published,$op);my $id=identity($dir);
+    for my $line (@lines){
+        my $row=eval{$json-&gt;decode($line)};fail('"'"'Malformed recovery journal'"'"') unless ref($row)eq'"'"'HASH'"'"' &amp;&amp; !defined($complete);
+        my $event=$row-&gt;{event}//'"'"''"'"';
+        if(!$created){fail('"'"'Recovery journal identity does not match container'"'"') unless $event eq '"'"'created'"'"' &amp;&amp; same($id,$row-&gt;{container_identity});$created=1;next;}
+        if($event eq'"'"'intent'"'"'){
+            my $slot=$row-&gt;{slot}//'"'"''"'"';fail('"'"'Malformed recovery intent'"'"') unless $slot=~/\Aobject-[1-9][0-9]*\z/ &amp;&amp; !exists($slots{$slot}) &amp;&amp; ref($row-&gt;{identity})eq'"'"'HASH'"'"' &amp;&amp; defined($row-&gt;{path}) &amp;&amp; !ref($row-&gt;{path});
+            $slots{$slot}={state=&gt;'"'"'intent'"'"',identity=&gt;$row-&gt;{identity}};
+        }elsif($event eq'"'"'captured'"'"'){
+            my $slot=$row-&gt;{slot}//'"'"''"'"';fail('"'"'Unmatched recovery capture'"'"') unless ($slots{$slot}{state}//'"'"''"'"')eq'"'"'intent'"'"' &amp;&amp; same($slots{$slot}{identity},$row-&gt;{identity});$slots{$slot}{state}='"'"'captured'"'"';
+        }elsif($event eq'"'"'deleted'"'"'){
+            my $slot=$row-&gt;{slot}//'"'"''"'"';fail('"'"'Unmatched recovery deletion'"'"') unless ($slots{$slot}{state}//'"'"''"'"')eq'"'"'captured'"'"';$slots{$slot}{state}='"'"'deleted'"'"';
+        }elsif($event eq'"'"'published'"'"'){
+            fail('"'"'Unmatched recovery publication'"'"') unless !$published &amp;&amp; keys(%slots)==1 &amp;&amp; ($slots{'"'"'object-1'"'"'}{state}//'"'"''"'"')eq'"'"'captured'"'"' &amp;&amp; same($slots{'"'"'object-1'"'"'}{identity},$row-&gt;{identity});$published=1;$slots{'"'"'object-1'"'"'}{state}='"'"'published'"'"';
+        }elsif($event eq'"'"'complete'"'"'){
+            $op=$row-&gt;{op}//'"'"''"'"';fail('"'"'Incomplete or inconsistent recovery operation'"'"') unless keys(%slots)&gt;0 &amp;&amp; (($op eq'"'"'delete'"'"' &amp;&amp; !$published &amp;&amp; !grep{$_-&gt;{state}ne'"'"'deleted'"'"'}values%slots) || (($op eq'"'"'move'"'"'||$op eq'"'"'claim'"'"') &amp;&amp; $published &amp;&amp; keys(%slots)==1));$complete=1;
+        }else{fail('"'"'Unfinished, retained or unsupported recovery journal; cleanup blocked'"'"');}
+    }
+    fail('"'"'Recovery operation is not complete'"'"') unless $complete;
+    @names=entries($dir);fail('"'"'Recovery contents changed'"'"') unless @names==1 &amp;&amp; $names[0]eq'"'"'journal.jsonl'"'"';
+    return {identity=&gt;$id,journal_identity=&gt;identity($file),journal_sha256=&gt;Digest::SHA::sha256_hex($bytes),journal_base64=&gt;MIME::Base64::encode_base64($bytes,'"'"''"'"'),operation=&gt;$op,records=&gt;scalar(@lines)};
+}
+sub cleanup_anchor {
+    my ($policy)=@_;my $name='"'"'.zfsm-maintenance'"'"';my $p=raw($name);my $created;
+    if(!lstat(anchor($root).'"'"'/'"'"'.$name)){
+        fail('"'"'Unable to create cleanup maintenance area'"'"') if syscall($nr{mkdirat},fileno($root),$p,0700)!=0;
+        $created=creation_handle($policy,$name);
+    }
+    my $dir=openat($root,$name,O_RDONLY|O_DIRECTORY,0);my @s=stat($dir);
+    fail('"'"'Cleanup maintenance area creation identity changed'"'"') if defined($created) &amp;&amp; file_handle($dir)ne$created;
+    fail('"'"'Cleanup maintenance area is not trusted'"'"') unless $s[4]==0 &amp;&amp; mount_id($dir)eq$policy-&gt;{mount_id} &amp;&amp; (defined($created)?(($s[2]&amp;0777)==0700 &amp;&amp; !($s[2]&amp;05000)):($s[2]&amp;07777)==0700);
+    # Clear inherited setgid only on the authenticated newly created inode.
+    chmod(0700,$dir)==1 or fail('"'"'Unable to secure cleanup maintenance area'"'"') if defined($created);
+    $dir-&gt;sync &amp;&amp; $root-&gt;sync or fail('"'"'Unable to flush maintenance area'"'"');return $dir;
+}
+sub cleanup_main {
+    my ($args)=@_;my $selected=$args-&gt;{path}//'"'"''"'"';
+    fail('"'"'Only a top-level mutation recovery container can be cleaned'"'"') unless !ref($selected) &amp;&amp; $selected=~/\A\.zfsm-mutation-[a-f0-9]{48}\z/;
+    $root_path=$args-&gt;{root};$root=request_root($args);full_root($root);
+    my $source=openat($root,$selected,O_RDONLY|O_DIRECTORY,0);fail('"'"'Recovery container identity changed'"'"') unless same(identity($source),$args-&gt;{identity});
+    my $review=cleanup_inspect($source);
+    if($args-&gt;{op}eq'"'"'cleanup-inspect'"'"'){emit({ok=&gt;JSON::PP::true,op=&gt;$args-&gt;{op},%$review});return;}
+    fail('"'"'Fresh recovery journal digest is required'"'"') unless defined($args-&gt;{journal_sha256}) &amp;&amp; !ref($args-&gt;{journal_sha256}) &amp;&amp; $args-&gt;{journal_sha256}=~/\A[a-f0-9]{64}\z/ &amp;&amp; $args-&gt;{journal_sha256}eq$review-&gt;{journal_sha256};
+    my $policy=prepare_boundary($root);my $area=cleanup_anchor($policy);
+    sysopen(my $random,'"'"'/dev/urandom'"'"',O_RDONLY) or fail('"'"'Unable to create cleanup identity'"'"');read($random,my $bytes,24)==24 or fail('"'"'Unable to read cleanup identity'"'"');close($random);
+    my $slot='"'"'cleanup-'"'"'.unpack('"'"'H*'"'"',$bytes);$container=$area;$container_name='"'"'.zfsm-maintenance'"'"';
+    fail('"'"'Recovery container changed before capture'"'"') unless renamed($root,$selected,$area,$slot);
+    $root-&gt;sync &amp;&amp; $area-&gt;sync or fail('"'"'Unable to flush recovery capture'"'"');
+    $source_location={requested=&gt;$selected,location=&gt;(readlink(anchor($area))//'"'"'unavailable'"'"').'"'"'/'"'"'.$slot};
+    my $captured=openat($area,$slot,O_RDONLY|O_DIRECTORY,0);
+    if(!same(identity($captured),$review-&gt;{identity})){
+        my $restored=renamed($area,$slot,$root,$selected);$area-&gt;sync;$root-&gt;sync;
+        fail($restored?'"'"'Recovery identity changed; substituted directory restored'"'"':'"'"'Recovery identity changed; substituted directory retained in maintenance area'"'"');
+    }
+    my $fresh=eval{cleanup_inspect($captured)};
+    if(!$fresh || $fresh-&gt;{journal_sha256}ne$review-&gt;{journal_sha256} || !same($fresh-&gt;{journal_identity},$review-&gt;{journal_identity})){
+        my $restored=renamed($area,$slot,$root,$selected);$area-&gt;sync;$root-&gt;sync;
+        fail($restored?'"'"'Recovery contents changed; container restored'"'"':'"'"'Recovery contents changed; container retained in maintenance area'"'"');
+    }
+    # The selected inode is now beneath a pinned root0700 parent. A writer of
+    # the public dataset root cannot replace the two names used for unlinkat.
+    my $journal_name=raw('"'"'journal.jsonl'"'"');fail('"'"'Unable to remove archived journal; inspect maintenance area'"'"') if syscall($nr{unlinkat},fileno($captured),$journal_name,0)!=0;
+    $captured-&gt;sync or fail('"'"'Unable to flush journal removal'"'"');my $name=raw($slot);
+    fail('"'"'Unable to remove empty recovery container; inspect maintenance area'"'"') if syscall($nr{unlinkat},fileno($area),$name,512)!=0;
+    $area-&gt;sync or fail('"'"'Unable to flush cleanup'"'"');$container=undef;
+    emit({ok=&gt;JSON::PP::true,op=&gt;'"'"'cleanup'"'"',removed_identity=&gt;$review-&gt;{identity},journal_sha256=&gt;$review-&gt;{journal_sha256},maintenance=&gt;'"'"'.zfsm-maintenance'"'"'});
+}
+
+sub main {
+    my @u=uname(); my %abi=(x86_64=&gt;[437,258,316,263,300,301,303,138],aarch64=&gt;[437,34,276,35,262,263,264,44]);
+    fail('"'"'Safe directory mutations require Linux x86_64 or aarch64'"'"') unless $^O eq '"'"'linux'"'"' &amp;&amp; $abi{$u[4]};
+    @nr{qw(openat2 mkdirat renameat2 unlinkat fanotify_init fanotify_mark name_to_handle_at fstatfs)}=@{$abi{$u[4]}};
+    fail('"'"'Safe directory mutations require the privileged local worker'"'"') unless $&gt;==0;
+    fail('"'"'Unexpected command arguments'"'"') if @ARGV;
+    umask(0077); binmode(STDIN);binmode(STDOUT); $|=1;
+    my $raw='"'"''"'"'; while(read(STDIN,my $chunk,65536)) { $raw.=$chunk;fail('"'"'Request too large'"'"') if length($raw)&gt;1048576; }
+    my $args=$json-&gt;decode($raw); fail('"'"'Invalid request'"'"') unless ref($args) eq '"'"'HASH'"'"';
+    my $op=$args-&gt;{op}//'"'"''"'"'; if ($op eq '"'"'probe'"'"') { probe($args);return; }
+    if($op eq '"'"'cleanup-inspect'"'"'||$op eq '"'"'cleanup'"'"'){cleanup_main($args);return;}
+    fail('"'"'Unknown directory operation'"'"') unless $op eq '"'"'move'"'"'||$op eq '"'"'claim'"'"'||$op eq '"'"'delete'"'"';
+    my $selected=path($args-&gt;{path}); my $destination;
+    $destination=path($args-&gt;{destination}) if $op ne '"'"'delete'"'"';
+    fail('"'"'Destination cannot be inside selected directory'"'"') if defined($destination)&amp;&amp;($destination eq $selected||index($destination,$selected.'"'"'/'"'"')==0);
+    $root_path=$args-&gt;{root}; $root=request_root($args); $boundary=prepare_boundary($root);
+    my ($from,$name)=parent($selected); my $source=openat($from,$name,O_RDONLY|O_DIRECTORY,0);
+    fail('"'"'Selected directory identity changed'"'"') unless same(identity($source),$args-&gt;{identity});
+    my ($to,$target); if ($op ne '"'"'delete'"'"') {
+        ($to,$target)=parent($destination);
+        fail('"'"'Destination already exists'"'"') if lstat(anchor($to).'"'"'/'"'"'.raw($target));
+    }
+    emit({phase=&gt;'"'"'scanning'"'"'}) if $op eq '"'"'delete'"'"';
+    my %manifest; inspect_tree($source,'"'"''"'"',$op eq '"'"'delete'"'"'?\%manifest:undef,$op eq '"'"'delete'"'"'?($args-&gt;{recursive}?1:0):1);
+    $delete_total=1+scalar(keys %manifest) if $op eq '"'"'delete'"'"';
+    container();
+    fail('"'"'Selected directory parent changed; reopen the directory'"'"') unless canonical_parent($selected,$from);
+    my ($claimed,$slot)=capture($from,$name,$args-&gt;{identity},$selected);
+    my $source_canonical=eval { canonical_parent($selected,$from) };
+    fail('"'"'Selected directory parent moved during claim; reviewed directory retained in recovery container'"'"') unless $source_canonical;
+    if ($op ne '"'"'delete'"'"') {
+        my $destination_canonical=eval { canonical_parent($destination,$to) };
+        if (!$destination_canonical) {
+            my $restored=renamed($container,$slot,$from,$name);
+            $container-&gt;sync &amp;&amp; $from-&gt;sync or fail('"'"'Unable to flush move rollback; inspect recovery journal'"'"');
+            record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$selected});
+            fail($restored?'"'"'Destination parent changed; original restored'"'"':'"'"'Destination parent changed; reviewed directory retained in recovery container'"'"');
+        }
+        if (!renamed($container,$slot,$to,$target)) {
+            my $restored=renamed($container,$slot,$from,$name);
+            record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$selected});
+            fail($restored?'"'"'Move destination changed or left dataset; original restored'"'"':'"'"'Move refused; selected directory retained in recovery container'"'"');
+        }
+        $publication={requested=&gt;$destination,handle=&gt;$claimed};
+        $container-&gt;sync &amp;&amp; $to-&gt;sync or fail('"'"'Unable to flush move; inspect destination and recovery journal'"'"');
+        my $actual=readlink(anchor($claimed));
+        record({event=&gt;'"'"'published'"'"',destination=&gt;$destination,location=&gt;defined($actual)?$actual:'"'"'unavailable'"'"',identity=&gt;identity($claimed)});
+        my $canonical=eval {
+            my $current=openat($root,$destination,O_PATH_LINUX|O_NOFOLLOW,0);
+            canonical_parent($destination,$to) &amp;&amp; same(identity($current),identity($claimed));
+        };
+        fail('"'"'Destination moved during publication; reviewed directory retained at its reported actual location'"'"') unless $canonical;
+    } else {
+        # Each recursion root is already captured under the authenticated
+        # root0700 parent. Parent DAC prevents ordinary writers moving it out,
+        # including through old FDs. Uncaptured preflight handles are not used.
+        remove_tree($claimed,$slot,'"'"''"'"',\%manifest);
+        $container-&gt;sync or fail('"'"'Unable to flush deletion'"'"');
+    }
+    record({event=&gt;'"'"'complete'"'"',op=&gt;$op});
+    emit({ok=&gt;JSON::PP::true,op=&gt;$op,recovery=&gt;recovery(),($op eq '"'"'delete'"'"'?(removed=&gt;$delete_removed,total=&gt;$delete_total):())});
+}
+unless (caller) {
+    eval { main();1 } or do {my $error=$@||'"'"'Directory mutation failed'"'"';$error=~s/\s+$//;print STDERR $json-&gt;encode({error=&gt;$error,recovery=&gt;recovery()})."\n";exit 1;};
+}
+1;
+' &lt;&lt;&lt; '{"op":"probe"}'; then
+  echo 'ZFS Director directory prerequisites unavailable; installed code and worker unchanged.' &gt;&amp;2
+  exit 1
+fi
+</INLINE>
+  </FILE>
+  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.10.22.1.tgz">
+    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/zfs-director-2026.10.22.1.tgz</URL>
+    <MD5>7273d5f9f5cb7150b1e71befaeda44ef</MD5>
+  </FILE>
+  <FILE Run="/bin/bash">
+    <INLINE>set -euo pipefail
+# Plugin Manager displays stdout only; keep actionable errors in its dialog.
+exec 2&gt;&amp;1
+trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
+umask 077
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.10.22.1.tgz
+live=/usr/local/emhttp/plugins/zfs.master.ui
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.10.22.1-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.10.22.1-$$
+printf '%s  %s\n' '4de34ae7ee8824af4b59f9676384ce5ae1db028b826f40c3998164210f279018' "$archive" | sha256sum -c -
+# Legacy migration guard. Inspect now; cleanup runs after package validation.
+registration=zfs-director.plg
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.10.22.1-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_cleanup() {
+  /usr/bin/php -r '
+// Embedded in the PLG: only known plugin code/registrations are replaced.
+// Director settings, journals and recovery never enter the cleanup list.
+function zfsdLegacyPath(string $path,bool $registration=false): void {
+    if(!str_starts_with($path,'"'"'/'"'"')||preg_match('"'"'~(?:^|/)\.\.?(/|$)~'"'"',$path))throw new RuntimeException('"'"'Unsafe installer path'"'"');
+    for($parent=dirname($path);$parent!=='"'"'/'"'"';$parent=dirname($parent)){
+        if(is_link($parent)||(file_exists($parent)&amp;&amp;!is_dir($parent)))throw new RuntimeException('"'"'Unsafe installer parent: '"'"'.$parent);
+    }
+    if(is_link($path)){
+        if(!$registration||readlink($path)!=='"'"'/boot/config/plugins/'"'"'.basename($path))throw new RuntimeException('"'"'Unsafe plugin link: '"'"'.$path);
+    }elseif(file_exists($path)&amp;&amp;!is_file($path)&amp;&amp;!is_dir($path))throw new RuntimeException('"'"'Unsafe installer object: '"'"'.$path);
+}
+function zfsdLegacyPlan(string $root,string $keep): array {
+    if(!in_array($keep,['"'"'zfs-director.plg'"'"','"'"'zfs.master.ui.plg'"'"','"'"'zfs.master.ui.local.plg'"'"'],true))throw new RuntimeException('"'"'Unknown installer registration'"'"');
+    $root=rtrim($root,'"'"'/'"'"');$moves=[];$cron=[];
+    zfsdLegacyPath($root.'"'"'/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director'"'"');
+    $mounts=@file_get_contents($root.'"'"'/proc/self/mountinfo'"'"');
+    if($mounts===false&amp;&amp;$root==='"'"''"'"')throw new RuntimeException('"'"'Cannot verify legacy directory mount boundaries'"'"');
+    foreach(explode("\n",(string)$mounts)as$line){
+        $fields=explode('"'"' '"'"',$line);if(count($fields)&lt;6)continue;
+        $mount=preg_replace_callback('"'"'/\\\\([0-7]{3})/'"'"',static fn($m)=&gt;chr(octdec($m[1])),$fields[4]);
+        foreach(['"'"'/usr/local/emhttp/plugins/zfs.master'"'"','"'"'/usr/local/emhttp/plugins/zfs.master.ui'"'"','"'"'/boot/config/plugins/zfs.master'"'"']as$tree){
+            $tree=$root.$tree;if($mount===$tree||str_starts_with($mount,$tree.'"'"'/'"'"'))throw new RuntimeException('"'"'Mounted data inside a plugin directory requires inspection: '"'"'.$mount);
+        }
+    }
+    foreach(['"'"'zfs.master.plg'"'"','"'"'zfs-director.plg'"'"','"'"'zfs.master.ui.plg'"'"','"'"'zfs.master.ui.local.plg'"'"']as$name){
+        if($name===$keep)continue;
+        foreach(['"'"'/boot/config/plugins/'"'"','"'"'/var/log/plugins/'"'"','"'"'/boot/config/plugins/zfs.master.ui/'"'"']as$folder){
+            $p=$root.$folder.$name;zfsdLegacyPath($p,$folder==='"'"'/var/log/plugins/'"'"');
+            if(is_dir($p)&amp;&amp;!is_link($p))throw new RuntimeException('"'"'Plugin registration is a directory: '"'"'.$p);
+            if(file_exists($p)||is_link($p))$moves[]=$p;
+        }
+    }
+    foreach(['"'"'/usr/local/emhttp/plugins/zfs.master'"'"','"'"'/boot/config/plugins/zfs.master'"'"']as$folder){
+        $p=$root.$folder;zfsdLegacyPath($p);
+        if(is_link($p)||(file_exists($p)&amp;&amp;!is_dir($p)))throw new RuntimeException('"'"'Unsafe legacy plugin directory: '"'"'.$p);
+        if(is_dir($p)){
+            if(glob($p.'"'"'/*.cron'"'"'))throw new RuntimeException('"'"'Legacy ZFS Master has custom schedules; inspect them before replacing its configuration'"'"');
+            $moves[]=$p;
+        }
+    }
+    // Obsolete packages are code, not user state. Retain them in the same
+    // rollback backup instead of leaving old installers in the state folder.
+    foreach(glob($root.'"'"'/boot/config/plugins/zfs.master.ui/zfs.master.ui-*.tgz'"'"')?:[]as$p){
+        if(!preg_match('"'"'/^zfs\.master\.ui-[0-9.]+\.tgz$/D'"'"',basename($p)))continue;
+        zfsdLegacyPath($p);if(!is_file($p)||is_link($p))throw new RuntimeException('"'"'Unsafe legacy package: '"'"'.$p);$moves[]=$p;
+    }
+    foreach(['"'"'zfs-director'"'"','"'"'zfs.master.ui'"'"','"'"'zfs.master.ui.local'"'"']as$namespace){
+        $p=$root.'"'"'/boot/config/plugins/'"'"'.$namespace.'"'"'/protection.cron'"'"';zfsdLegacyPath($p);
+        foreach(glob(dirname($p).'"'"'/*.cron'"'"')?:[]as$other)if($other!==$p)throw new RuntimeException('"'"'Custom schedules in an old Director namespace require inspection: '"'"'.$other);
+        if(is_link($p)||(file_exists($p)&amp;&amp;(!is_file($p)||filesize($p)&gt;1048576)))throw new RuntimeException('"'"'Unsafe Director cron source: '"'"'.$p);
+        if(is_file($p))$cron[$p]=file_get_contents($p);
+    }
+    $destination=$root.'"'"'/boot/config/plugins/'"'"'.basename($keep,'"'"'.plg'"'"').'"'"'/protection.cron'"'"';
+    $selected=null;$active=[];
+    foreach($cron as$p=&gt;$text){
+        $lines=array_values(array_filter(explode("\n",$text),static fn($line)=&gt;trim($line)!=='"'"''"'"'&amp;&amp;!str_starts_with(ltrim($line),'"'"'#'"'"')));
+        if($lines)$active[$p]=$text;
+    }
+    if(count(array_unique($active))&gt;1)throw new RuntimeException('"'"'Conflicting Director schedules; no registration or schedule was removed'"'"');
+    if($active)$selected=array_key_first($active);
+    elseif(isset($cron[$destination]))$selected=$destination;
+    elseif($cron)$selected=array_key_first($cron);
+    foreach($cron as$p=&gt;$text)if($p!==$destination)$moves[]=$p;
+    // A different empty destination may be replaced by the existing active
+    // source, but is backed up just like every displaced registration.
+    if($selected!==null&amp;&amp;$selected!==$destination&amp;&amp;isset($cron[$destination]))$moves[]=$destination;
+    return ['"'"'moves'"'"'=&gt;array_values(array_unique($moves)),'"'"'cron_target'"'"'=&gt;$destination,'"'"'cron_text'"'"'=&gt;$selected!==null?$cron[$selected]:null,
+            '"'"'write_cron'"'"'=&gt;$selected!==null&amp;&amp;($cron[$destination]??null)!==$cron[$selected]];
+}
+function zfsdLegacyProcesses(string $root): array {
+    $nchan=[];$legacy=rtrim($root,'"'"'/'"'"').'"'"'/usr/local/emhttp/plugins/zfs.master/'"'"';
+    foreach(glob(rtrim($root,'"'"'/'"'"').'"'"'/proc/[0-9]*/cmdline'"'"')?:[]as$file){
+        $args=explode("\0",(string)@file_get_contents($file));$matched=false;
+        foreach($args as$arg)if(str_starts_with($arg,$legacy))$matched=true;
+        if(!$matched)continue;
+        $script=$args[1]??'"'"''"'"';if($script==='"'"'-q'"'"')$script=$args[2]??'"'"''"'"';
+        if(basename($args[0])!=='"'"'php'"'"'||$script!==$legacy.'"'"'nchan/zfs_master'"'"')throw new RuntimeException('"'"'An operation from ZFS Master is still running; finish it before installation'"'"');
+        $nchan[(int)basename(dirname($file))]=(string)file_get_contents($file);
+    }
+    return $nchan;
+}
+function zfsdLegacyInstall(string $mode,string $root,string $keep,string $backup): void {
+    $root=rtrim($root,'"'"'/'"'"');
+    if($mode==='"'"'check'"'"'){zfsdLegacyPlan($root,$keep);zfsdLegacyProcesses($root);return;}
+    zfsdLegacyPath($backup);
+    if($mode==='"'"'rollback'"'"'){
+        $journal=$backup.'"'"'/migration.json'"'"';if(!is_file($journal))return;
+        $state=json_decode(file_get_contents($journal),true,64,JSON_THROW_ON_ERROR);
+        if(!empty($state['"'"'rolled_back'"'"']))return;
+        if(isset($state['"'"'created_cron'"'"'])){
+            [$target,$sha]=$state['"'"'created_cron'"'"'];zfsdLegacyPath($target);
+            if(file_exists($target)){
+                $restored=false;$current=lstat($target);
+                foreach($state['"'"'done'"'"']as$item)if($item[0]===$target&amp;&amp;[$current['"'"'dev'"'"'],$current['"'"'ino'"'"']]===$item[3]&amp;&amp;!file_exists($item[1]))$restored=true;
+                if(!$restored){
+                    if(is_link($target)||!is_file($target)||hash_file('"'"'sha256'"'"',$target)!==$sha)throw new RuntimeException('"'"'Cron changed after installation; retained backup: '"'"'.$backup);
+                    if(!unlink($target))throw new RuntimeException('"'"'Cannot undo Director cron relocation'"'"');
+                }
+            }
+        }
+        foreach(array_reverse($state['"'"'done'"'"'])as$item){
+            [$from,$to,$link,$identity]=$item;clearstatcache();
+            if(file_exists($from)||is_link($from)){
+                $stat=lstat($from);
+                if(($link!==null&amp;&amp;is_link($from)&amp;&amp;readlink($from)===$link)||($link===null&amp;&amp;[$stat['"'"'dev'"'"'],$stat['"'"'ino'"'"']]===$identity&amp;&amp;!file_exists($to)))continue;
+                throw new RuntimeException('"'"'Rollback target changed; retained backup: '"'"'.$backup);
+            }
+            if($link!==null){if(!symlink($link,$from))throw new RuntimeException('"'"'Cannot restore plugin registration'"'"');}
+            elseif(!rename($to,$from))throw new RuntimeException('"'"'Cannot restore displaced plugin file'"'"');
+        }
+        $state['"'"'rolled_back'"'"']=true;
+        if(file_put_contents($journal.'"'"'.tmp'"'"',json_encode($state,JSON_THROW_ON_ERROR),LOCK_EX)===false||!rename($journal.'"'"'.tmp'"'"',$journal))throw new RuntimeException('"'"'Cannot record completed rollback'"'"');
+        return;
+    }
+    if($mode!=='"'"'apply'"'"')throw new RuntimeException('"'"'Unknown legacy cleanup action'"'"');
+    $plan=zfsdLegacyPlan($root,$keep);$processes=zfsdLegacyProcesses($root);
+    if($processes&amp;&amp;$root!=='"'"''"'"')throw new RuntimeException('"'"'Process changes require the live system root'"'"');
+    foreach($processes as$pid=&gt;$cmd){
+        if((string)@file_get_contents('"'"'/proc/'"'"'.$pid.'"'"'/cmdline'"'"')!==$cmd)throw new RuntimeException('"'"'Legacy monitor identity changed'"'"');
+        if(!posix_kill($pid,15))throw new RuntimeException('"'"'Unable to stop the legacy ZFS Master monitor'"'"');
+    }
+    $deadline=microtime(true)+5;
+    do{$running=zfsdLegacyProcesses($root);if(!$running)break;usleep(100000);}while(microtime(true)&lt;$deadline);
+    if($running)throw new RuntimeException('"'"'Legacy ZFS Master monitor has not stopped'"'"');
+    if(!$plan['"'"'moves'"'"']&amp;&amp;!$plan['"'"'write_cron'"'"'])return;
+    if(file_exists($backup)||!mkdir($backup,0700,true))throw new RuntimeException('"'"'Cannot create legacy plugin backup'"'"');
+    $state=['"'"'done'"'"'=&gt;[]];$journal=$backup.'"'"'/migration.json'"'"';
+    $save=static function()use(&amp;$state,$journal){$json=json_encode($state,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);if(file_put_contents($journal.'"'"'.tmp'"'"',$json,LOCK_EX)!==strlen($json)||!rename($journal.'"'"'.tmp'"'"',$journal))throw new RuntimeException('"'"'Cannot save installer rollback journal'"'"');};
+    $save();
+    try{
+        foreach($plan['"'"'moves'"'"']as$i=&gt;$from){
+            $link=is_link($from)?readlink($from):null;
+            $to=is_dir($from)&amp;&amp;str_starts_with($from,$root.'"'"'/usr/local/emhttp/plugins/'"'"')?dirname($from).'"'"'/.zfs-director-legacy-'"'"'.basename($backup).'"'"'-'"'"'.$i:$backup.'"'"'/item-'"'"'.$i;
+            if(file_exists($to)||is_link($to))throw new RuntimeException('"'"'Legacy backup destination exists'"'"');
+            $stat=lstat($from);$state['"'"'done'"'"'][]=[$from,$to,$link,[$stat['"'"'dev'"'"'],$stat['"'"'ino'"'"']]];$save();
+            if($link!==null){if(!unlink($from))throw new RuntimeException('"'"'Cannot remove old registration'"'"');}
+            elseif(!rename($from,$to))throw new RuntimeException('"'"'Cannot retain old plugin file'"'"');
+        }
+        if($plan['"'"'write_cron'"'"']){
+            $target=$plan['"'"'cron_target'"'"'];if(!is_dir(dirname($target))&amp;&amp;!mkdir(dirname($target),0700,true))throw new RuntimeException('"'"'Cannot preserve Director cron namespace'"'"');
+            if(file_exists($target)||is_link($target))throw new RuntimeException('"'"'Director cron changed during installation'"'"');
+            $text=$plan['"'"'cron_text'"'"'];$state['"'"'created_cron'"'"']=[$target,hash('"'"'sha256'"'"',$text)];$save();
+            $temporary=tempnam(dirname($target),'"'"'.director-cron-'"'"');
+            if($temporary===false)throw new RuntimeException('"'"'Cannot stage Director cron'"'"');
+            try{if(file_put_contents($temporary,$text,LOCK_EX)!==strlen($text)||!rename($temporary,$target)||file_get_contents($target)!==$text)throw new RuntimeException('"'"'Director cron readback failed'"'"');}
+            finally{if(is_file($temporary))unlink($temporary);}
+        }
+        echo '"'"'ZFS Director: old ZFS Master code and duplicate registrations removed; rollback backup: '"'"'.$backup."\n";
+    }catch(Throwable$error){
+        zfsdLegacyInstall('"'"'rollback'"'"',$root,$keep,$backup);throw $error;
+    }
+}
+
+try { zfsdLegacyInstall($argv[1], $argv[2], $argv[3], $argv[4]); } catch (Throwable $error) { echo "ZFS Director: ".$error-&gt;getMessage()."\n"; exit(1); }' -- "$1" / "$registration" "$legacy_backup"
+}
+legacy_cleanup check
+for directory in "$live" /boot/config/plugins/zfs.master.ui/protection; do
+  if [[ -L "$directory" || ( -e "$directory" &amp;&amp; ! -d "$directory" ) ]]; then echo "ZFS Director: unsafe installer directory: $directory"; exit 1; fi
+done
+for object in /var/lock/zfs.master.ui.lock /boot/config/plugins/zfs.master.ui/protection/config.lock /boot/config/plugins/zfs.master.ui/protection/execution.lock; do
+  if [[ -L "$object" || ( -e "$object" &amp;&amp; ! -f "$object" ) ]]; then echo "ZFS Director: unsafe installer lock: $object"; exit 1; fi
+done
+hook=/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director
+if [[ -L "$hook" || ( -e "$hook" &amp;&amp; ! -f "$hook" ) ]]; then echo 'ZFS Director: unsafe Plugin Manager hook'; exit 1; fi
+if [[ -f "$hook" &amp;&amp; "$(sha256sum "$hook" | cut -d ' ' -f 1)" != 'f16a1c7f2e5fd19ec09bc9eb6e7c2b396fa28253e3269f9e31d08d10237cb3c3' ]]; then echo 'ZFS Director: existing post-hook has unknown ownership; retained unchanged'; exit 1; fi
+# End legacy migration guard.
+# Runtime stop marker guard.
+stop_runtime() {
+  /usr/bin/perl -e 'use strict;
+use warnings;
+use Fcntl qw(:DEFAULT :mode);
+my ($base, $owner, $message) = @ARGV;
+die "Invalid runtime guard arguments\n" unless defined($message) &amp;&amp; $owner =~ /\A[0-9]+\z/ &amp;&amp; $base =~ m{\A/} &amp;&amp; $base !~ m{(?:\A|/)\.\.?(/|\z)};
+sub enter_directory {
+    my ($name, $uid, $shared) = @_;
+    sysopen(my $directory, $name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW) or die "Runtime directory requires inspection\n";
+    my @stat = stat($directory);
+    die "Untrusted runtime directory\n" unless @stat &amp;&amp; S_ISDIR($stat[2]) &amp;&amp; $stat[4] == $uid
+        &amp;&amp; (!(($stat[2]) &amp; 0022) || ($shared &amp;&amp; ($stat[2] &amp; 01000)));
+    chdir($directory) or die "Unable to enter trusted runtime directory\n";
+}
+enter_directory('"'"'/'"'"', 0, 0);
+my @parents = grep { length } split m{/}, $base;
+for my $index (0 .. $#parents) {
+    enter_directory($parents[$index], $index == $#parents ? $owner : 0, 1);
+}
+for my $name ('"'"'zfs.master.ui'"'"', '"'"'jobs'"'"') {
+    if (!lstat($name)) { mkdir($name, 0700) or die "Unable to create runtime directory\n"; }
+    enter_directory($name, $owner, 0);
+}
+my @stop = lstat('"'"'stop'"'"');
+die "Stop marker requires inspection\n" if @stop &amp;&amp; (!S_ISREG($stop[2]) || $stop[4] != $owner || ($stop[2] &amp; 0022) || $stop[3] != 1);
+my $temporary = '"'"'.stop-'"'"' . $$ . '"'"'-'"'"' . int(rand(1000000000));
+sysopen(my $marker, $temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600) or die "Unable to create stop marker\n";
+eval {
+    print {$marker} $message, "\n" or die "Unable to write stop marker\n";
+    close($marker) or die "Unable to close stop marker\n";
+    rename($temporary, '"'"'stop'"'"') or die "Unable to publish stop marker\n";
+    1;
+} or do {
+    my $error = $@;
+    close($marker) if defined(fileno($marker));
+    unlink($temporary);
+    die $error;
+};
+' -- /var/tmp 0 "$1"
+}
+# End runtime stop marker guard.
+# Boot reconstruction restores the UI even when recovery must stay stopped.
+installed=/boot/config/plugins/zfs.master.ui/installed.sha256
+[[ ! -L "$installed" &amp;&amp; ( ! -e "$installed" || -f "$installed" ) ]]
+restore_accepted=0
+hold_recovery=0
+old_receipt=
+if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '4de34ae7ee8824af4b59f9676384ce5ae1db028b826f40c3998164210f279018' ]]; then restore_accepted=1; fi
+preflight() {
+  local status=0 mode=install
+  if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
+  /usr/bin/php -r '
+// Read-only installer prerequisite. No plugin includes, worker or scheduler calls.
+if(PHP_SAPI!=='"'"'cli'"'"')exit(2);
+$root=$argv[1]??'"'"'/boot/config/plugins/zfs.master.ui'"'"';
+$acceptedBoot=($argv[2]??'"'"''"'"')==='"'"'accepted-boot'"'"';
+$managedInstall=($argv[2]??'"'"''"'"')==='"'"'install'"'"';
+$requireRecovery=static function($message)use($acceptedBoot){fwrite(STDERR,'"'"'ZFS Director preflight: '"'"'.$message."\n");exit($acceptedBoot?10:1);};
+try{
+    if(!is_string($root)||!str_starts_with($root,'"'"'/'"'"')||str_contains($root,"\0")||str_contains($root,'"'"'..'"'"')||is_link($root))throw new RuntimeException('"'"'Unsafe persistent state path'"'"');
+    $config=$root.'"'"'/zfs.master.ui.cfg'"'"';
+    if(file_exists($config)||is_link($config)){
+        if(is_link($config)||!is_file($config)||filesize($config)&gt;1048576)throw new RuntimeException('"'"'Settings require inspection'"'"');
+        $parsed=@parse_ini_file($config,true,INI_SCANNER_RAW);if(!is_array($parsed))$requireRecovery('"'"'Settings cannot be parsed; restore stopped for inspection'"'"');
+        $flag=$parsed['"'"'general'"'"']['"'"'sanoid_integration'"'"']??'"'"'0'"'"';if((string)$flag!=='"'"'0'"'"'&amp;&amp;!(($acceptedBoot||$managedInstall)&amp;&amp;(string)$flag==='"'"'1'"'"'))$requireRecovery('"'"'Integration settings require inspection before upgrade'"'"');
+    }
+    $jobs=$root.'"'"'/jobs'"'"';if(is_link($jobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
+    if(is_dir($jobs)){
+        $scan=opendir($jobs);$count=0;
+        try{while(($name=readdir($scan))!==false){if(++$count&gt;4096)$requireRecovery('"'"'Jobs scan incomplete; restore stopped for inspection'"'"');if(!preg_match('"'"'/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\.json$/D'"'"',$name))continue;$file=$jobs.'"'"'/'"'"'.$name;
+            if(is_link($file)||!is_file($file)||filesize($file)&gt;131072)throw new RuntimeException('"'"'Job requires inspection before upgrade'"'"');$j=json_decode(file_get_contents($file),true,32);if(!is_array($j))$requireRecovery('"'"'Malformed job requires inspection'"'"');
+            if(!is_array($j)||!is_string($j['"'"'state'"'"']??null)||in_array($j['"'"'state'"'"'],['"'"'queued'"'"','"'"'running'"'"'],true))$requireRecovery('"'"'Pending or unverified jobs require inspection; worker stays stopped'"'"');
+            // Terminal file jobs can still release holds or delete ZIP staging.
+            // Future expiry/retry times only defer that work after activation.
+            if(in_array($j['"'"'type'"'"']??null,['"'"'restore'"'"','"'"'archive'"'"'],true)&amp;&amp;($j['"'"'hold_owned'"'"']??null)!==false)$requireRecovery('"'"'File job protection requires inspection; worker stays stopped'"'"');
+            if(($j['"'"'type'"'"']??null)==='"'"'archive'"'"'&amp;&amp;($j['"'"'archive_removed'"'"']??null)!==true)$requireRecovery('"'"'Retained ZIP cleanup requires inspection; worker stays stopped'"'"');
+        }}finally{closedir($scan);}
+    }
+    echo "ZFS Director preflight: no pending execution or file cleanup. Settings and schedules retained.\n";
+}catch(Throwable$e){fwrite(STDERR,'"'"'ZFS Director upgrade blocked: '"'"'.$e-&gt;getMessage()."\n");exit(1);}
+' -- /boot/config/plugins/zfs.master.ui "$mode" || status=$?
+  if [[ "$status" == 10 &amp;&amp; "$restore_accepted" == 1 ]]; then hold_recovery=1; elif [[ "$status" != 0 ]]; then return "$status"; fi
+}
+preflight
+# Read-only prerequisite gate, before stopping the installed implementation.
+# Execute the exact packaged helper; the generic probe creates no files.
+if ! /usr/bin/perl -e '#!/usr/bin/perl
+# Linux directory mutations. Every destructive name is first captured into a
+# root-owned private directory and checked by dev/ino. A complete filesystem
+# root confines renames; FAN_CREATE handles authenticate the private parent.
+use strict;
+use warnings;
+use JSON::PP;
+use Fcntl qw(:DEFAULT :mode);
+use POSIX qw(uname);
+use Encode qw(encode decode FB_CROAK LEAVE_SRC);
+use IO::Handle;
+use Errno qw(EBADF);
+use Digest::SHA ();
+use MIME::Base64 ();
+use Time::HiRes ();
+
+my $json=JSON::PP-&gt;new-&gt;utf8-&gt;canonical;
+my %nr;
+my ($root,$container,$container_name,$root_path,$journal,$source_location,$publication,$boundary);
+my $serial=0;
+my ($delete_total,$delete_removed,$delete_tick)=(0,0,0);
+sub deletion_progress {
+    $delete_removed++;
+    if (Time::HiRes::time()-$delete_tick&gt;=0.5||$delete_removed==$delete_total) {
+        emit({phase=&gt;'"'"'deleting'"'"',removed=&gt;$delete_removed,total=&gt;$delete_total});$delete_tick=Time::HiRes::time();
+    }
+}
+use constant O_PATH_LINUX =&gt; 0x200000;
+use constant O_CLOEXEC_LINUX =&gt; 0x80000;
+sub fail { die $_[0]."\n" }
+sub raw { encode('"'"'UTF-8'"'"',$_[0],FB_CROAK|LEAVE_SRC) }
+sub emit { print $json-&gt;encode($_[0])."\n" or fail('"'"'Progress channel closed'"'"'); STDOUT-&gt;flush; }
+sub identity { my @s=stat($_[0]); fail('"'"'Pinned object unavailable'"'"') unless @s; return {dev=&gt;"$s[0]",ino=&gt;"$s[1]"}; }
+sub same { my ($a,$b)=@_; return ref($b) eq '"'"'HASH'"'"' &amp;&amp; defined($b-&gt;{dev}) &amp;&amp; defined($b-&gt;{ino}) &amp;&amp; $a-&gt;{dev} eq "$b-&gt;{dev}" &amp;&amp; $a-&gt;{ino} eq "$b-&gt;{ino}"; }
+sub path {
+    my ($value)=@_; fail('"'"'Invalid directory path'"'"') if !defined($value)||ref($value)||length($value)&gt;4096||$value=~m{^/|\0};
+    my @parts=split m{/},$value,-1;
+    fail('"'"'Invalid directory path'"'"') if !@parts||@parts&gt;128||grep { $_ eq '"'"''"'"'||$_ eq '"'"'.'"'"'||$_ eq '"'"'..'"'"'||$_ eq '"'"'.zfs'"'"'||/^\.zfsm-/ } @parts;
+    return $value;
+}
+sub openat {
+    my ($parent,$name,$flags,$allow_mount)=@_;
+    my $how=pack('"'"'Q&lt;Q&lt;Q&lt;'"'"',$flags,0,8|4|($allow_mount?0:1)); my $p=raw($name);
+    my $fd=syscall($nr{openat2},fileno($parent),$p,$how,length($how));
+    fail('"'"'Path is unavailable, contains a symbolic link, or crosses a mount: '"'"'.$name) if $fd&lt;0;
+    open(my $fh,'"'"'&lt;&amp;='"'"',$fd) or fail('"'"'Unable to retain directory handle'"'"'); return $fh;
+}
+sub anchor { '"'"'/proc/self/fd/'"'"'.fileno($_[0]) }
+sub entries {
+    my ($dir)=@_; opendir(my $dh,anchor($dir)) or fail('"'"'Unable to inspect pinned directory'"'"'); my @out;
+    while(defined(my $p=readdir($dh))) { next if $p eq '"'"'.'"'"'||$p eq '"'"'..'"'"'; push @out,decode('"'"'UTF-8'"'"',$p,FB_CROAK); fail('"'"'Directory exceeds 100000 entries'"'"') if @out&gt;100000; }
+    closedir($dh); return sort @out;
+}
+sub renamed {
+    my ($from,$old,$to,$new)=@_; my $a=raw($old); my $b=raw($new);
+    return syscall($nr{renameat2},fileno($from),$a,fileno($to),$b,1)==0;
+}
+sub parent {
+    my ($name)=@_; my @parts=split m{/},$name; my $leaf=pop @parts;
+    return (openat($root,@parts?join('"'"'/'"'"',@parts):'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0),$leaf);
+}
+sub canonical_parent {
+    my ($path,$pinned)=@_;my ($current)=parent($path);
+    return same(identity($current),identity($pinned));
+}
+sub recovery {
+    return undef unless $container;
+    my $where=readlink(anchor($container));
+    my $details={container=&gt;$container_name,location=&gt;defined($where)?$where:'"'"'unavailable'"'"',identity=&gt;identity($container),journal=&gt;'"'"'journal.jsonl'"'"',retained=&gt;JSON::PP::true};
+    $details-&gt;{source}=$source_location if $source_location;
+    if ($publication) {
+        my $actual=readlink(anchor($publication-&gt;{handle}));
+        $details-&gt;{publication}={requested=&gt;$publication-&gt;{requested},location=&gt;defined($actual)?$actual:'"'"'unavailable'"'"',identity=&gt;identity($publication-&gt;{handle})};
+    }
+    return $details;
+}
+sub record {
+    my ($row)=@_; print $journal $json-&gt;encode($row)."\n" or fail('"'"'Unable to write recovery journal'"'"');
+    $journal-&gt;flush &amp;&amp; $journal-&gt;sync or fail('"'"'Unable to flush recovery journal'"'"');
+}
+sub mount_id {
+    my ($dir)=@_; open(my $info,'"'"'&lt;'"'"','"'"'/proc/self/fdinfo/'"'"'.fileno($dir)) or fail('"'"'Unable to inspect pinned mount identity'"'"');
+    local $/; my $value=&lt;$info&gt;; close($info);
+    fail('"'"'Pinned mount identity unavailable'"'"') unless $value=~/^mnt_id:\s*(\d+)\s*$/m; return "$1";
+}
+sub full_root {
+    my ($dir)=@_; my $id=mount_id($dir); my $found;
+    open(my $info,'"'"'&lt;'"'"','"'"'/proc/self/mountinfo'"'"') or fail('"'"'Unable to inspect filesystem mount roots'"'"');
+    while(my $line=&lt;$info&gt;) {
+        my @fields=split / /,$line; next unless $fields[0] eq $id;
+        fail('"'"'Dataset mutation root must be a complete filesystem root'"'"') unless $fields[3] eq '"'"'/'"'"';
+        my $point=$fields[4]; $point=~s/\\([0-7]{3})/chr(oct($1))/ge; $point=decode('"'"'UTF-8'"'"',$point,FB_CROAK);
+        sysopen(my $slash,'"'"'/'"'"',O_RDONLY|O_DIRECTORY) or fail('"'"'Unable to inspect filesystem mount root'"'"');
+        my $mounted=$point eq '"'"'/'"'"'?$slash:openat($slash,substr($point,1),O_RDONLY|O_DIRECTORY,1);
+        fail('"'"'Dataset mutation root must be a complete filesystem root'"'"') unless same(identity($mounted),identity($dir)) &amp;&amp; mount_id($mounted) eq $id;
+        $found=1; last;
+    }
+    close($info); fail('"'"'Pinned filesystem mount root unavailable'"'"') unless $found; return $id;
+}
+sub file_handle {
+    my ($dir)=@_; my $handle=pack('"'"'L&lt;l&lt;'"'"',128,0).("\0"x128); my $mount=pack('"'"'l&lt;'"'"',0); my $empty='"'"''"'"';
+    fail('"'"'Filesystem object handles are required'"'"') if syscall($nr{name_to_handle_at},fileno($dir),$empty,$handle,$mount,0x1000)!=0;
+    my ($length,$type)=unpack('"'"'L&lt;l&lt;'"'"',$handle); fail('"'"'Invalid filesystem object handle'"'"') if !$length||$length&gt;128;
+    return pack('"'"'l&lt;'"'"',$type).substr($handle,8,$length);
+}
+sub filesystem_id {
+    my ($dir)=@_; my $value="\0"x128;
+    fail('"'"'Unable to inspect owning filesystem identity'"'"') if syscall($nr{fstatfs},fileno($dir),$value)!=0;
+    return substr($value,56,8);
+}
+sub fanotify {
+    # Directory entry notifications must include both the parent and target FID.
+    my $fd=syscall($nr{fanotify_init},0x1e03,O_RDONLY|O_CLOEXEC_LINUX);
+    fail('"'"'Safe directory mutations require fanotify target object handles'"'"') if $fd&lt;0;
+    open(my $fan,'"'"'&lt;&amp;='"'"',$fd) or fail('"'"'Unable to retain creation notification handle'"'"'); return $fan;
+}
+sub prepare_boundary {
+    my ($dir)=@_; my $id=full_root($dir); my $handle=file_handle($dir); my $fsid=filesystem_id($dir); my $fan=fanotify(); my $dot='"'"'.'"'"';
+    fail('"'"'Filesystem creation notifications are required'"'"') if syscall($nr{fanotify_mark},fileno($fan),1|8,0x48000100,fileno($dir),$dot)!=0;
+    return {mount_id=&gt;$id,handle=&gt;$handle,fsid=&gt;$fsid,fan=&gt;$fan};
+}
+sub creation_handle {
+    my ($policy,$name)=@_; my $ready='"'"''"'"'; vec($ready,fileno($policy-&gt;{fan}),1)=1;
+    fail('"'"'Private directory creation notification unavailable'"'"') unless select($ready,undef,undef,2)&gt;0;
+    my $bytes='"'"''"'"'; my $length=sysread($policy-&gt;{fan},$bytes,65536);
+    fail('"'"'Unable to read private directory creation notification'"'"') unless defined($length)&amp;&amp;$length&gt;0;
+    my ($offset,$target)=(0,undef);
+    while($offset&lt;$length) {
+        fail('"'"'Malformed private directory creation notification'"'"') if $length-$offset&lt;24;
+        my ($event_length,$version,$reserved,$metadata_length,$mask,$fd,$pid)=unpack('"'"'L&lt;CCS&lt;Q&lt;l&lt;l&lt;'"'"',substr($bytes,$offset,24));
+        fail('"'"'Invalid private directory creation notification'"'"') if $version!=3||$reserved||$metadata_length!=24||$event_length&lt;$metadata_length||$offset+$event_length&gt;$length||($mask&amp;0x4000)||$fd!=-1;
+        my (%records,$position); $position=$offset+$metadata_length;
+        while($position&lt;$offset+$event_length) {
+            fail('"'"'Malformed creation identity record'"'"') if $offset+$event_length-$position&lt;20;
+            my ($kind,$pad,$size)=unpack('"'"'CCS&lt;'"'"',substr($bytes,$position,4));
+            fail('"'"'Unexpected creation identity record'"'"') if $pad||($kind!=1&amp;&amp;$kind!=2)||$size&lt;20||$position+$size&gt;$offset+$event_length||exists($records{$kind});
+            my $fsid=substr($bytes,$position+4,8); my ($handle_length,$type)=unpack('"'"'L&lt;l&lt;'"'"',substr($bytes,$position+12,8));
+            fail('"'"'Invalid creation filesystem identity'"'"') if $fsid ne $policy-&gt;{fsid}||!$handle_length||$handle_length&gt;128||20+$handle_length&gt;$size;
+            my $tail=substr($bytes,$position+20+$handle_length,$size-20-$handle_length);
+            fail('"'"'Malformed target creation identity'"'"') if $kind==1&amp;&amp;$tail=~/[^\0]/;
+            $records{$kind}={handle=&gt;pack('"'"'l&lt;'"'"',$type).substr($bytes,$position+20,$handle_length),tail=&gt;$tail};
+            $position+=$size;
+        }
+        fail('"'"'Missing creation identity records'"'"') unless $position==$offset+$event_length&amp;&amp;keys(%records)==2&amp;&amp;$records{1}&amp;&amp;$records{2};
+        my $tail=$records{2}{tail}; fail('"'"'Malformed created directory name'"'"') unless $tail=~/\A([^\0]*)\0\0*\z/s;
+        my $event_name=$1;
+        if ($pid==$$ &amp;&amp; $mask==0x40000100 &amp;&amp; $event_name eq raw($name)) {
+            fail('"'"'Private directory creation parent changed'"'"') unless $records{2}{handle} eq $policy-&gt;{handle};
+            fail('"'"'Ambiguous private directory creation identity'"'"') if defined($target); $target=$records{1}{handle};
+        }
+        $offset+=$event_length;
+    }
+    fail('"'"'Private directory creation identity unavailable'"'"') unless defined($target); return $target;
+}
+sub probe {
+    my ($args)=@_;
+    sysopen(my $slash,'"'"'/'"'"',O_RDONLY|O_DIRECTORY) or fail('"'"'Unable to pin filesystem root'"'"');
+    my $pinned=openat($slash,'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0);
+    my $a='"'"'zfsm-readonly-probe'"'"';my $b='"'"'zfsm-readonly-probe'"'"';
+    my $result=syscall($nr{renameat2},-1,$a,-1,$b,1);
+    fail('"'"'Safe directory mutations require renameat2 RENAME_NOREPLACE'"'"') unless $result&lt;0 &amp;&amp; $!==EBADF;
+    my $fan=fanotify(); my $handle=pack('"'"'L&lt;l&lt;'"'"',128,0).("\0"x128);my $mount=pack('"'"'l&lt;'"'"',0);my $empty='"'"''"'"';
+    my $result_handle=syscall($nr{name_to_handle_at},-1,$empty,$handle,$mount,0x1000);
+    fail('"'"'Safe directory mutations require name_to_handle_at'"'"') unless $result_handle&lt;0&amp;&amp;$!==EBADF;
+    my $dot='"'"'.'"'"'; my $result_mark=syscall($nr{fanotify_mark},-1,1|8,0x48000100,-1,$dot);
+    fail('"'"'Safe directory mutations require fanotify_mark'"'"') unless $result_mark&lt;0&amp;&amp;$!==EBADF;
+    my $row={ok=&gt;JSON::PP::true,op=&gt;'"'"'probe'"'"',fanotify_target_fid=&gt;JSON::PP::true};
+    if (exists($args-&gt;{root})) { my $dir=request_root($args); my $policy=prepare_boundary($dir); $row-&gt;{root_mount_id}=$policy-&gt;{mount_id}; }
+    emit($row);
+}
+sub container {
+    sysopen(my $random,'"'"'/dev/urandom'"'"',O_RDONLY) or fail('"'"'Unable to obtain private claim name'"'"');
+    read($random,my $bytes,24)==24 or fail('"'"'Unable to obtain private claim name'"'"'); close($random);
+    $container_name='"'"'.zfsm-mutation-'"'"'.unpack('"'"'H*'"'"',$bytes); my $name=raw($container_name);
+    fail('"'"'Unable to create private recovery container'"'"') if syscall($nr{mkdirat},fileno($root),$name,0700)!=0;
+    my $created=creation_handle($boundary,$container_name);
+    my $candidate=openat($root,$container_name,O_RDONLY|O_DIRECTORY,0); my @s=stat($candidate);
+    fail('"'"'Private recovery container creation identity changed'"'"') unless mount_id($candidate) eq $boundary-&gt;{mount_id} &amp;&amp; file_handle($candidate) eq $created;
+    fail('"'"'Private recovery container ownership changed'"'"') unless $s[4]==0 &amp;&amp; ($s[2]&amp;0777)==0700 &amp;&amp; !($s[2]&amp;01000);
+    $container=$candidate;
+    # A setgid dataset parent can contribute its group bit; clear it only after
+    # authenticating the created inode, never on an unrelated substituted dir.
+    chmod(0700,$container)==1 or fail('"'"'Unable to secure proven private recovery container'"'"');
+    fail('"'"'Private recovery container is not empty; no metadata written'"'"') if entries($container);
+    # The public parent may be0777. Never unlink the public container name:
+    # Linux lacks inode-conditional unlinkat. Retain the journal on success too.
+    my $file=anchor($container).'"'"'/journal.jsonl'"'"';
+    sysopen($journal,$file,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW,0600) or fail('"'"'Unable to create recovery journal'"'"');
+    record({event=&gt;'"'"'created'"'"',container_identity=&gt;identity($container)});
+    $container-&gt;sync &amp;&amp; $root-&gt;sync or fail('"'"'Unable to flush private recovery container'"'"');
+    emit({phase=&gt;'"'"'prepared'"'"',recovery=&gt;recovery()});
+}
+sub capture {
+    my ($from,$name,$expected,$original)=@_; my $slot='"'"'object-'"'"'.(++$serial);
+    record({event=&gt;'"'"'intent'"'"',slot=&gt;$slot,path=&gt;$original,identity=&gt;$expected});
+    fail('"'"'Directory changed or cannot be claimed; no destination was overwritten'"'"') unless renamed($from,$name,$container,$slot);
+    $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush claim; inspect recovery journal'"'"');
+    my $captured;
+    eval { $captured=openat($container,$slot,O_PATH_LINUX|O_NOFOLLOW,0); 1 } or do {
+        my $error=$@; my $restored=renamed($container,$slot,$from,$name);
+        $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush rollback; inspect recovery journal'"'"');
+        record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$original});
+        fail($restored?'"'"'Captured object is unavailable; original name restored'"'"':$error.'"'"'; object retained; original name occupied or moved'"'"');
+    };
+    if (!same(identity($captured),$expected)) {
+        my $restored=renamed($container,$slot,$from,$name);
+        $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush rollback; inspect recovery journal'"'"');
+        record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$original,identity=&gt;identity($captured)});
+        fail($restored?'"'"'Directory identity changed; unexpected object restored'"'"':'"'"'Directory identity changed; unexpected object retained; original name occupied or moved'"'"');
+    }
+    my @captured_stat=stat($captured);
+    $captured=openat($captured,'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0) if S_ISDIR($captured_stat[2]);
+    my $where=readlink(anchor($from));
+    my $observed=defined($where)?$where.'"'"'/'"'"'.$name:'"'"'unavailable'"'"';
+    $source_location={requested=&gt;$original,location=&gt;$observed} if $serial==1;
+    record({event=&gt;'"'"'captured'"'"',slot=&gt;$slot,path=&gt;$original,source_location=&gt;$observed,identity=&gt;$expected});
+    return ($captured,$slot);
+}
+sub inspect_tree {
+    my ($dir,$relative,$manifest,$recursive)=@_;
+    for my $name (entries($dir)) {
+        fail('"'"'Reserved directory entry cannot be mutated'"'"') if $name eq '"'"'.zfs'"'"'||$name=~/^\.zfsm-/;
+        my $child=openat($dir,$name,O_PATH_LINUX|O_NOFOLLOW,0); my @s=stat($child);
+        $child=openat($child,'"'"'.'"'"',O_RDONLY|O_DIRECTORY,0) if S_ISDIR($s[2]);
+        # Non-directories (including links, FIFOs, sockets and device nodes)
+        # are pinned only with O_PATH|O_NOFOLLOW; never opened for I/O.
+        fail('"'"'Directory is not empty; recursive deletion is required'"'"') unless $recursive;
+        my $p=$relative eq '"'"''"'"'?$name:$relative.'"'"'/'"'"'.$name;
+        # Names preserve the preflight entry set. Child identities are pinned
+        # freshly immediately before their individual private claims.
+        $manifest-&gt;{$p}={directory=&gt;S_ISDIR($s[2])?1:0} if $manifest;
+        inspect_tree($child,$p,$manifest,$recursive) if S_ISDIR($s[2]);
+    }
+}
+sub remove_tree {
+    my ($dir,$slot,$relative,$manifest)=@_;
+    for my $name (entries($dir)) {
+        my $p=$relative eq '"'"''"'"'?$name:$relative.'"'"'/'"'"'.$name; my $known=$manifest-&gt;{$p};
+        fail('"'"'Directory contents changed; remaining objects retained'"'"') unless $known;
+        # Selected-root authorization covers current contents. Pin each
+        # current child through capture/verification, preventing inode reuse
+        # without retaining one descriptor for every file in a large tree.
+        my $current=openat($dir,$name,O_PATH_LINUX|O_NOFOLLOW,0);
+        my @current_stat=stat($current);
+        fail('"'"'Directory entry type changed; remaining objects retained'"'"') if !!S_ISDIR($current_stat[2]) != !!$known-&gt;{directory};
+        my ($child,$captured)=capture($dir,$name,identity($current),$p);
+        close($current); # The verified captured handle now pins this inode.
+        if ($known-&gt;{directory}) { remove_tree($child,$captured,$p,$manifest); }
+        else {
+            my $raw=raw($captured);
+            fail('"'"'Unable to delete captured file; remaining objects retained'"'"') if syscall($nr{unlinkat},fileno($container),$raw,0)!=0;
+            record({event=&gt;'"'"'deleted'"'"',slot=&gt;$captured,path=&gt;$p});
+            deletion_progress();
+        }
+    }
+    my $raw=raw($slot);
+    fail('"'"'Directory received new files or left its boundary; remaining objects retained'"'"') if syscall($nr{unlinkat},fileno($container),$raw,512)!=0;
+    record({event=&gt;'"'"'deleted'"'"',slot=&gt;$slot,path=&gt;$relative});
+    deletion_progress();
+}
+sub request_root {
+    my ($args)=@_; my $root_path=$args-&gt;{root}; fail('"'"'Invalid dataset root'"'"') unless defined($root_path)&amp;&amp;!ref($root_path)&amp;&amp;$root_path=~m{^/[^/]}&amp;&amp;$root_path!~/\0/&amp;&amp;$root_path!~m{/$};
+    sysopen(my $slash,'"'"'/'"'"',O_RDONLY|O_DIRECTORY) or fail('"'"'Unable to pin filesystem root'"'"');
+    my $dir=openat($slash,substr($root_path,1),O_RDONLY|O_DIRECTORY,1);
+    fail('"'"'The filesystem root cannot be a dataset mutation root'"'"') if same(identity($dir),identity($slash));
+    fail('"'"'Dataset root identity changed'"'"') unless same(identity($dir),$args-&gt;{root_identity}); return $dir;
+}
+# Only journal-only completed mutation containers are eligible. Never recurse.
+sub cleanup_inspect {
+    my ($dir)=@_; my @s=stat($dir);
+    fail('"'"'Recovery container must be root-owned and private0700'"'"') unless $s[4]==0 &amp;&amp; ($s[2]&amp;07777)==0700;
+    my @names=entries($dir); fail('"'"'Recovery data is retained or the journal is missing; cleanup blocked'"'"') unless @names==1 &amp;&amp; $names[0] eq '"'"'journal.jsonl'"'"';
+    my $file=openat($dir,'"'"'journal.jsonl'"'"',O_RDONLY|O_NOFOLLOW|O_NONBLOCK,0);my @f=stat($file);
+    fail('"'"'Recovery journal must be a private root-owned regular file with one link'"'"') unless S_ISREG($f[2]) &amp;&amp; $f[4]==0 &amp;&amp; ($f[2]&amp;07777)==0600 &amp;&amp; $f[3]==1 &amp;&amp; $f[7]&gt;0 &amp;&amp; $f[7]&lt;=262144;
+    my $bytes='"'"''"'"';while(read($file,my $chunk,16384)){ $bytes.=$chunk;fail('"'"'Recovery journal exceeds read bound'"'"') if length($bytes)&gt;262144; }
+    fail('"'"'Recovery journal changed while reading'"'"') unless length($bytes)==$f[7] &amp;&amp; same(identity($file),identity(openat($dir,'"'"'journal.jsonl'"'"',O_PATH_LINUX|O_NOFOLLOW,0)));
+    fail('"'"'Incomplete recovery journal'"'"') unless $bytes=~/\n\z/;
+    my @lines=split /\n/,$bytes;fail('"'"'Recovery journal exceeds record limit'"'"') if @lines&gt;4096;
+    my (%slots,$created,$complete,$published,$op);my $id=identity($dir);
+    for my $line (@lines){
+        my $row=eval{$json-&gt;decode($line)};fail('"'"'Malformed recovery journal'"'"') unless ref($row)eq'"'"'HASH'"'"' &amp;&amp; !defined($complete);
+        my $event=$row-&gt;{event}//'"'"''"'"';
+        if(!$created){fail('"'"'Recovery journal identity does not match container'"'"') unless $event eq '"'"'created'"'"' &amp;&amp; same($id,$row-&gt;{container_identity});$created=1;next;}
+        if($event eq'"'"'intent'"'"'){
+            my $slot=$row-&gt;{slot}//'"'"''"'"';fail('"'"'Malformed recovery intent'"'"') unless $slot=~/\Aobject-[1-9][0-9]*\z/ &amp;&amp; !exists($slots{$slot}) &amp;&amp; ref($row-&gt;{identity})eq'"'"'HASH'"'"' &amp;&amp; defined($row-&gt;{path}) &amp;&amp; !ref($row-&gt;{path});
+            $slots{$slot}={state=&gt;'"'"'intent'"'"',identity=&gt;$row-&gt;{identity}};
+        }elsif($event eq'"'"'captured'"'"'){
+            my $slot=$row-&gt;{slot}//'"'"''"'"';fail('"'"'Unmatched recovery capture'"'"') unless ($slots{$slot}{state}//'"'"''"'"')eq'"'"'intent'"'"' &amp;&amp; same($slots{$slot}{identity},$row-&gt;{identity});$slots{$slot}{state}='"'"'captured'"'"';
+        }elsif($event eq'"'"'deleted'"'"'){
+            my $slot=$row-&gt;{slot}//'"'"''"'"';fail('"'"'Unmatched recovery deletion'"'"') unless ($slots{$slot}{state}//'"'"''"'"')eq'"'"'captured'"'"';$slots{$slot}{state}='"'"'deleted'"'"';
+        }elsif($event eq'"'"'published'"'"'){
+            fail('"'"'Unmatched recovery publication'"'"') unless !$published &amp;&amp; keys(%slots)==1 &amp;&amp; ($slots{'"'"'object-1'"'"'}{state}//'"'"''"'"')eq'"'"'captured'"'"' &amp;&amp; same($slots{'"'"'object-1'"'"'}{identity},$row-&gt;{identity});$published=1;$slots{'"'"'object-1'"'"'}{state}='"'"'published'"'"';
+        }elsif($event eq'"'"'complete'"'"'){
+            $op=$row-&gt;{op}//'"'"''"'"';fail('"'"'Incomplete or inconsistent recovery operation'"'"') unless keys(%slots)&gt;0 &amp;&amp; (($op eq'"'"'delete'"'"' &amp;&amp; !$published &amp;&amp; !grep{$_-&gt;{state}ne'"'"'deleted'"'"'}values%slots) || (($op eq'"'"'move'"'"'||$op eq'"'"'claim'"'"') &amp;&amp; $published &amp;&amp; keys(%slots)==1));$complete=1;
+        }else{fail('"'"'Unfinished, retained or unsupported recovery journal; cleanup blocked'"'"');}
+    }
+    fail('"'"'Recovery operation is not complete'"'"') unless $complete;
+    @names=entries($dir);fail('"'"'Recovery contents changed'"'"') unless @names==1 &amp;&amp; $names[0]eq'"'"'journal.jsonl'"'"';
+    return {identity=&gt;$id,journal_identity=&gt;identity($file),journal_sha256=&gt;Digest::SHA::sha256_hex($bytes),journal_base64=&gt;MIME::Base64::encode_base64($bytes,'"'"''"'"'),operation=&gt;$op,records=&gt;scalar(@lines)};
+}
+sub cleanup_anchor {
+    my ($policy)=@_;my $name='"'"'.zfsm-maintenance'"'"';my $p=raw($name);my $created;
+    if(!lstat(anchor($root).'"'"'/'"'"'.$name)){
+        fail('"'"'Unable to create cleanup maintenance area'"'"') if syscall($nr{mkdirat},fileno($root),$p,0700)!=0;
+        $created=creation_handle($policy,$name);
+    }
+    my $dir=openat($root,$name,O_RDONLY|O_DIRECTORY,0);my @s=stat($dir);
+    fail('"'"'Cleanup maintenance area creation identity changed'"'"') if defined($created) &amp;&amp; file_handle($dir)ne$created;
+    fail('"'"'Cleanup maintenance area is not trusted'"'"') unless $s[4]==0 &amp;&amp; mount_id($dir)eq$policy-&gt;{mount_id} &amp;&amp; (defined($created)?(($s[2]&amp;0777)==0700 &amp;&amp; !($s[2]&amp;05000)):($s[2]&amp;07777)==0700);
+    # Clear inherited setgid only on the authenticated newly created inode.
+    chmod(0700,$dir)==1 or fail('"'"'Unable to secure cleanup maintenance area'"'"') if defined($created);
+    $dir-&gt;sync &amp;&amp; $root-&gt;sync or fail('"'"'Unable to flush maintenance area'"'"');return $dir;
+}
+sub cleanup_main {
+    my ($args)=@_;my $selected=$args-&gt;{path}//'"'"''"'"';
+    fail('"'"'Only a top-level mutation recovery container can be cleaned'"'"') unless !ref($selected) &amp;&amp; $selected=~/\A\.zfsm-mutation-[a-f0-9]{48}\z/;
+    $root_path=$args-&gt;{root};$root=request_root($args);full_root($root);
+    my $source=openat($root,$selected,O_RDONLY|O_DIRECTORY,0);fail('"'"'Recovery container identity changed'"'"') unless same(identity($source),$args-&gt;{identity});
+    my $review=cleanup_inspect($source);
+    if($args-&gt;{op}eq'"'"'cleanup-inspect'"'"'){emit({ok=&gt;JSON::PP::true,op=&gt;$args-&gt;{op},%$review});return;}
+    fail('"'"'Fresh recovery journal digest is required'"'"') unless defined($args-&gt;{journal_sha256}) &amp;&amp; !ref($args-&gt;{journal_sha256}) &amp;&amp; $args-&gt;{journal_sha256}=~/\A[a-f0-9]{64}\z/ &amp;&amp; $args-&gt;{journal_sha256}eq$review-&gt;{journal_sha256};
+    my $policy=prepare_boundary($root);my $area=cleanup_anchor($policy);
+    sysopen(my $random,'"'"'/dev/urandom'"'"',O_RDONLY) or fail('"'"'Unable to create cleanup identity'"'"');read($random,my $bytes,24)==24 or fail('"'"'Unable to read cleanup identity'"'"');close($random);
+    my $slot='"'"'cleanup-'"'"'.unpack('"'"'H*'"'"',$bytes);$container=$area;$container_name='"'"'.zfsm-maintenance'"'"';
+    fail('"'"'Recovery container changed before capture'"'"') unless renamed($root,$selected,$area,$slot);
+    $root-&gt;sync &amp;&amp; $area-&gt;sync or fail('"'"'Unable to flush recovery capture'"'"');
+    $source_location={requested=&gt;$selected,location=&gt;(readlink(anchor($area))//'"'"'unavailable'"'"').'"'"'/'"'"'.$slot};
+    my $captured=openat($area,$slot,O_RDONLY|O_DIRECTORY,0);
+    if(!same(identity($captured),$review-&gt;{identity})){
+        my $restored=renamed($area,$slot,$root,$selected);$area-&gt;sync;$root-&gt;sync;
+        fail($restored?'"'"'Recovery identity changed; substituted directory restored'"'"':'"'"'Recovery identity changed; substituted directory retained in maintenance area'"'"');
+    }
+    my $fresh=eval{cleanup_inspect($captured)};
+    if(!$fresh || $fresh-&gt;{journal_sha256}ne$review-&gt;{journal_sha256} || !same($fresh-&gt;{journal_identity},$review-&gt;{journal_identity})){
+        my $restored=renamed($area,$slot,$root,$selected);$area-&gt;sync;$root-&gt;sync;
+        fail($restored?'"'"'Recovery contents changed; container restored'"'"':'"'"'Recovery contents changed; container retained in maintenance area'"'"');
+    }
+    # The selected inode is now beneath a pinned root0700 parent. A writer of
+    # the public dataset root cannot replace the two names used for unlinkat.
+    my $journal_name=raw('"'"'journal.jsonl'"'"');fail('"'"'Unable to remove archived journal; inspect maintenance area'"'"') if syscall($nr{unlinkat},fileno($captured),$journal_name,0)!=0;
+    $captured-&gt;sync or fail('"'"'Unable to flush journal removal'"'"');my $name=raw($slot);
+    fail('"'"'Unable to remove empty recovery container; inspect maintenance area'"'"') if syscall($nr{unlinkat},fileno($area),$name,512)!=0;
+    $area-&gt;sync or fail('"'"'Unable to flush cleanup'"'"');$container=undef;
+    emit({ok=&gt;JSON::PP::true,op=&gt;'"'"'cleanup'"'"',removed_identity=&gt;$review-&gt;{identity},journal_sha256=&gt;$review-&gt;{journal_sha256},maintenance=&gt;'"'"'.zfsm-maintenance'"'"'});
+}
+
+sub main {
+    my @u=uname(); my %abi=(x86_64=&gt;[437,258,316,263,300,301,303,138],aarch64=&gt;[437,34,276,35,262,263,264,44]);
+    fail('"'"'Safe directory mutations require Linux x86_64 or aarch64'"'"') unless $^O eq '"'"'linux'"'"' &amp;&amp; $abi{$u[4]};
+    @nr{qw(openat2 mkdirat renameat2 unlinkat fanotify_init fanotify_mark name_to_handle_at fstatfs)}=@{$abi{$u[4]}};
+    fail('"'"'Safe directory mutations require the privileged local worker'"'"') unless $&gt;==0;
+    fail('"'"'Unexpected command arguments'"'"') if @ARGV;
+    umask(0077); binmode(STDIN);binmode(STDOUT); $|=1;
+    my $raw='"'"''"'"'; while(read(STDIN,my $chunk,65536)) { $raw.=$chunk;fail('"'"'Request too large'"'"') if length($raw)&gt;1048576; }
+    my $args=$json-&gt;decode($raw); fail('"'"'Invalid request'"'"') unless ref($args) eq '"'"'HASH'"'"';
+    my $op=$args-&gt;{op}//'"'"''"'"'; if ($op eq '"'"'probe'"'"') { probe($args);return; }
+    if($op eq '"'"'cleanup-inspect'"'"'||$op eq '"'"'cleanup'"'"'){cleanup_main($args);return;}
+    fail('"'"'Unknown directory operation'"'"') unless $op eq '"'"'move'"'"'||$op eq '"'"'claim'"'"'||$op eq '"'"'delete'"'"';
+    my $selected=path($args-&gt;{path}); my $destination;
+    $destination=path($args-&gt;{destination}) if $op ne '"'"'delete'"'"';
+    fail('"'"'Destination cannot be inside selected directory'"'"') if defined($destination)&amp;&amp;($destination eq $selected||index($destination,$selected.'"'"'/'"'"')==0);
+    $root_path=$args-&gt;{root}; $root=request_root($args); $boundary=prepare_boundary($root);
+    my ($from,$name)=parent($selected); my $source=openat($from,$name,O_RDONLY|O_DIRECTORY,0);
+    fail('"'"'Selected directory identity changed'"'"') unless same(identity($source),$args-&gt;{identity});
+    my ($to,$target); if ($op ne '"'"'delete'"'"') {
+        ($to,$target)=parent($destination);
+        fail('"'"'Destination already exists'"'"') if lstat(anchor($to).'"'"'/'"'"'.raw($target));
+    }
+    emit({phase=&gt;'"'"'scanning'"'"'}) if $op eq '"'"'delete'"'"';
+    my %manifest; inspect_tree($source,'"'"''"'"',$op eq '"'"'delete'"'"'?\%manifest:undef,$op eq '"'"'delete'"'"'?($args-&gt;{recursive}?1:0):1);
+    $delete_total=1+scalar(keys %manifest) if $op eq '"'"'delete'"'"';
+    container();
+    fail('"'"'Selected directory parent changed; reopen the directory'"'"') unless canonical_parent($selected,$from);
+    my ($claimed,$slot)=capture($from,$name,$args-&gt;{identity},$selected);
+    my $source_canonical=eval { canonical_parent($selected,$from) };
+    fail('"'"'Selected directory parent moved during claim; reviewed directory retained in recovery container'"'"') unless $source_canonical;
+    if ($op ne '"'"'delete'"'"') {
+        my $destination_canonical=eval { canonical_parent($destination,$to) };
+        if (!$destination_canonical) {
+            my $restored=renamed($container,$slot,$from,$name);
+            $container-&gt;sync &amp;&amp; $from-&gt;sync or fail('"'"'Unable to flush move rollback; inspect recovery journal'"'"');
+            record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$selected});
+            fail($restored?'"'"'Destination parent changed; original restored'"'"':'"'"'Destination parent changed; reviewed directory retained in recovery container'"'"');
+        }
+        if (!renamed($container,$slot,$to,$target)) {
+            my $restored=renamed($container,$slot,$from,$name);
+            record({event=&gt;$restored?'"'"'rolled-back'"'"':'"'"'retained'"'"',slot=&gt;$slot,path=&gt;$selected});
+            fail($restored?'"'"'Move destination changed or left dataset; original restored'"'"':'"'"'Move refused; selected directory retained in recovery container'"'"');
+        }
+        $publication={requested=&gt;$destination,handle=&gt;$claimed};
+        $container-&gt;sync &amp;&amp; $to-&gt;sync or fail('"'"'Unable to flush move; inspect destination and recovery journal'"'"');
+        my $actual=readlink(anchor($claimed));
+        record({event=&gt;'"'"'published'"'"',destination=&gt;$destination,location=&gt;defined($actual)?$actual:'"'"'unavailable'"'"',identity=&gt;identity($claimed)});
+        my $canonical=eval {
+            my $current=openat($root,$destination,O_PATH_LINUX|O_NOFOLLOW,0);
+            canonical_parent($destination,$to) &amp;&amp; same(identity($current),identity($claimed));
+        };
+        fail('"'"'Destination moved during publication; reviewed directory retained at its reported actual location'"'"') unless $canonical;
+    } else {
+        # Each recursion root is already captured under the authenticated
+        # root0700 parent. Parent DAC prevents ordinary writers moving it out,
+        # including through old FDs. Uncaptured preflight handles are not used.
+        remove_tree($claimed,$slot,'"'"''"'"',\%manifest);
+        $container-&gt;sync or fail('"'"'Unable to flush deletion'"'"');
+    }
+    record({event=&gt;'"'"'complete'"'"',op=&gt;$op});
+    emit({ok=&gt;JSON::PP::true,op=&gt;$op,recovery=&gt;recovery(),($op eq '"'"'delete'"'"'?(removed=&gt;$delete_removed,total=&gt;$delete_total):())});
+}
+unless (caller) {
+    eval { main();1 } or do {my $error=$@||'"'"'Directory mutation failed'"'"';$error=~s/\s+$//;print STDERR $json-&gt;encode({error=&gt;$error,recovery=&gt;recovery()})."\n";exit 1;};
+}
+1;
+' &lt;&lt;&lt; '{"op":"probe"}'; then
+  echo 'ZFS Director directory prerequisites unavailable; installed code and worker unchanged.' &gt;&amp;2
+  exit 1
+fi
+stop_runtime 'package installation in progress'
+if [[ -f "$live/scripts/zfsm-worker.php" ]]; then /usr/bin/php "$live/scripts/zfsm-worker.php" --stop; fi
+exec 9&gt;&gt;/var/lock/zfs.master.ui.lock
+flock -n 9 || { echo 'ZFS Director: an operation is active; wait for it to finish and retry installation.'; exit 1; }
+mkdir -p /boot/config/plugins/zfs.master.ui/protection
+exec 7&gt;&gt;/boot/config/plugins/zfs.master.ui/protection/config.lock
+exec 6&gt;&gt;/boot/config/plugins/zfs.master.ui/protection/execution.lock
+flock -n 7 &amp;&amp; flock -n 6 || { echo 'ZFS Director: protection configuration or execution is busy; retry after it finishes.'; exit 1; }
+# Recheck under the mutation lock: settings may have changed during preflight.
+preflight
+mkdir -m 0700 "$stage"
+tar -xzf "$archive" -C "$stage"
+(cd "$stage/zfs.master.ui"; sha256sum -c SHA256SUMS)
+while IFS= read -r -d '' file; do /usr/bin/php -l "$file" &gt;/dev/null; done &lt; &lt;(find "$stage/zfs.master.ui" -type f \( -name '*.php' -o -name '*.page' \) -print0)
+/usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl"
+find "$stage/zfs.master.ui" -type d -exec chmod 0755 {} +
+rollback_install() {
+  local result=$?
+  if [[ "$result" != 0 ]]; then
+    if ! legacy_cleanup rollback; then echo "ZFS Director: automatic rollback needs inspection: $legacy_backup"; return; fi
+    if [[ -n "$old_receipt" ]]; then printf '%s\n' "$old_receipt" &gt; "$installed"; else rm -f -- "$installed"; fi
+    if [[ -d "$live" ]]; then mv -T "$live" "$stage.failed"; fi
+    if [[ -d "$previous" ]]; then mv -T "$previous" "$live"; fi
+    echo 'ZFS Director: previous code and registrations restored; state and recovery retained.'
+  fi
+}
+trap rollback_install EXIT
+if [[ -d "$live" ]]; then mv -T "$live" "$previous"; fi
+mv -T "$stage/zfs.master.ui" "$live"
+rmdir "$stage"
+legacy_cleanup apply
+# Automatic installation receipt distinguishes boot from an unrelated upgrade.
+if [[ "$hold_recovery" == 0 ]]; then
+  receipt=$(mktemp "$installed.XXXXXX")
+  printf '%s\n' '4de34ae7ee8824af4b59f9676384ce5ae1db028b826f40c3998164210f279018' &gt; "$receipt"
+  mv -T -- "$receipt" "$installed"
+fi
+# Startup must follow Plugin Manager registration, not precede it.
+hook=/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director
+[[ ! -L "$hook" &amp;&amp; ( ! -e "$hook" || -f "$hook" ) ]]
+mkdir -p "$(dirname "$hook")"
+cp "$live/scripts/zfsm-plugin-hook" "$hook"
+chmod 0755 "$hook"
+/usr/bin/php -r '
+  $path="/var/tmp/zfs.master.ui/jobs/install-pending.json";
+  if(is_link($path)||(file_exists($path)&amp;&amp;!is_file($path)))exit(1);
+  $json=json_encode(["registration"=&gt;$argv[1],"sha256"=&gt;$argv[2],"hold_recovery"=&gt;$argv[3]==="1"],JSON_THROW_ON_ERROR);
+  $temporary=tempnam(dirname($path),".install-");
+  if($temporary===false||file_put_contents($temporary,$json)!==strlen($json)||!rename($temporary,$path))exit(1);
+' -- "$registration" '4de34ae7ee8824af4b59f9676384ce5ae1db028b826f40c3998164210f279018' "$hold_recovery"
+# No child service inherits the installer's operation/protection locks.
+flock -u 6
+flock -u 7
+exec 6&gt;&amp;- 7&gt;&amp;-
+flock -u 9
+exec 9&gt;&amp;-
+trap - EXIT
+echo 'ZFS Director 2026.10.22.1 code installed; Plugin Manager will verify registration and start background services next.'
+
+</INLINE>
+  </FILE>
+  <FILE Run="/bin/bash" Method="remove">
+    <INLINE>set -euo pipefail
+exec 2&gt;&amp;1
+umask 077
+live=/usr/local/emhttp/plugins/zfs.master.ui
+installed=/boot/config/plugins/zfs.master.ui/installed.sha256
+if [[ -L "$live" || ( -e "$live" &amp;&amp; ! -d "$live" ) || -L "$(dirname "$installed")" || -L "$installed" || ( -e "$installed" &amp;&amp; ! -f "$installed" ) || -L /var/lock/zfs.master.ui.lock || ( -e /var/lock/zfs.master.ui.lock &amp;&amp; ! -f /var/lock/zfs.master.ui.lock ) ]]; then
+  echo 'ZFS Director: unsafe uninstall path; no code or services changed.' &gt;&amp;2
+  exit 1
+fi
+for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
+  if [[ -L "$service_lock" || ( -e "$service_lock" &amp;&amp; ! -f "$service_lock" ) ]]; then
+    echo 'ZFS Director: untrusted service lock; no code or services changed.' &gt;&amp;2
+    exit 1
+  fi
+done
+/usr/bin/perl -e 'use strict;
+use warnings;
+use Fcntl qw(:DEFAULT :mode);
+my ($base, $owner, $message) = @ARGV;
+die "Invalid runtime guard arguments\n" unless defined($message) &amp;&amp; $owner =~ /\A[0-9]+\z/ &amp;&amp; $base =~ m{\A/} &amp;&amp; $base !~ m{(?:\A|/)\.\.?(/|\z)};
+sub enter_directory {
+    my ($name, $uid, $shared) = @_;
+    sysopen(my $directory, $name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW) or die "Runtime directory requires inspection\n";
+    my @stat = stat($directory);
+    die "Untrusted runtime directory\n" unless @stat &amp;&amp; S_ISDIR($stat[2]) &amp;&amp; $stat[4] == $uid
+        &amp;&amp; (!(($stat[2]) &amp; 0022) || ($shared &amp;&amp; ($stat[2] &amp; 01000)));
+    chdir($directory) or die "Unable to enter trusted runtime directory\n";
+}
+enter_directory('"'"'/'"'"', 0, 0);
+my @parents = grep { length } split m{/}, $base;
+for my $index (0 .. $#parents) {
+    enter_directory($parents[$index], $index == $#parents ? $owner : 0, 1);
+}
+for my $name ('"'"'zfs.master.ui'"'"', '"'"'jobs'"'"') {
+    if (!lstat($name)) { mkdir($name, 0700) or die "Unable to create runtime directory\n"; }
+    enter_directory($name, $owner, 0);
+}
+my @stop = lstat('"'"'stop'"'"');
+die "Stop marker requires inspection\n" if @stop &amp;&amp; (!S_ISREG($stop[2]) || $stop[4] != $owner || ($stop[2] &amp; 0022) || $stop[3] != 1);
+my $temporary = '"'"'.stop-'"'"' . $$ . '"'"'-'"'"' . int(rand(1000000000));
+sysopen(my $marker, $temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600) or die "Unable to create stop marker\n";
+eval {
+    print {$marker} $message, "\n" or die "Unable to write stop marker\n";
+    close($marker) or die "Unable to close stop marker\n";
+    rename($temporary, '"'"'stop'"'"') or die "Unable to publish stop marker\n";
+    1;
+} or do {
+    my $error = $@;
+    close($marker) if defined(fileno($marker));
+    unlink($temporary);
+    die $error;
+};
+' -- /var/tmp 0 'plugin removal in progress'
+if [[ -f "$live/scripts/zfsm-worker.php" ]]; then
+  if ! /usr/bin/php "$live/scripts/zfsm-worker.php" --stop; then
+    echo 'ZFS Director: background work has not stopped. Wait for the active operation, inspect Jobs, then retry removal. Code and recovery data retained.' &gt;&amp;2
+    exit 1
+  fi
+fi
+exec 9&gt;&gt;/var/lock/zfs.master.ui.lock
+if ! flock -n 9; then
+  echo 'ZFS Director: an operation is active. Retry removal when it finishes; no lock was deleted.' &gt;&amp;2
+  exit 1
+fi
+# Also cover an incomplete installation with no usable worker stop script.
+for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
+  if [[ -L "$service_lock" || ( -e "$service_lock" &amp;&amp; ! -f "$service_lock" ) ]]; then
+    echo 'ZFS Director: untrusted service lock; code retained for inspection.' &gt;&amp;2
+    exit 1
+  fi
+  if [[ -f "$service_lock" ]]; then
+    exec 8&gt;&gt;"$service_lock"
+    if ! flock -n 8; then
+      echo 'ZFS Director: a background service is still running; retry removal after it stops. No process was killed.' &gt;&amp;2
+      exit 1
+    fi
+    exec 8&gt;&amp;-
+  fi
+done
+hook=/usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks/zfs-director
+if [[ ! -L /usr/local/emhttp/plugins/dynamix.plugin.manager &amp;&amp; ! -L /usr/local/emhttp/plugins/dynamix.plugin.manager/post-hooks &amp;&amp; -f "$live/scripts/zfsm-plugin-hook" &amp;&amp; -f "$hook" &amp;&amp; ! -L "$hook" ]] &amp;&amp; cmp -s "$live/scripts/zfsm-plugin-hook" "$hook"; then rm -- "$hook"; fi
+# Reinstallation is a new install, never an accepted-boot reconstruction.
+# Do not remove settings, journals, archives, recovery or external schedules.
+rm -f -- "$installed"
+rm -f -- /boot/config/plugins/zfs.master.ui/zfs-director.plg /boot/config/plugins/zfs.master.ui/zfs.master.ui.plg /boot/config/plugins/zfs.master.ui/zfs.master.ui.local.plg
+rm -rf -- "$live"
+echo 'ZFS Director removed. Settings, Jobs and recovery data retained; external Sanoid/Syncoid configuration unchanged.'
+</INLINE>
+  </FILE>
+</PLUGIN>
