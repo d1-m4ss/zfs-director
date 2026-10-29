@@ -102,7 +102,7 @@ Normal reboot was checked only in the isolated VM. These results do not establis
 
 ## Documentation screenshots
 
-The preview uses the real frontend with invented data from `docs/preview/data.mjs`; it does not read a storage server. Screenshot capture requires a QEMU/KVM Linux VM.
+The preview uses the real frontend with invented data from `docs/preview/data.mjs`; it does not read a storage server. Screenshot capture requires a QEMU/KVM Linux VM or an OrbStack Linux machine/container (OrbStack kernel inside its VM).
 
 ```sh
 npm run demo

@@ -109,6 +109,40 @@ function zfsmPendingJobs() {
     usort($jobs,function($a,$b){return strcmp($a['id'],$b['id']);});
     return $jobs;
 }
+// Unresolved conversions may hold the only copy in an unpublished target or in
+// the retained original. Neither may be removed while the other is not proven.
+function zfsmUnresolvedConversions() {
+    $jobs=[];
+    foreach (glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[] as $file) {
+        try { $job=zfsmReadJob(basename($file,'.json')); } catch (Throwable $error) { continue; }
+        if (($job['schema']??null)!==1||($job['state']??'')==='completed'||($job['stage']??'')==='planned'||!is_string($job['dataset']??null)||!is_string($job['source']??null)) continue;
+        $r=runProcess('zfs',['get','-H','-o','property,value','mountpoint,canmount,zfs.master.ui:conversion-job',$job['dataset']]);
+        if (($r['code']??1)!==0) continue;
+        $state=[];foreach (explode("\n",trim($r['output']??'')) as $line) {$parts=explode("\t",$line);if (count($parts)===2) $state[$parts[0]]=$parts[1];}
+        if (($state['zfs.master.ui:conversion-job']??null)!==$job['id']) continue;
+        $job['target_published']=($state['mountpoint']??null)===$job['source']&&($state['canmount']??null)==='on';
+        $originals=array_filter([$job['source'],$job['recovery']??null],'is_string');
+        $job['original_present']=false;foreach ($originals as $path) {clearstatcache(true,$path);if (is_dir($path)&&!is_link($path)&&!($job['target_published']&&$path===$job['source'])) $job['original_present']=true;}
+        $jobs[]=$job;
+    }
+    return $jobs;
+}
+function zfsmPathOverlaps($a,$b) { return $a===$b||str_starts_with($a,rtrim($b,'/').'/')||str_starts_with($b,rtrim($a,'/').'/'); }
+function zfsmConversionMutationGuard($command,$fields) {
+    if (!in_array($command,['deletedirectory','movedirectory','convertdirectory','destroydataset'],true)) return;
+    $jobs=zfsmUnresolvedConversions();if (!$jobs) return;
+    if ($command==='destroydataset') {
+        $name=$fields['zdataset']??'';
+        foreach ($jobs as $job) if (($name===$job['dataset']||str_starts_with($job['dataset'],$name.'/'))&&!$job['original_present']) throw new RuntimeException('Unresolved conversion job '.$job['id'].' keeps the only copy in '.$job['dataset'].'; publish or inspect it before deleting this dataset.');
+        return;
+    }
+    $path=$fields['directory']??null;if (!is_string($path)) return;
+    $resolved=zfsmResolveDirectory($path,true);if ($resolved) $path=$resolved['path'];
+    foreach ($jobs as $job) {
+        if ($job['target_published']) continue;
+        foreach (array_filter([$job['source'],$job['recovery']??null],'is_string') as $original) if (zfsmPathOverlaps($path,$original)) throw new RuntimeException('Unresolved conversion job '.$job['id'].' has not published '.$job['dataset'].'; this directory is its retained original. Publish or inspect the conversion first.');
+    }
+}
 // A rejected request is evidence only, never a resumable worker journal.
 function zfsmRecordRejectedConversion($source,$failed,$audit_id) {
     if(!is_string($source)||strlen($source)>4096||!str_starts_with($source,'/mnt/')||preg_match('/[\x00-\x1f\x7f]/',$source)||!preg_match('/^[a-f0-9]{32}$/D',$audit_id))return null;
@@ -180,6 +214,7 @@ function zfsmJobPresentation($job,$file,$worker_running,$problem=null) {
     $job['archive_status']=$archive?(!empty($job['archive_removed'])?'removed':(($job['state']??'')==='completed'?(($job['expires']??0)>time()?'ready':'expired'):'unavailable')):null;
     $job['actions']=['cancel'=>!$problem&&$active,'resume'=>!$problem&&$job['type']==='conversion'&&in_array($job['state'],['queued','running','failed','cancelled','recovery_required'],true)&&!$worker_running,'download'=>!$problem&&$archive&&$job['archive_status']==='ready','inspect'=>true];
     if ($job['type']==='conversion'&&!zfsmConfinedCanResume($job)) $job['actions']['resume']=false;
+    if ($job['type']==='conversion') {clearstatcache(true,(string)($job['source']??''));$job['actions']['publish']=!$problem&&($job['method']??null)==='confined-v1'&&$job['state']==='recovery_required'&&preg_match('/^[a-f0-9]{64}$/D',$job['copy_manifest_sha256']??'')===1&&is_string($job['source']??null)&&!file_exists($job['source'])&&!is_link($job['source']);}
     $job['retained_data']=['source'=>$job['source']??null,'dataset'=>$job['dataset']??null,'recovery'=>$job['recovery']??null,'staging'=>$job['staging']??null,'hold_owned'=>!empty($job['hold_owned']),'message'=>$problem?'Retained data cannot be verified from this journal. Inspect the recorded paths and filesystem before manual recovery.':($job['type']==='conversion'?'The original source and any partial target are retained. Paths are journal records; verify actual data before manual recovery.':($archive?'ZIP staging and any snapshot protection remain owned by this job until automatic cleanup succeeds.':'Copied files and replaced originals are retained for inspection. Create a fresh restore preview after verifying actual files.'))];
     if(!$problem&&$archive&&!empty($job['archive_removed']))$job['retained_data']['message']=($job['cleanup_resolution']??null)==='owner_absent'?'The original dataset and snapshot GUIDs are absent from the imported pool, and the recorded ZIP path is absent. No files were deleted; stale ZIP cleanup bookkeeping was reconciled.':'The temporary ZIP archive has been removed. The original operation result and history are preserved.';
     if(!$problem&&!empty($job['cleanup_error'])){$cleanup_message='Cleanup pending: '.zfsmExplorerShortText($job['cleanup_error'],1500);$job['retained_data']['message'].=' '.$cleanup_message;$job['error']=(!empty($job['error'])?$job['error'].' ':'').$cleanup_message;}

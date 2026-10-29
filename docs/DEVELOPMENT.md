@@ -8,7 +8,7 @@ The package builder supports **local evaluation and an explicitly configured pub
 
 ```sh
 python3 tools/build-installer.py --output dist/local
-RELEASE_BASE_URL='https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1'
+RELEASE_BASE_URL='https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.29.1'
 python3 tools/build-installer.py --output dist/release --release-base-url "$RELEASE_BASE_URL" \
   --plugin-url-base https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin
 ```
@@ -47,6 +47,6 @@ The preview uses the real frontend with a read-only synthetic response adapter. 
 
 ## Manual-install ZIP
 
-Every build also produces `ZFS-Director-2026.10.22.1-Unraid.zip`. It contains the matching PLG/TGZ pair, two short installation guides, the full installation guide and an internal SHA-256 manifest. No source tree, settings, Jobs or datasets are included. Release mode places `zfs-director.plg` in `zfs-director` and includes the compatibility definitions under `legacy-public` and `legacy-local` for existing local registrations; all use the common TGZ. Local mode contains only `zfs.master.ui.local.plg`. Never mix assets from different builds.
+Every build also produces `ZFS-Director-2026.10.29.1-Unraid.zip`. It contains the matching PLG/TGZ pair, two short installation guides, the full installation guide and an internal SHA-256 manifest. No source tree, settings, Jobs or datasets are included. Release mode places `zfs-director.plg` in `zfs-director` and includes the compatibility definitions under `legacy-public` and `legacy-local` for existing local registrations; all use the common TGZ. Local mode contains only `zfs.master.ui.local.plg`. Never mix assets from different builds.
 
 ZIP member names, timestamps and modes are deterministic. Publish the ZIP and external `SHA256SUMS` together with the matching public PLG, compatibility PLG and TGZ release assets. The ZIP is the primary download for manual installation; GitHub's source-code archives are for development.

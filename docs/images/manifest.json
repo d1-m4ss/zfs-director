@@ -7,24 +7,24 @@
     "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
     "src/frontend/ZFSMExplorer.js": "2c1e952d5a74b6e26269aa2962df7ef0d1a40db3bcd52d33a165140f935a4938",
-    "src/frontend/ZFSMForms.js": "b8a2c57e05cfb1c1c8a2d64abdde36a59a656383c0d9e7bc1f2f91e26761db08",
+    "src/frontend/ZFSMForms.js": "35d07786e2f6ace8a26f723707232df08daa22b3f2715af18772e1ceb4822550",
     "src/frontend/ZFSMHistory.js": "6248365512db7547ed7d507aa46114ba3bdb8f652aff99af706864e15b6db162",
     "src/frontend/ZFSMInventory.js": "ad9571d0c9932e790607ccf5a689e5674ac5e728a6648de24a41c4341c49855b",
-    "src/frontend/ZFSMOverview.js": "e11b90ad133291d0211f9b983439ea1b0875226bbe96da7e4ee830d0070cfe05",
+    "src/frontend/ZFSMOverview.js": "6523034f0f352946ac2cdc0eee76885a12566be7472d0cf8071f04756055785a",
     "src/frontend/ZFSMPoolView.js": "2a7b0ff85050a1acdc4f55169da1e9cb5811717b2cad4ab27bc671af07c74df9",
     "src/frontend/ZFSMProtection.css": "40fd422a946662552a733d2b3662673fd501c908ba24a763f574af6b331fdff6",
     "src/frontend/ZFSMProtection.js": "c7a95a32d3627772a9d869f23de052bdc35de4419a9a6799346cc5f46073aad1",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "7274c85ed93261c8bd45ebefb05a04722506121ee0b1912c1582bd49a6e9a160",
-    "src/frontend/ZFSMWorkspace.js": "ee2cd68583969f5bb9298f48323cfcfe7829f464d4fefcc86311c8ad54e6bfc7",
+    "src/frontend/ZFSMWorkspace.js": "f0359eaa315d4a36cd7a1a678b66bb4a4e090d8dc111ccf560e94fec3ea08a7a",
     "docs/preview/data.mjs": "55c9cf4249070f972b46278784db47e18510992994b2a245ec5ffbbf37990ebf",
     "docs/preview/server.mjs": "be2a0eb85b84b74752d03a378a05aea1648986427335af56184db2f69ba93623",
-    "docs/preview/capture.mjs": "2eb697d8c50f46647b0c71442d161b5daeeca6387559660d57b63da33a068d50"
+    "docs/preview/capture.mjs": "ae063ebdf68ddd94180e93e5fc7580d3cb8153bf8101fe09a9662dd7bf1a08f0"
   },
   "capture": {
     "platform": "linux",
     "architecture": "arm64",
-    "virtualization": "qemu",
+    "virtualization": "orbstack",
     "browser": "151.0.7922.34",
     "timezone": "UTC",
     "display_clock": "2026-01-03T12:00:00Z",
@@ -33,8 +33,8 @@
   "screenshots": [
     {
       "file": "overview.png",
-      "sha256": "3cf55d9804fca751b5b391f476362d700fdac027c39d9a023fbc28057e0778ff",
-      "bytes": 71972,
+      "sha256": "8ef873a7ee0cbb086fa684f0bab105b46e5322ec9c796ac3467c4410f6a92bd0",
+      "bytes": 67285,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -42,8 +42,8 @@
     },
     {
       "file": "datasets.png",
-      "sha256": "3c027200356075816538da0a3495fbbad972a8a33224aa1db15da643e0531173",
-      "bytes": 202122,
+      "sha256": "1c237d0ef4463730dcc2e0b7a830a0e0d75fbb645c52bac5525b61e3a48398bb",
+      "bytes": 197284,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -51,8 +51,8 @@
     },
     {
       "file": "compact.png",
-      "sha256": "664e61e821298abc349d04b8952ffacf3618123f98c1701813f0c5e2ec7c9fed",
-      "bytes": 183877,
+      "sha256": "006e7f9d43ca0b6b986d05a0dd70bc568969fe2a39f84c3b76300f639f5135a6",
+      "bytes": 179716,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -60,8 +60,8 @@
     },
     {
       "file": "snapshots.png",
-      "sha256": "679309baa57966b4cc249e2c527189cfbef7de2500ea9ad6770f3287216863fa",
-      "bytes": 159435,
+      "sha256": "5b9fd58ca501346e71b22f1a6505f9f7c5445b9a7eb234fcee2ba94f5b5bed86",
+      "bytes": 156803,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -69,8 +69,8 @@
     },
     {
       "file": "file-manager.png",
-      "sha256": "212919f58b7cad25f8e0a90392f405a583ae6f49d641580d11b5a8e9fa74178b",
-      "bytes": 116113,
+      "sha256": "8345c85ed4190fd516462a3f4762d5018d173669c88fa36f7121e00c0b86cc8e",
+      "bytes": 112117,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -78,8 +78,8 @@
     },
     {
       "file": "restore-review.png",
-      "sha256": "adcf3d22b7c42ed975a06bb32b06c4197c1e6ab2006a7c5af978c8e5e3ce2566",
-      "bytes": 117626,
+      "sha256": "cbe3adf20f18cb37f024a53a6f74cf3ccb9a0a0335e70a2f5d0e73bb4ef1c882",
+      "bytes": 113350,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -87,8 +87,8 @@
     },
     {
       "file": "actions.png",
-      "sha256": "3efc5186c779ca32cb3fff85a950ffe374e0e2912bb29ca4ca168dbb1d37132a",
-      "bytes": 110478,
+      "sha256": "e42db4f89919bedb5b816d83c6e6a66e991c2a0dddaea029301d87ccea170db0",
+      "bytes": 106886,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -96,8 +96,8 @@
     },
     {
       "file": "deletion-review.png",
-      "sha256": "79c8ffe828345561608254bac392a1dca376e23d7f2e16e8f5925f1e1d8a1003",
-      "bytes": 118053,
+      "sha256": "5f1aa7187fb46d0dc587034452dd3ea9c712e0f239eba2f96cfaf87876e86d4a",
+      "bytes": 114394,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -105,8 +105,8 @@
     },
     {
       "file": "policies.png",
-      "sha256": "b75222aee3b8b65c737743e40da4f422c36959e08606783da23fffc002e2104b",
-      "bytes": 159618,
+      "sha256": "d4c6ddafa9be0000f764cef123fae7ccf319fc7fab9205995a819720f2bf5770",
+      "bytes": 153342,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -114,8 +114,8 @@
     },
     {
       "file": "snapshot-policy.png",
-      "sha256": "558adfec8db10ec683a0ea98cdfe13fdacf2d3fb46b8693a53965cdcca30d6ea",
-      "bytes": 163848,
+      "sha256": "766ae71f5536cb950b08be10b2ec45ab9b6cb29af75f466e7d7232be6e512907",
+      "bytes": 155202,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -123,8 +123,8 @@
     },
     {
       "file": "replication.png",
-      "sha256": "aef0d9dc8439f222e22ba8d4f6d3ce0814e2c633bc7ea361013b28567af6636e",
-      "bytes": 104777,
+      "sha256": "f2903cdc80af364f73e54285ce080ee25d3d62b96c53d219f889873eb2f02ac0",
+      "bytes": 99310,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -132,8 +132,8 @@
     },
     {
       "file": "replication-wizard.png",
-      "sha256": "87bbddb27c74382411da2ffa0c0a0372c471db5d7dbb033bcc435c0b1ac3aed2",
-      "bytes": 118757,
+      "sha256": "c7d8c6dab2bec128522bd2dcbb010f5fe3a0e74228ecf023b2b9c71926bdfab9",
+      "bytes": 109904,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -141,8 +141,8 @@
     },
     {
       "file": "jobs.png",
-      "sha256": "3a915eb3551449b698071addf2f55f5d677a80656244b27c45b06c8033459825",
-      "bytes": 117683,
+      "sha256": "73070fb148087932bb6dd530de8f8031d92c7d0c06de2b98ba76218927721472",
+      "bytes": 107309,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -150,8 +150,8 @@
     },
     {
       "file": "settings.png",
-      "sha256": "c3f8491fd10216ca3b3fba23c98e635eef6f0d3f8808f509dcb180a770f8de40",
-      "bytes": 93921,
+      "sha256": "266ac00b4b5b4d6585fbd475a2b1c30c9615df043c282ae094867d0ed4d36e86",
+      "bytes": 91119,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -159,8 +159,8 @@
     },
     {
       "file": "theme-gray.png",
-      "sha256": "a24366318bb500f35c638d80e82480e380d0b36bf69a94487453a9dd35c14aa0",
-      "bytes": 72273,
+      "sha256": "51bc085c09a5bed3e5a7a5c5a2d1f98354f67e154a887e02089237c57878b680",
+      "bytes": 67492,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -168,8 +168,8 @@
     },
     {
       "file": "theme-light.png",
-      "sha256": "286b143589dde8586b01d822fc415e4ac2b03aab3aea0357e813f8fa432fadde",
-      "bytes": 71819,
+      "sha256": "b1fa8e03082ba00d1441415f4b4165df123a8912688b64e3885b2bff18f3a967",
+      "bytes": 66640,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -177,8 +177,8 @@
     },
     {
       "file": "theme-azure.png",
-      "sha256": "1da2d4c55e7d9eeae80bee7bd341d23d197f526e429cbdda8554bda70f992434",
-      "bytes": 72396,
+      "sha256": "d5b94d0c15a086a05f35ae5c0c82f7d70eb65971123d4e4e856618fad6ce2d87",
+      "bytes": 67452,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -186,8 +186,8 @@
     },
     {
       "file": "mobile.png",
-      "sha256": "e4bda8418ffce20ba3c2eb5eee67daff03d13288ced4d1b266601e0f6d28a448",
-      "bytes": 40967,
+      "sha256": "2603d1e56188fa788e4c6a7f960a6518c8b8c28e3635b5e4824b6544707a6864",
+      "bytes": 40303,
       "viewport": {
         "width": 390,
         "height": 844

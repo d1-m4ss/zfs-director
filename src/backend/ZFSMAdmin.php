@@ -88,9 +88,9 @@ $mutation_lock = null;
 try {
 	$request_token = zfsmValidateRequest();
 	$command = zfsmPostString('cmd');
-	$destructive = array('destroydataset','destroysnapshot','rollbacksnapshot','deletedirectory','cleanupmutation','movedirectory','convertdirectory','resumeconversion','lockdataset','restoresnapshotfiles');
+	$destructive = array('destroydataset','destroysnapshot','rollbacksnapshot','deletedirectory','cleanupmutation','movedirectory','convertdirectory','resumeconversion','publishconversion','lockdataset','restoresnapshotfiles');
 	$readonly = array('inventory','inventorysnapshots','pooldiagnostics','getdatasetproperties','previewdestroy','previewrollback','conversionjobs','auditlog','snapshotfiles','snapshotfileinfo','downloadsnapshotfile','previewrestore','downloadsnapshotarchive','validatesettings');
-	$administrative = array('refresh','createdataset','editdatasetproperty','adddirectortlisting','removedirectorylisting','renamedataset','destroydataset','lockdataset','unlockdataset','promotedataset','movedirectory','convertdirectory','deletedirectory','cleanupmutation','rollbacksnapshot','renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','destroysnapshot','snapshotdataset','cancelconversion','resumeconversion','saveconfig','restoresnapshotfiles','cancelrestore','archivesnapshotfiles','scrubpool','activityvisibility');
+	$administrative = array('refresh','createdataset','editdatasetproperty','adddirectortlisting','removedirectorylisting','renamedataset','destroydataset','lockdataset','unlockdataset','promotedataset','movedirectory','convertdirectory','deletedirectory','cleanupmutation','rollbacksnapshot','renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','destroysnapshot','snapshotdataset','cancelconversion','resumeconversion','publishconversion','saveconfig','restoresnapshotfiles','cancelrestore','archivesnapshotfiles','scrubpool','activityvisibility');
 	$readonly=array_merge($readonly,['protectiondetect','protectiondata','protectionpolicypreview','protectionreplicationpreview','protectionrunpreview','protectioncontrolpreview','protectiontest']);
 	$administrative=array_merge($administrative,['protectionsettings','protectionpolicysave','protectionreplicationsave','protectionrun','protectioncontrol','protectioncancel']);
 	$readonly[]='protectionimportpreview';$administrative[]='protectionimport';
@@ -237,6 +237,9 @@ try {
 			$warning=null;
 			try { zfsmStartWorker(); } catch (Throwable $error) { $warning='Worker did not start; job remains queued'; }
 			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Resume queued'],'failed'=>[],'job'=>$job,'worker_warning'=>$warning],'Resume','','');
+			break;
+		case 'publishconversion':
+			zfsmReturnAnswer(['succeeded'=>[zfsmPublishConversion(zfsmPostString('job_id'))['source']=>'Verified conversion copy published at its original path'],'failed'=>[]],'Publish conversion','','',true);
 			break;
 		case 'saveconfig':
 			zfsmReturnAnswer(zfsmSaveSettings(is_array($_POST['settings']??null)?$_POST['settings']:[]),'Settings','','',true);

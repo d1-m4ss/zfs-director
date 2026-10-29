@@ -5,6 +5,6 @@
     a Snapshot File Manager, Sanoid policies, Syncoid replication and operation history.
     Documentation and releases are available in the repository; use GitHub Issues for support.
   </Profile>
-  <Icon>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/src/icons/zfs-director.png</Icon>
+  <Icon>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/src/icons/zfs-director.png</Icon>
   <WebPage>https://github.com/d1-m4ss/zfs-director</WebPage>
 </CommunityApplications>

@@ -1,6 +1,6 @@
 # Install ZFS Director in Unraid
 
-Version 2026.10.22.1 targets Unraid 7.3.3 / OpenZFS 2.4.4. No source build, developer tools, terminal activation or manual state-directory creation is required.
+Version 2026.10.29.1 targets Unraid 7.3.3 / OpenZFS 2.4.4. No source build, developer tools, terminal activation or manual state-directory creation is required.
 
 ## Install
 
@@ -22,7 +22,7 @@ Existing settings, Jobs, recovery files and schedules are retained. If the insta
 
 ## ZIP download
 
-The release also provides a [ready-made ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid.zip) and [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS), containing matching PLG/TGZ files and short English/Russian guides. The plugin URL above is the normal installation method.
+The release also provides a [ready-made ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.29.1/ZFS-Director-2026.10.29.1-Unraid.zip) and [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.29.1/SHA256SUMS), containing matching PLG/TGZ files and short English/Russian guides. The plugin URL above is the normal installation method.
 
 For local PLG selection, extract the ZIP and copy `zfs-director/zfs-director.plg` to the flash drive's existing `config/plugins` folder. Select that file in **Plugins → Install Plugin**. The public PLG downloads its matching TGZ itself. You do not need to create a separate plugin directory or unpack the TGZ into WebGUI.
 

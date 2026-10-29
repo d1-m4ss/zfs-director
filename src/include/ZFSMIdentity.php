@@ -30,6 +30,7 @@ function zfsmAttachDirectoryIdentities(&$tree) {
 function zfsmGuardMutationIdentity($command,$fields) {
     zfsmProtectionMutationGuard($command,$fields);
     zfsmDependencyMutationGuard($command,$fields);
+    zfsmConversionMutationGuard($command,$fields);
     unset($GLOBALS['zfsm_directory_reviewed']);
 	$datasetCommands=['editdatasetproperty','setquota','editacl','adddirectortlisting','removedirectorylisting','renamedataset','destroydataset','lockdataset','unlockdataset','promotedataset','snapshotdataset'];
 	$snapshotCommands=['renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','destroysnapshot','rollbacksnapshot'];

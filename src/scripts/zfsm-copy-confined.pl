@@ -115,6 +115,17 @@ sub inventory {
         }
     };$walk->($root,'');return (\%rows,$files);
 }
+# Names the first differing path and field only; values never leave the jail.
+sub mismatch {
+    my ($a,$b)=@_;
+    for my $p (sort keys %{{%$a,%$b}}) {
+        my $name=$p eq ''?'.':$p;$name=substr($name,0,256);$name=~s/[\x00-\x1f\x7f]/?/g;
+        return ": $name (only in original)" unless exists $b->{$p};
+        return ": $name (only in copy)" unless exists $a->{$p};
+        for my $f (sort keys %{{%{$a->{$p}},%{$b->{$p}}}}) {return ": $name ($f)" unless $json->encode([$a->{$p}{$f}]) eq $json->encode([$b->{$p}{$f}]);}
+    }
+    return '';
+}
 sub isolated {
     my ($args,$source,$target,$runtime,$runtime_fhs)=@_;
     my $source_tree=clone_tree($source);my $target_tree=clone_tree($target);my @runtime_trees=map {clone_tree($_)} @$runtime_fhs;
@@ -179,7 +190,7 @@ sub isolated {
     event({phase=>'verifying',percent=>100});
     my ($after)=inventory('/source');my ($copied)=inventory('/target');
     fail('Source changed during copy or verification') unless $json->encode($before) eq $json->encode($after);
-    fail('SHA-256, metadata, ACL, xattr, symlink or hardlink verification failed') unless $json->encode($before) eq $json->encode($copied);
+    fail('SHA-256, metadata, ACL, xattr, symlink or hardlink verification failed'.mismatch($before,$copied)) unless $json->encode($before) eq $json->encode($copied);
     return {ok=>JSON::PP::true,phase=>'completed',verified_files=>$files,manifest_sha256=>Digest::SHA::sha256_hex($json->encode($before)),confinement=>'private-mount-namespace-chroot'};
 }
 

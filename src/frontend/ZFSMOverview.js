@@ -15,6 +15,8 @@ function zfsmRenderDatasetOverview(host, options) {
     const snapshot=button('Take Snapshot',()=>options.onAction('snapshotdataset'),!options.fresh||!item.guid);snapshot.title=options.fresh?'Create a restore point for this dataset':'Refresh successfully before changing this dataset';
     actions.append(snapshot,button('Restore Files',()=>options.onTab('snapshots')),button('Dataset actions',()=>options.onTab('actions')));hero.append(labels,actions);host.append(hero);
     if(!options.fresh)host.append(text('p','Stale data — refresh successfully before changing objects.','zfsm-notice'));
+    const staging=String(item.mountpoint||properties.mountpoint||'').match(/^\/var\/tmp\/zfs\.master\.ui\/conversions\/([0-9]{8}-[0-9]{6}-[a-f0-9]{12})\//);
+    if(staging)host.append(text('p','Conversion not published — job '+staging[1]+'. This dataset is mounted only in a private staging path and is not visible at its directory. Open Jobs to publish or inspect it; do not delete the original directory.','zfsm-danger'));
 
     const details=card('Details','Dataset statistics');
     const source=name=>metadataLoaded&&typeof properties._sources?.[name]==='string'&&properties._sources[name].trim()!==''?properties._sources[name]:'Unknown';

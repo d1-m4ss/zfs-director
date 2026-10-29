@@ -8,7 +8,7 @@
 - **[Интеграция Sanoid](#политики-sanoid):** задайте время создания snapshots, хранение и безопасное удаление старых копий; просматривайте External и Managed policies.
 - **[Интеграция Syncoid](#репликация-syncoid):** настройте локальную или SSH-репликацию через Source → Destination → Schedule → Review; progress и проверенный результат доступны в Jobs.
 
-**[Скачать установочный ZIP для Unraid](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Установка и rollback](docs/INSTALLATION.md)
+**[Скачать установочный ZIP для Unraid](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.29.1/ZFS-Director-2026.10.29.1-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.29.1/SHA256SUMS) · [Установка и rollback](docs/INSTALLATION.md)
 
 **Версия 2026.10.22.1** проверена на физическом сервере Unraid 7.3.3 с OpenZFS 2.4.4 и в изолированной VM. Установка, обновления, ZFS-операции и GUI описаны в [результатах проверки](docs/TESTING.md#rc1-verification-2026-10-22).
 
@@ -45,7 +45,7 @@ https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.
 
 Новые версии появляются в **Plugins → Check for Updates** и в Community Applications. Ставили плагин по старому URL релиза (`…/releases/download/…/zfs-director.plg`)? Один раз переустановите его по URL выше с **Force Install**, чтобы проверка обновлений видела новые релизы.
 
-Также доступны [ZIP и контрольные суммы](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1). Подробнее — в [инструкции установки, обновления и rollback](docs/INSTALLATION.md).
+Также доступны [ZIP и контрольные суммы](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.29.1). Подробнее — в [инструкции установки, обновления и rollback](docs/INSTALLATION.md).
 
 ## Snapshot File Manager
 

@@ -44,7 +44,7 @@ class InstallerTests(unittest.TestCase):
     def removal_fixture(self, anchor):
         output = anchor / 'build'
         subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output),
-                        '--release-base-url', 'https://example.invalid/releases/2026.10.22.1'],
+                        '--release-base-url', 'https://example.invalid/releases/2026.10.29.1'],
                        cwd=ROOT, check=True, capture_output=True)
         (anchor / 'live/scripts').mkdir(parents=True)
         (anchor / 'live/scripts/zfsm-worker.php').write_text('synthetic worker boundary')
@@ -156,12 +156,12 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
             output = pathlib.Path(tmp) / 'build'
             subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output),
-                            '--release-base-url', 'https://example.invalid/releases/2026.10.22.1'],
+                            '--release-base-url', 'https://example.invalid/releases/2026.10.29.1'],
                            cwd=ROOT, check=True, capture_output=True)
             self.assertTrue((output / 'zfs-director.plg').is_file(), 'The public plugin URL must use ZFS Director branding')
-            with zipfile.ZipFile(output / 'ZFS-Director-2026.10.22.1-Unraid.zip') as bundle:
+            with zipfile.ZipFile(output / 'ZFS-Director-2026.10.29.1-Unraid.zip') as bundle:
                 guide = bundle.read('INSTALL.txt').decode()
-                self.assertIn('https://example.invalid/releases/2026.10.22.1/zfs-director.plg', guide)
+                self.assertIn('https://example.invalid/releases/2026.10.29.1/zfs-director.plg', guide)
                 self.assertNotIn('explicit acceptance', guide)
                 self.assertNotIn('Copy its TWO files', guide)
                 self.assertNotIn('/boot/config/plugins/zfs.master.ui/', guide)
@@ -229,17 +229,17 @@ class InstallerTests(unittest.TestCase):
                 output = pathlib.Path(folder) / 'build'
                 args = ['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output)]
                 if public:
-                    args += ['--release-base-url', 'https://example.invalid/releases/2026.10.22.1']
+                    args += ['--release-base-url', 'https://example.invalid/releases/2026.10.29.1']
                 subprocess.run(args, cwd=ROOT, check=True, capture_output=True)
                 plugin_name = 'zfs-director.plg' if public else 'zfs.master.ui.local.plg'
-                bundle = output / 'ZFS-Director-2026.10.22.1-Unraid.zip'
+                bundle = output / 'ZFS-Director-2026.10.29.1-Unraid.zip'
                 self.assertTrue(bundle.is_file(), 'Users need a ready manual-install ZIP')
                 with zipfile.ZipFile(bundle) as archive:
                     self.assertIsNone(archive.testzip())
                     names = set(archive.namelist())
                     expected = {'INSTALL.txt', 'INSTALL.ru.txt', 'INSTALLATION.md', 'SHA256SUMS',
                                 'zfs-director/' + plugin_name,
-                                'zfs-director/zfs-director-2026.10.22.1.tgz'}
+                                'zfs-director/zfs-director-2026.10.29.1.tgz'}
                     if public:
                         expected.update(['legacy-local/zfs.master.ui.local.plg', 'legacy-public/zfs.master.ui.plg'])
                     self.assertEqual(names, expected, 'Bundle must not contain source, settings or Jobs')
@@ -252,14 +252,14 @@ class InstallerTests(unittest.TestCase):
                         digest, name = line.split('  ', 1)
                         self.assertEqual(digest, hashlib.sha256(archive.read(name)).hexdigest())
                     self.assertEqual(len(archive.read('SHA256SUMS').splitlines()), len(expected) - 1)
-                    for name in (plugin_name, 'zfs-director-2026.10.22.1.tgz'):
+                    for name in (plugin_name, 'zfs-director-2026.10.29.1.tgz'):
                         self.assertEqual(archive.read('zfs-director/' + name), (output / name).read_bytes())
                     for name in ('INSTALL.txt', 'INSTALL.ru.txt'):
                         guide = archive.read(name).decode()
                         self.assertIn('Plugins', guide)
                         self.assertIn('Install Plugin', guide)
                         self.assertNotIn('manual activation is required', guide)
-                        if public: self.assertIn('https://example.invalid/releases/2026.10.22.1/zfs-director.plg', guide)
+                        if public: self.assertIn('https://example.invalid/releases/2026.10.29.1/zfs-director.plg', guide)
                         self.assertNotRegex(guide, r'(?im)^\s*(?:npm |npx |python3 |git clone)')
                     # Reproduce only the documented file handoff in a private stand.
                     # No installation code is executed and no host path is used.
@@ -283,7 +283,7 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
             root = pathlib.Path(folder)
             out = root / 'build'
-            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(out), '--release-base-url', 'https://example.invalid/releases/2026.10.22.1'], check=True, capture_output=True)
+            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(out), '--release-base-url', 'https://example.invalid/releases/2026.10.29.1'], check=True, capture_output=True)
             first = ET.parse(out / 'zfs-director.plg').findall('FILE')[0]
             self.assertNotIn('Name', first.attrib)
             gate = first.findtext('INLINE')
@@ -316,7 +316,7 @@ class InstallerTests(unittest.TestCase):
     def test_stable_plugin_url_base_drives_update_checks_but_not_package_pinning(self):
         # A tag-pinned pluginURL makes Plugin Manager poll the same release forever.
         builder = ROOT / 'tools/build-installer.py'
-        base = 'https://example.invalid/releases/2026.10.22.1'
+        base = 'https://example.invalid/releases/2026.10.29.1'
         stable = 'https://example.invalid/stable/main'
         with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
             out = pathlib.Path(tmp) / 'build'
@@ -325,7 +325,7 @@ class InstallerTests(unittest.TestCase):
             for name in ['zfs-director.plg', 'zfs.master.ui.plg', 'zfs.master.ui.local.plg']:
                 plugin = ET.parse(out / name).getroot()
                 self.assertEqual(plugin.attrib['pluginURL'], stable + '/' + name)
-                self.assertEqual(plugin.findtext('FILE[@Name]/URL'), base + '/zfs-director-2026.10.22.1.tgz')
+                self.assertEqual(plugin.findtext('FILE[@Name]/URL'), base + '/zfs-director-2026.10.29.1.tgz')
             result = subprocess.run(['python3', str(builder), '--output', str(pathlib.Path(tmp) / 'local'),
                                      '--plugin-url-base', stable], cwd=ROOT, capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
@@ -335,9 +335,9 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
             out = pathlib.Path(tmp) / 'build'
             subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(out),
-                            '--release-base-url', 'https://example.invalid/releases/2026.10.22.1'],
+                            '--release-base-url', 'https://example.invalid/releases/2026.10.29.1'],
                            cwd=ROOT, check=True, capture_output=True)
-            with zipfile.ZipFile(out / 'ZFS-Director-2026.10.22.1-Unraid.zip') as zipped:
+            with zipfile.ZipFile(out / 'ZFS-Director-2026.10.29.1-Unraid.zip') as zipped:
                 self.assertIn('legacy-local/zfs.master.ui.local.plg', zipped.namelist(), 'The public ZIP must provide an upgrade for existing .local registrations')
                 legacy = ET.fromstring(zipped.read('legacy-local/zfs.master.ui.local.plg'))
                 public = ET.fromstring(zipped.read('zfs-director/zfs-director.plg'))
@@ -427,7 +427,7 @@ class InstallerTests(unittest.TestCase):
         # A missing/wrong URL, an unpinned package or nondeterministic build
         # must fail before these artifacts are offered to a plugin manager.
         builder = ROOT / 'tools/build-installer.py'
-        base = 'https://downloads.example.invalid/zfs-director/2026.10.22.1'
+        base = 'https://downloads.example.invalid/zfs-director/2026.10.29.1'
         with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
             outputs = [pathlib.Path(tmp) / name for name in ['first', 'second']]
             for output in outputs:
@@ -436,7 +436,7 @@ class InstallerTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
             first, second = outputs
             self.assertEqual(sorted(p.name for p in first.iterdir()),
-                             ['SHA256SUMS', 'ZFS-Director-2026.10.22.1-Unraid.zip', 'install.sh', 'zfs-director-2026.10.22.1.tgz', 'zfs-director.plg', 'zfs.master.ui.local.plg', 'zfs.master.ui.plg'])
+                             ['SHA256SUMS', 'ZFS-Director-2026.10.29.1-Unraid.zip', 'install.sh', 'zfs-director-2026.10.29.1.tgz', 'zfs-director.plg', 'zfs.master.ui.local.plg', 'zfs.master.ui.plg'])
             for path in first.iterdir():
                 self.assertEqual(path.read_bytes(), (second / path.name).read_bytes(), path.name)
             for line in (first / 'SHA256SUMS').read_text().splitlines():
@@ -444,12 +444,12 @@ class InstallerTests(unittest.TestCase):
                 self.assertEqual(digest, hashlib.sha256((first / name).read_bytes()).hexdigest())
             plugin = ET.parse(first / 'zfs-director.plg').getroot()
             self.assertEqual(plugin.attrib['pluginURL'], base + '/zfs-director.plg')
-            self.assertEqual(plugin.attrib['version'], '2026.10.22.1')
+            self.assertEqual(plugin.attrib['version'], '2026.10.29.1')
             package = plugin.find('FILE[@Name]')
-            self.assertEqual(package.attrib['Name'], '/boot/config/plugins/zfs.master.ui/zfs-director-2026.10.22.1.tgz')
-            self.assertEqual(package.findtext('URL'), base + '/zfs-director-2026.10.22.1.tgz')
+            self.assertEqual(package.attrib['Name'], '/boot/config/plugins/zfs.master.ui/zfs-director-2026.10.29.1.tgz')
+            self.assertEqual(package.findtext('URL'), base + '/zfs-director-2026.10.29.1.tgz')
             self.assertIsNone(package.find('LOCAL'))
-            archive = first / 'zfs-director-2026.10.22.1.tgz'
+            archive = first / 'zfs-director-2026.10.29.1.tgz'
             self.assertEqual(package.findtext('MD5'), hashlib.md5(archive.read_bytes()).hexdigest())
             with tarfile.open(archive) as tar:
                 release = json.load(tar.extractfile('zfs.master.ui/release.json'))

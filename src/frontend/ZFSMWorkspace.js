@@ -99,7 +99,7 @@ function zfsmCreateWorkspace(options) {
     function subtreeSnapshots(tree){const rows=[...(tree.snapshots||[])];for(const child of Object.values(tree.child||{}))rows.push(...subtreeSnapshots(child));return rows;}
     const objectCommands=new Set(['createdataset','renamedataset','editdatasetproperty','setquota','editacl','snapshotdataset','destroydataset','lockdataset','unlockdataset','promotedataset','adddirectortlisting','removedirectorylisting','movedirectory','deletedirectory','cleanupmutation','convertdirectory',...snapshotCommands]);
     function snapshotOperationIssue(action,ctx,targets=[]){
-        if(['cancelconversion','resumeconversion','cancelrestore'].includes(action)){const job=jobs.jobs.find(j=>j.id===ctx.job?.id);if(jobsError||!job)return 'Job inventory is unavailable or stale. Refresh successfully before controlling this job.';const key=action==='resumeconversion'?'resume':'cancel';if(job.actions&&job.actions[key]!==true)return 'This job requires manual inspection; the requested action is not supported.';if(ctx.job.state!==job.state||ctx.job.stage!==job.stage)return 'Job state changed; reopen its controls and review the current stage.';return '';}
+        if(['cancelconversion','resumeconversion','publishconversion','cancelrestore'].includes(action)){const job=jobs.jobs.find(j=>j.id===ctx.job?.id);if(jobsError||!job)return 'Job inventory is unavailable or stale. Refresh successfully before controlling this job.';const key=action==='resumeconversion'?'resume':action==='publishconversion'?'publish':'cancel';if(job.actions&&job.actions[key]!==true)return 'This job requires manual inspection; the requested action is not supported.';if(ctx.job.state!==job.state||ctx.job.stage!==job.stage)return 'Job state changed; reopen its controls and review the current stage.';return '';}
         if(!objectCommands.has(action))return '';
         if(selectionChanged)return 'Selected object identity changed. Select the current object again or review it before making changes.';
         if(!inventoryFresh)return 'Stale data — last successful refresh '+(lastSuccessfulRefresh||'unknown')+'. Refresh successfully before changing objects.';
@@ -449,7 +449,7 @@ function zfsmCreateWorkspace(options) {
     }
     function operationComplete(answer,action,ctx,metadata){
         if(stopped)return;
-        if(answer?.job?.id&&!['convertdirectory','cancelconversion','resumeconversion','cancelrestore','deletedirectory','destroydataset'].includes(action))loadJobs();
+        if(answer?.job?.id&&!['convertdirectory','cancelconversion','resumeconversion','publishconversion','cancelrestore','deletedirectory','destroydataset'].includes(action))loadJobs();
         if(action==='saveconfig'&&metadata&&metadata.settings&&answer&&answer.succeeded&&Object.keys(answer.succeeded).length&&answer.failed&&!Object.keys(answer.failed).length){
             const acknowledged=metadata.settings;
             config=Object.assign({},config,acknowledged,{dataset_exclusion:acknowledged.exclusion||'',directory_listing:String(acknowledged.directory_listing||'').split(/\r\n|\r|\n/).filter(Boolean)});
@@ -460,7 +460,7 @@ function zfsmCreateWorkspace(options) {
         if(action==='cleanupmutation'&&answer?.succeeded&&Object.keys(answer.succeeded).length&&!Object.keys(answer.failed||{}).length){
             cleanupNotice.replaceChildren(node('strong','Recovery cleanup completed'),node('p',ctx.directory),node('p','Journal archive: '+answer.cleanup_archive),button('Dismiss',()=>{cleanupNotice.hidden=true;}));cleanupNotice.hidden=false;
         }
-        if(['convertdirectory','cancelconversion','resumeconversion','cancelrestore','deletedirectory','destroydataset'].includes(action))loadJobs();
+        if(['convertdirectory','cancelconversion','resumeconversion','publishconversion','cancelrestore','deletedirectory','destroydataset'].includes(action))loadJobs();
         else if(answer&&(answer.uncertain||(answer.succeeded&&Object.keys(answer.succeeded).length)))inventory.refresh();
     }
     function validDiagnostics(answer,name){
@@ -599,6 +599,7 @@ function zfsmCreateWorkspace(options) {
             function control(label,action){controls.append(button(label,()=>openActionForm(action,{job}),{'data-job-action':action}));}
             if(job.schema===4&&!jobsError&&job.actions?.cancel)controls.append(button('Cancel protection run',async()=>{try{const answer=await request({cmd:'protectioncancel',job_id:job.id});if(Object.keys(answer.failed||{}).length)throw new Error(Object.values(answer.failed).join('; '));await loadJobs();}catch(error){jobsError=error.message;renderJobs();}}));else if(!jobsError&&(job.actions?job.actions.cancel:job.schema===1&&['queued','running'].includes(job.state)))control('Cancel',isRestore||isArchive?'cancelrestore':'cancelconversion');
             if(!jobsError&&(job.actions?job.actions.resume:job.schema===1&&!isRestore&&!isArchive&&(['cancelled','failed','recovery_required'].includes(job.state)||(['queued','running'].includes(job.state)&&!jobs.worker_running))))control('Resume','resumeconversion');
+            if(!jobsError&&job.actions?.publish===true)control('Publish verified copy','publishconversion');
             if(isArchive&&job.state==='completed'&&!job.archive_removed&&Number(job.expires)*1000>Date.now())controls.append(button('↓ Download ZIP',()=>downloadSnapshot({cmd:'downloadsnapshotarchive',job_id:job.id},message=>{row.append(node('p',message,'zfsm-error'));})));
             if(isArchive&&job.state==='completed')row.append(node('p',job.archive_removed?'ZIP expired. Prepare a new archive.':'ZIP expires: '+date(Number(job.expires)), 'zfsm-muted'));
             row.append(controls,...(copyNodes.get(job.id)||[]));summary.classList.add('zfsm-job-summary');summary.replaceChildren(row.children[0],row.children[1],node('span',job.created?date(job.created):'Unknown','zfsm-muted'));const visible=[...row.children].filter(child=>(['queued','running'].includes(job.state)&&(child.tagName==='PROGRESS'||child.previousElementSibling?.tagName==='PROGRESS'))||child.getAttribute('role')==='alert');const extra=[...row.children].filter(child=>child!==details&&!visible.includes(child));if(visible.length){const feedback=node('span',undefined,'zfsm-job-feedback');feedback.append(...visible);summary.append(feedback);}for(const child of extra)details.append(child);row.replaceChildren(details);if(isDeletion||requestOwned){const result=details.querySelector('[data-deletion-result],[data-operation-result]');if(result)row.append(result);}if(warning){const notice=node('p',warning.summary,'zfsm-notice');notice.dataset.severity='warning';notice.setAttribute('role','status');summary.after(notice);}jobsHost.append(row);

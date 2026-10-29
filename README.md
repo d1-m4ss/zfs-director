@@ -8,7 +8,7 @@ Manage ZFS in Unraid, browse snapshots in a **Snapshot File Manager**, automate 
 - **[Sanoid integration](#sanoid-snapshot-policies):** choose snapshot creation times, retention and protected removal of old snapshots; review External and Managed policies.
 - **[Syncoid integration](#syncoid-replication):** create local or SSH replication jobs through Source → Destination → Schedule → Review, with progress and verified results in Jobs.
 
-**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/ZFS-Director-2026.10.22.1-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.22.1/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
+**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.29.1/ZFS-Director-2026.10.29.1-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.10.29.1/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
 
 **Version 2026.10.22.1** was tested on a physical Unraid 7.3.3 server with OpenZFS 2.4.4 and in an isolated VM. See the [verification results](docs/TESTING.md#rc1-verification-2026-10-22) for installation, upgrades, ZFS operations and GUI checks.
 
@@ -45,7 +45,7 @@ The installer downloads and verifies the ready-made package, creates its own sto
 
 New versions appear in **Plugins → Check for Updates** and in Community Applications. Installed from an older release URL (`…/releases/download/…/zfs-director.plg`)? Reinstall once from the URL above with **Force Install** so update checks follow new releases.
 
-The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.22.1) are also available. See [installation, upgrades and rollback](docs/INSTALLATION.md).
+The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.10.29.1) are also available. See [installation, upgrades and rollback](docs/INSTALLATION.md).
 
 ## Snapshot File Manager
 

@@ -1,14 +1,14 @@
 /* Embedded administrative forms. The caller owns authentication and refresh. */
 (function (global) {
   'use strict';
-  const destructive = new Set(['destroydataset', 'destroysnapshot', 'rollbacksnapshot', 'deletedirectory', 'cleanupmutation', 'movedirectory', 'convertdirectory', 'resumeconversion', 'lockdataset']);
+  const destructive = new Set(['destroydataset', 'destroysnapshot', 'rollbacksnapshot', 'deletedirectory', 'cleanupmutation', 'movedirectory', 'convertdirectory', 'resumeconversion', 'publishconversion', 'lockdataset']);
   const titles = {
     createdataset: 'Create dataset', editdatasetproperty: 'Edit properties', renamedataset: 'Rename dataset', destroydataset: 'Destroy dataset',
     lockdataset: 'Lock dataset', unlockdataset: 'Unlock dataset', promotedataset: 'Promote clone', adddirectortlisting: 'Enable directory listing',
     removedirectorylisting: 'Disable directory listing', movedirectory: 'Move directory', convertdirectory: 'Convert directory to dataset', deletedirectory: 'Delete directory', cleanupmutation: 'Clean completed recovery',
     snapshotdataset: 'Create snapshot', renamesnapshot: 'Rename snapshot', holdsnapshot: 'Hold snapshot', releasesnapshot: 'Release snapshot hold',
     clonesnapshot: 'Clone snapshot', rollbacksnapshot: 'Rollback snapshot', destroysnapshot: 'Destroy snapshots', cancelconversion: 'Cancel conversion',
-    resumeconversion: 'Resume conversion', cancelrestore: 'Cancel file operation', saveconfig: 'Settings', setquota:'User / group quotas',editacl:'POSIX ACL editor'
+    resumeconversion: 'Resume conversion', publishconversion: 'Publish verified conversion copy', cancelrestore: 'Cancel file operation', saveconfig: 'Settings', setquota:'User / group quotas',editacl:'POSIX ACL editor'
   };
   const snapshotHelp = {
     snapshotdataset: 'Use when you need a restore point before changing or deleting files. Captures the current dataset state without stopping applications; stop writers first if you need application-consistent data.',
@@ -146,7 +146,7 @@
       if (action === 'unlockdataset' && (ctx.type === 'volume' || ctx.node.type === 'volume' || !ctx.node.encryption || ctx.node.encryption === 'off' || (ctx.node.keystatus !== 'unavailable'&&!ctx.node._encryption_recovery) || ctx.node.encryptionroot !== ctx.dataset)) return 'Only a locked filesystem encryption root or saved mount recovery can be unlocked. Open its encryption root to manage the inherited key.';
       if (action === 'promotedataset' && ctx.node.origin === '-') return 'This dataset is not a clone.';
       if(action==='setquota'&&(ctx.type==='volume'||ctx.node.type==='volume'))return 'User/group and object quotas apply to filesystems, not zvols.';
-      if (['cancelconversion', 'resumeconversion', 'cancelrestore'].includes(action) && !ctx.job.id) return 'A background job is required.';
+      if (['cancelconversion', 'resumeconversion', 'publishconversion', 'cancelrestore'].includes(action) && !ctx.job.id) return 'A background job is required.';
       if (action === 'resumeconversion' && (ctx.job.state === 'completed' || (ctx.job.schema !== undefined && ctx.job.schema !== 1))) return 'This job requires manual recovery or has already completed.';
       if (action === 'cancelconversion' && ctx.job.schema !== undefined && ctx.job.schema !== 1) return 'Legacy journals require manual recovery.';
       if (action === 'createdataset' && !ctx.pool) return 'Select a pool before creating a dataset.';
@@ -628,6 +628,7 @@
           checkbox(state, 'offline_confirmed', 'All writers are stopped; I will inspect the result before restarting them'); break;
         case 'cleanupmutation': state.grid.append(element('p','Only a completed journal-only recovery container can be cleaned. Unfinished operations, retained objects and unknown journals remain protected. A fresh review is required.','zfsm-notice'));reviewedControls(state);break;
         case 'cancelconversion': acknowledgment(state, 'I confirm requesting cancellation. The retained source will not be deleted.'); break;
+        case 'publishconversion': state.grid.append(element('p', 'The copy was verified when it was made, but publication did not finish. The dataset will be mounted at the original path. This is refused while anything exists at that path. Changes made to the original after the copy are not included.', 'zfsm-danger')); acknowledgment(state, 'I confirm publishing the verified copy at the original path.'); break;
         case 'cancelrestore': acknowledgment(state, ctx.job.type==='archive'?'I confirm cancelling ZIP preparation. Temporary archive data will be removed.':'I confirm requesting cancellation. Copied and replaced files will be retained; a partially published restore must be inspected.'); break;
         case 'snapshotdataset': checkbox(state, 'recursive', 'Create snapshots recursively on descendant datasets'); state.grid.append(element('p', 'The server generates the snapshot name using the current prefix and date pattern.', 'zfsm-notice')); break;
         case 'renamesnapshot': field(state, 'newname', 'New snapshot name (without dataset or @)', (ctx.snapshot || '').split('@')[1] || '', null, { required: true, maxLength: 255 }); break;
@@ -662,7 +663,7 @@
         case 'deletedirectory': data.directory = ctx.directory; data.force = value(state, 'force'); break;
         case 'convertdirectory': data.directory = ctx.directory; data.pool = ctx.pool; data.offline_confirmed = value(state, 'offline_confirmed'); break;
         case 'resumeconversion': data.job_id = ctx.job.id; data.offline_confirmed = value(state, 'offline_confirmed'); break;
-        case 'cancelconversion': case 'cancelrestore': data.job_id = ctx.job.id; break;
+        case 'cancelconversion': case 'cancelrestore': case 'publishconversion': data.job_id = ctx.job.id; break;
         case 'snapshotdataset': data.zdataset = ctx.dataset; data.recursive = value(state, 'recursive'); break;
         case 'renamesnapshot': data.snapshot = ctx.snapshot; data.newname = value(state, 'newname'); break;
         case 'clonesnapshot': data.snapshot = ctx.snapshot; data.clone = value(state, 'clone'); break;
@@ -927,7 +928,7 @@
       state.form.append(element('h3', titles[action] || 'Unsupported operation'));
       state.body=state.modal?element('div',undefined,'zfsm-action-body'):state.form;if(state.modal)state.form.append(state.body);
       const target = ['movedirectory', 'convertdirectory', 'deletedirectory', 'cleanupmutation'].includes(action) ? context.directory
-        : ['cancelconversion', 'resumeconversion', 'cancelrestore'].includes(action) ? context.job.id
+        : ['cancelconversion', 'resumeconversion', 'publishconversion', 'cancelrestore'].includes(action) ? context.job.id
         : action === 'createdataset' ? context.pool
         : ['renamesnapshot', 'holdsnapshot', 'releasesnapshot', 'clonesnapshot', 'rollbacksnapshot', 'destroysnapshot'].includes(action) ? context.snapshot || context.dataset
         : action === 'saveconfig' ? '' : context.dataset;

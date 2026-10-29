@@ -147,6 +147,31 @@ function zfsmConfinedPublish($job,$prepared,$reserved) {
     }
 }
 
+// Explicit recovery for a verified copy whose publication never happened. It
+// requires the original path to be free, so it can never cover live data.
+function zfsmPublishConversion($id) {
+    $job=zfsmReadJob($id);
+    if (zfsmJobProblem($job)||($job['method']??null)!=='confined-v1'||($job['state']??null)!=='recovery_required') throw new InvalidArgumentException('Only a confined conversion that requires recovery can be published');
+    zfsmValidateConfinedJobShape($job);
+    if (!preg_match('/^[a-f0-9]{64}$/D',$job['copy_manifest_sha256']??'')||!is_string($job['target_guid']??null)) throw new InvalidArgumentException('The target copy was never verified; inspect it manually');
+    $free=function()use($job){clearstatcache(true,$job['source']);if (file_exists($job['source'])||is_link($job['source'])) throw new InvalidArgumentException('The original path is occupied; move or inspect the retained original before publishing');};
+    $free();zfsmConfinedOwner($job);
+    $staging=$job['staging'].'/target';
+    $mounted=runProcess('zfs',['get','-H','-o','value','mounted',$job['dataset']]);
+    $mounted=trim($mounted['output']??'')==='yes';
+    zfsmConfinedTarget($job,$staging,$mounted);
+    if ($mounted&&(runProcess('zfs',['unmount',$job['dataset']])['code']??1)!==0) throw new RuntimeException('Private target could not be unmounted; no force/lazy unmount attempted');
+    if ((runProcess('zfs',['set','-u','mountpoint='.$job['source'],$job['dataset']])['code']??1)!==0) throw new RuntimeException('Target mountpoint update failed; target retained unmounted');
+    zfsmConfinedTarget($job,$job['source'],false);
+    if ((runProcess('zfs',['set','-u','canmount=on',$job['dataset']])['code']??1)!==0) throw new RuntimeException('Target activation failed; target retained unmounted');
+    $free();
+    if ((runProcess('zfs',['mount',$job['dataset']])['code']??1)!==0) throw new RuntimeException('Published target mount failed; target retained unmounted at its final mountpoint');
+    zfsmConfinedTarget($job,$job['source'],true,true);
+    foreach ([$staging,$job['staging']] as $dir) @rmdir($dir);
+    $job=zfsmJobUpdate($id,['stage'=>'complete_source_retained','state'=>'completed','finished_at'=>gmdate('c'),'error'=>null]);
+    refreshData();return $job;
+}
+
 function zfsmRunConfinedConversionJob($id) {
     $job=zfsmReadJob($id);$audit=null;$owned=null;
     if (!in_array($job['state']??'',['queued','running'],true)) return $job;

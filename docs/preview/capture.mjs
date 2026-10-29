@@ -4,9 +4,11 @@ import {mkdir,writeFile,readFile,readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {resolve} from 'node:path';
+import {release} from 'node:os';
 const url=process.env.ZFSM_DEMO_URL||'http://127.0.0.1:9000',out=resolve(process.env.ZFSM_SCREENSHOTS||'docs/images');
 assert.equal(process.platform,'linux','Documentation screenshots must be captured inside the Linux test VM');
-const virtualization=execFileSync('systemd-detect-virt',{encoding:'utf8'}).trim();assert.ok(['qemu','kvm'].includes(virtualization),'Use the isolated test VM');
+// OrbStack runs Linux machines and containers inside its own lightweight VM.
+const virtualization=release().includes('-orbstack')?'orbstack':execFileSync('systemd-detect-virt',{encoding:'utf8'}).trim();assert.ok(['qemu','kvm','orbstack'].includes(virtualization),'Use the isolated test VM');
 await mkdir(out,{recursive:true});const browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1440,height:980},locale:'en-US',timezoneId:'UTC',reducedMotion:'reduce'}),page=await context.newPage(),errors=[],files=[];
 page.on('pageerror',e=>errors.push(e.message));await context.route('**/*',route=>route.request().url().startsWith(url)?route.continue():route.abort());
 async function shot(name){await page.locator('#zfsm-workspace').waitFor();await page.evaluate(()=>document.fonts.ready);const bytes=await page.screenshot({path:out+'/'+name+'.png',animations:'disabled'});files.push({file:name+'.png',sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length,viewport:page.viewportSize()});}

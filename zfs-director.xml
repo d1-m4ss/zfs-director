@@ -6,7 +6,7 @@
   <Beta>false</Beta>
   <MinVer>7.3.3</MinVer>
   <Category>Tools:Utilities</Category>
-  <Icon>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/src/icons/zfs-director.png</Icon>
+  <Icon>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/src/icons/zfs-director.png</Icon>
   <Support>https://github.com/d1-m4ss/zfs-director/issues</Support>
   <Project>https://github.com/d1-m4ss/zfs-director</Project>
   <ReadMe>https://github.com/d1-m4ss/zfs-director/blob/main/README.md</ReadMe>
@@ -26,10 +26,10 @@
     Developed and maintained by d1-m4ss, based on ZFS Master, using AI-assisted coding tools.
   </Overview>
   <ExtraSearchTerms>zfs snapshots sanoid syncoid replication restore file manager</ExtraSearchTerms>
-  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/overview.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/datasets.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/file-manager.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/snapshot-policy.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/replication-wizard.png</Screenshot>
-  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.22.1/docs/images/jobs.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/docs/images/overview.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/docs/images/datasets.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/docs/images/file-manager.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/docs/images/snapshot-policy.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/docs/images/replication-wizard.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.10.29.1/docs/images/jobs.png</Screenshot>
 </Plugin>
