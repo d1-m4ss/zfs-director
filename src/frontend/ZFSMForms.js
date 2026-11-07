@@ -227,6 +227,39 @@
     }
     function acknowledgment(state, text) { checkbox(state, 'acknowledge', text || 'I understand this operation cannot be undone and confirm the target shown above.'); }
     // A blocked deletion offers only a recheck; the confirmation controls return once it is free.
+    function stopProcessesButton(state, processes) {
+      state.stopButton?.remove(); state.stopButton = null;
+      if (state.action !== 'destroydataset' || !state.buttons || !processes.length) return;
+      const button = element('button', 'Stop ' + (processes.length === 1 ? '1 process' : processes.length + ' processes'), 'zfsm-danger');
+      button.type = 'button'; button.dataset.stopProcesses = '';
+      button.addEventListener('click', () => {
+        if (!current(state) || state.previewBusy) return;
+        state.stopConfirm?.remove();
+        const panel = element('section', undefined, 'zfsm-destroy-stop');
+        panel.append(element('h4', 'Stop processes?'), element('p', 'These will be closed (SIGTERM). Unsaved work in them is lost.'));
+        for (const row of processes) panel.append(element('p', row.command + ' · PID ' + row.pid));
+        const actions = element('div', undefined, 'zfsm-buttons'), confirm = element('button', 'Stop processes', 'zfsm-danger'), cancel = element('button', 'Cancel');
+        confirm.type = cancel.type = 'button'; confirm.dataset.confirmStop = '';
+        cancel.addEventListener('click', () => { panel.remove(); state.stopConfirm = null; button.hidden = false; });
+        confirm.addEventListener('click', async () => {
+          confirm.disabled = cancel.disabled = true;
+          try {
+            const answer = await request({ cmd: 'stopdestroyprocesses', zdataset: state.context.dataset, force: value(state, 'force'), processes: processes.map(row => row.pid + ':' + row.start) });
+            if (!current(state)) return;
+            const failed = Object.values(answer?.failed || {});
+            panel.remove(); state.stopConfirm = null;
+            // Give SIGTERM a moment, then recheck exactly as Check again would.
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (!current(state)) return;
+            await loadPreview(state);
+            if (failed.length) note(state, failed.join(' '), true);
+          } catch (error) { if (current(state)) { note(state, 'Stopping processes failed: ' + String(error.message || error), true); confirm.disabled = cancel.disabled = false; } }
+        });
+        actions.append(confirm, cancel); panel.append(actions);
+        state.previewBox.append(panel); state.stopConfirm = panel; button.hidden = true;
+      });
+      state.buttons.prepend(button); state.stopButton = button;
+    }
     function showDestroyControls(state, free) {
       const ack = state.fields.acknowledge?.closest('label'), submit = state.buttons?.querySelector('button[type="submit"]');
       if (ack) ack.hidden = !free;
@@ -239,6 +272,7 @@
     }
     function invalidatePreview(state) {
       clearConfirmation(state);
+      state.stopButton?.remove(); state.stopButton = null; state.stopConfirm = null;
       state.preview = null;
       state.previewGeneration++;
       state.previewBusy = false;
@@ -283,7 +317,19 @@
         const fix = fixes[row?.kind] && (named || !['smb','docker','vm'].includes(row.kind)) ? fixes[row.kind](row) : 'Release it through its owner';
         verdict.append(element('p', '⛔ Can\'t delete: ' + who + ' uses ' + (row?.path || 'this dataset'), 'zfsm-error'), element('p', fix + ', then press Check again.', 'zfsm-error'));
       }
-      if (busy) renderDestroyDiagnostics(verdict, answer.diagnostics);
+      const stoppable = Array.isArray(answer.stoppable_processes) ? answer.stoppable_processes : [];
+      if (busy) {
+        // Host processes the backend may stop get one readable line; everything else keeps its full evidence.
+        const keys = new Set(stoppable.map(row => row.pid + ':' + row.start));
+        const rest = (answer.diagnostics.blockers || []).filter(row => !keys.has(row.pid + ':' + row.start) || !['cwd','open_file'].includes(row.kind));
+        if (stoppable.length) {
+          const paths = [...new Set((answer.diagnostics.blockers || []).filter(row => keys.has(row.pid + ':' + row.start)).map(row => row.mountpoint))];
+          verdict.append(element('p', '⛔ Can\'t delete: ' + (stoppable.length === 1 ? '1 process is' : stoppable.length + ' processes are') + ' inside ' + paths.join(', '), 'zfsm-error'),
+            element('p', stoppable.map(row => row.command + ' (PID ' + row.pid + ')').join(' · '), 'zfsm-error'),
+            element('p', 'A terminal opened in this folder counts too: cd out of it, or stop them here.', 'zfsm-error'));
+        }
+        if (rest.length) renderDestroyDiagnostics(verdict, {...answer.diagnostics, blockers: rest});
+      }
       if (answer.can_destroy !== true && !services.length && !busy) verdict.append(element('p', '⛔ Can\'t delete: ' + (dependencies && dependencies.length ? 'clones outside this scope depend on it' : 'ZFS did not approve this scope (holds or a failed dry run)') + '. See Details.', 'zfsm-error'));
       summary.append(verdict);
       const details = element('details', undefined, 'zfsm-destroy-details');
@@ -376,7 +422,7 @@
         }
         state.preview = { token: answer.token, preview_id:answer.preview_id, choice, canProceed:canProceed&&(rollback||answer.can_destroy===true) };
         state.result.textContent = ''; state.result.className = '';
-        if (['destroydataset','destroysnapshot'].includes(state.action)) showDestroyControls(state, state.preview.canProceed);
+        if (['destroydataset','destroysnapshot'].includes(state.action)) { showDestroyControls(state, state.preview.canProceed); stopProcessesButton(state, state.preview.canProceed || !Array.isArray(answer.stoppable_processes) ? [] : answer.stoppable_processes); }
       } catch (error) {
         if (!current(state) || previewGeneration !== state.previewGeneration) return;
         state.preview = null;

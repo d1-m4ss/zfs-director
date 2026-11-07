@@ -59,7 +59,7 @@ function zfsmPreviewDestroy($target,$force,$secret) {
 	$diagnostics=zfsmDestroyBusyDiagnostics($scope['objects']);
 	// Submission rejects configured service references too; show them before confirmation.
 	$services=$scope['type']==='snapshot'?[]:zfsmDependencyMutationBlockers('destroydataset',['zdataset'=>$target]);
-	$answer=$scope+['preview_id'=>$id,'token'=>$token,'expires'=>$record['expires'],'diagnostics'=>$diagnostics,'service_blockers'=>$services];
+	$answer=$scope+['preview_id'=>$id,'token'=>$token,'expires'=>$record['expires'],'diagnostics'=>$diagnostics,'service_blockers'=>$services,'stoppable_processes'=>array_values(zfsmDestroyStoppableBlockers($diagnostics))];
 	$answer['can_destroy']=$scope['can_destroy']&&!$diagnostics['blocked']&&!$services;
 	return $answer;
 }

@@ -88,9 +88,9 @@ $mutation_lock = null;
 try {
 	$request_token = zfsmValidateRequest();
 	$command = zfsmPostString('cmd');
-	$destructive = array('destroydataset','destroysnapshot','rollbacksnapshot','deletedirectory','cleanupmutation','movedirectory','convertdirectory','resumeconversion','publishconversion','lockdataset','restoresnapshotfiles');
+	$destructive = array('stopdestroyprocesses','destroydataset','destroysnapshot','rollbacksnapshot','deletedirectory','cleanupmutation','movedirectory','convertdirectory','resumeconversion','publishconversion','lockdataset','restoresnapshotfiles');
 	$readonly = array('inventory','inventorysnapshots','pooldiagnostics','getdatasetproperties','previewdestroy','previewrollback','conversionjobs','auditlog','snapshotfiles','snapshotfileinfo','downloadsnapshotfile','previewrestore','downloadsnapshotarchive','validatesettings');
-	$administrative = array('refresh','createdataset','editdatasetproperty','adddirectortlisting','removedirectorylisting','renamedataset','destroydataset','lockdataset','unlockdataset','promotedataset','movedirectory','convertdirectory','deletedirectory','cleanupmutation','rollbacksnapshot','renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','destroysnapshot','snapshotdataset','cancelconversion','resumeconversion','publishconversion','saveconfig','restoresnapshotfiles','cancelrestore','archivesnapshotfiles','scrubpool','activityvisibility');
+	$administrative = array('stopdestroyprocesses','refresh','createdataset','editdatasetproperty','adddirectortlisting','removedirectorylisting','renamedataset','destroydataset','lockdataset','unlockdataset','promotedataset','movedirectory','convertdirectory','deletedirectory','cleanupmutation','rollbacksnapshot','renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','destroysnapshot','snapshotdataset','cancelconversion','resumeconversion','publishconversion','saveconfig','restoresnapshotfiles','cancelrestore','archivesnapshotfiles','scrubpool','activityvisibility');
 	$readonly=array_merge($readonly,['protectiondetect','protectiondata','protectionpolicypreview','protectionreplicationpreview','protectionrunpreview','protectioncontrolpreview','protectiontest']);
 	$administrative=array_merge($administrative,['protectionsettings','protectionpolicysave','protectionreplicationsave','protectionrun','protectioncontrol','protectioncancel']);
 	$readonly[]='protectionimportpreview';$administrative[]='protectionimport';
@@ -299,6 +299,9 @@ try {
 
 		case 'previewdestroy':
 			echo json_encode(zfsmPreviewDestroy(zfsmPostString('snapshot')?:zfsmPostString('zdataset'), zfsmPostString('recursive',zfsmPostString('force','0')), $request_token), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+		case 'stopdestroyprocesses':
+			zfsmReturnAnswer(zfsmStopDestroyProcesses(zfsmPostString('snapshot')?:zfsmPostString('zdataset'),zfsmPostString('force','0'),$_POST['processes']??null),'Stop processes','Processes asked to stop','Unable to stop processes');
 			break;
 		case 'previewrollback':
 			echo json_encode(zfsmPreviewRollback(zfsmPostString('snapshot'),zfsmPostString('destroy_newer','0'),$request_token),JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);

@@ -11,7 +11,7 @@ function zfsmDestroyBusyReport($objects,$processes,$self_namespace,$filesystem_m
     $blockers=[];$seen=[];
     foreach($processes as$process){
         $mounts=zfsmDestroyMountRows($process['mountinfo']);$foreign=$process['namespace']!==$self_namespace;
-        $add=function($mount,$kind)use(&$blockers,&$seen,$process){$key=$process['namespace'].'|'.$mount['id'].'|'.$kind.(in_array($kind,['cwd','open_file'],true)?'|'.$process['pid']:'');if(isset($seen[$key]))return;$seen[$key]=true;$blockers[]=['dataset'=>$mount['source'],'kind'=>$kind,'mountpoint'=>$mount['path'],'namespace'=>$process['namespace'],'pid'=>$process['pid'],'command'=>$process['command'],'container'=>$process['container']??null];};
+        $add=function($mount,$kind)use(&$blockers,&$seen,$process){$key=$process['namespace'].'|'.$mount['id'].'|'.$kind.(in_array($kind,['cwd','open_file'],true)?'|'.$process['pid']:'');if(isset($seen[$key]))return;$seen[$key]=true;$blockers[]=['dataset'=>$mount['source'],'kind'=>$kind,'mountpoint'=>$mount['path'],'namespace'=>$process['namespace'],'pid'=>$process['pid'],'start'=>$process['start']??null,'command'=>$process['command'],'container'=>$process['container']??null];};
         $affected=[];
         foreach($mounts as$id=>$mount){
             if($mount['fs']!=='zfs')continue;
@@ -89,6 +89,52 @@ function zfsmDestroyNameContainers($report) {
     unset($row);return $report;
 }
 
+// Boot-relative start time (field 22) distinguishes a reused PID from the reviewed process.
+function zfsmProcessStart($stat) {
+    if(!is_string($stat)||($close=strrpos($stat,')'))===false)return null;
+    $fields=preg_split('/\s+/',trim(substr($stat,$close+1)));
+    return isset($fields[19])&&preg_match('/^[0-9]{1,20}$/D',$fields[19])===1?$fields[19]:null;
+}
+
+// Only host processes whose cwd or open file pins the reviewed scope may be
+// signalled. Containers, foreign namespaces and mounts stay with their owner.
+// Shared system daemons: stopping one would affect far more than this dataset.
+function zfsmProtectedProcessNames() {
+    return ['init','systemd','php','php-fpm','php-fpm8','emhttpd','nginx','zfs','zpool','shfs','dockerd','containerd','containerd-shim','containerd-shim-runc-v2','libvirtd','virtlogd','qemu-system-x86','smbd','nmbd','winbindd','nfsd','rpc.mountd','rpc.statd','rpcbind','sshd','crond','cron','udevd','mover'];
+}
+
+function zfsmDestroyStoppableBlockers($diagnostics) {
+    $self=getmypid();$parent=function_exists('posix_getppid')?posix_getppid():0;$rows=[];
+    foreach($diagnostics['blockers']??[]as$row){
+        if(!in_array($row['kind']??null,['cwd','open_file'],true)||($row['container']??null)!==null||!is_int($row['pid']??null)||$row['pid']<=1||in_array($row['pid'],[$self,$parent],true))continue;
+        if(!is_string($row['start']??null)||in_array($row['command']??'',zfsmProtectedProcessNames(),true))continue;
+        $rows[$row['pid'].':'.$row['start']]=['pid'=>$row['pid'],'start'=>$row['start'],'command'=>(string)$row['command']];
+    }
+    return $rows;
+}
+
+// Signals only reviewed processes that a fresh scan still shows as holders with an
+// unchanged start time. $readStart and $kill are injectable so the refusal paths can be tested.
+function zfsmSignalReviewedProcesses($target,$requested,$stoppable,$readStart,$kill) {
+    $answer=buildArrayRet();
+    foreach(array_unique($requested)as$key){
+        $row=$stoppable[$key]??null;$pid=(int)explode(':',$key,2)[0];
+        if(!$row||$readStart($pid)!==$row['start']){$answer['failed']['PID '.$pid]='Not stopped: it no longer holds '.$target.' or is a different process now.';continue;}
+        if($kill($pid))$answer['succeeded']['PID '.$pid]='Sent SIGTERM to '.$row['command'].' (PID '.$pid.')';
+        else $answer['failed']['PID '.$pid]='Unable to signal '.$row['command'].' (PID '.$pid.')';
+    }
+    return $answer;
+}
+
+function zfsmStopDestroyProcesses($target,$force,$requested) {
+    if(!is_array($requested)||!$requested||count($requested)>64)throw new InvalidArgumentException('Select the reviewed processes to stop');
+    foreach($requested as$key)if(!is_string($key)||preg_match('/^[1-9][0-9]{0,9}:[0-9]{1,20}$/D',$key)!==1)throw new InvalidArgumentException('Invalid process selection');
+    if(!function_exists('posix_kill'))return zfsmFailure($target,'Stopping processes is unavailable on this system; stop them through their owner.');
+    $scope=zfsmDestroyScope($target,zfsmDestroyChoice($force));
+    $stoppable=zfsmDestroyStoppableBlockers(zfsmDestroyBusyDiagnostics($scope['objects']));
+    return zfsmSignalReviewedProcesses($target,$requested,$stoppable,fn($pid)=>zfsmProcessStart(@file_get_contents('/proc/'.$pid.'/stat',false,null,0,4096)),fn($pid)=>@posix_kill($pid,15));
+}
+
 function zfsmDestroyBusyDiagnostics($objects) {
     $self=@readlink('/proc/self/ns/mnt');$processes=[];$namespaces=[];$warnings=[];
     if(!is_string($self))return ['blocked'=>false,'blockers'=>[],'complete'=>false,'warnings'=>['Linux mount namespace diagnostics are unavailable. A successful dry run does not prove the dataset is unused.']];
@@ -103,7 +149,7 @@ function zfsmDestroyBusyDiagnostics($objects) {
             if(!is_string($text)||strlen($text)>2097152){if(is_dir($base))$warnings[]='A mount table could not be read within limits.';continue;}
             $namespaces[$ns]=$text;
         }
-        $row=['pid'=>(int)$pid,'namespace'=>$ns,'command'=>trim((string)@file_get_contents($base.'/comm',false,null,0,64)),'mountinfo'=>$namespaces[$ns],'container'=>null,'cwd'=>@readlink($base.'/cwd')?:'','fd_mount_ids'=>[]];
+        $row=['pid'=>(int)$pid,'namespace'=>$ns,'command'=>trim((string)@file_get_contents($base.'/comm',false,null,0,64)),'mountinfo'=>$namespaces[$ns],'container'=>null,'cwd'=>@readlink($base.'/cwd')?:'','fd_mount_ids'=>[],'start'=>zfsmProcessStart(@file_get_contents($base.'/stat',false,null,0,4096))];
         $cgroup=@file_get_contents($base.'/cgroup',false,null,0,4096);if(is_string($cgroup)&&preg_match('~(?:/docker/|docker-)([a-f0-9]{64})(?:/|\.|$)~m',$cgroup,$m))$row['container']=$m[1];
         if($ns===$self){
             $has_target=false;foreach(zfsmDestroyMountRows($namespaces[$ns])as$mount)foreach($objects as$object)if($mount['fs']==='zfs'&&($mount['source']===$object['name']||str_starts_with($mount['source'],$object['name'].'@'))){$has_target=true;break 2;}

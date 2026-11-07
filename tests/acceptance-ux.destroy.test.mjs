@@ -75,3 +75,21 @@ test('destroy diagnostics show container name with short ID and retain ID fallba
  const x=await setup('destroydataset',review('cache/data',{can_destroy:false,diagnostics:{blocked:true,blockers,warnings:[]}}));
  try{const preview=x.root.querySelector('.zfsm-preview');assert.match(preview.textContent,/Container qbittorrent \(aaaaaaaaaaaa\)/);assert.match(preview.textContent,/Container bbbbbbbbbbbb/);assert.ok(preview.textContent.includes('<img src=x onerror=alert(1)>'));assert.equal(preview.querySelector('img'),null);}finally{x.close();}
 });
+
+test('processes holding the dataset get one line and a confirmed Stop that rechecks the preview',async()=>{
+ const busy={can_destroy:false,diagnostics:{complete:true,blocked:true,warnings:[],blockers:[{dataset:'cache/data',kind:'cwd',mountpoint:'/mnt/cache/data',pid:2280612,start:'777',command:'mc',namespace:'mnt:[1]',container:null},{dataset:'cache/data',kind:'cwd',mountpoint:'/mnt/cache/data',pid:2280617,start:'778',command:'bash',namespace:'mnt:[1]',container:null}]},stoppable_processes:[{pid:2280612,start:'777',command:'mc'},{pid:2280617,start:'778',command:'bash'}]};
+ let previews=0;const x=await setup('destroydataset',()=>++previews===1?review('cache/data',{...busy,dependencies:[]}):review('cache/data',{dependencies:[]}),{succeeded:{'PID 2280612':'Sent SIGTERM'},failed:{}});
+ try{
+  const verdict=x.root.querySelector('.zfsm-destroy-verdict');
+  assert.equal(verdict.textContent,"⛔ Can't delete: 2 processes are inside /mnt/cache/datamc (PID 2280612) · bash (PID 2280617)A terminal opened in this folder counts too: cd out of it, or stop them here.");
+  const stop=x.root.querySelector('[data-stop-processes]');assert.equal(stop.textContent,'Stop 2 processes');
+  assert.equal(x.calls.filter(c=>c.cmd==='stopdestroyprocesses').length,0,'Nothing is stopped before confirmation');
+  stop.click();await settle();
+  const panel=x.root.querySelector('.zfsm-destroy-stop');assert.match(panel.textContent,/Stop processes\?These will be closed \(SIGTERM\)\. Unsaved work in them is lost\.mc · PID 2280612bash · PID 2280617/);
+  panel.querySelector('[data-confirm-stop]').click();await new Promise(r=>setTimeout(r,1200));await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(x.calls.find(c=>c.cmd==='stopdestroyprocesses'))),{cmd:'stopdestroyprocesses',zdataset:'cache/data',force:'0',processes:['2280612:777','2280617:778']});
+  assert.equal(previews,2,'Preview reruns automatically after stopping');
+  assert.match(x.root.querySelector('.zfsm-destroy-verdict').textContent,/Not in use/);assert.equal(x.root.querySelector('[data-stop-processes]'),null);
+ }finally{x.close();}
+});
+

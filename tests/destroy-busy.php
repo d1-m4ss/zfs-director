@@ -37,4 +37,25 @@ check('container list parser accepts only full IDs and safe Docker names',functi
     foreach(['short name',str_repeat('A',64).' name',$a.' <img>',$a.' bad/name',$a.' bad;name',$a." good\tbad",$a.' good extra',$a." first\n".$a.' second']as$text)same([],zfsmDestroyParseContainerNames($text));
     same([],zfsmDestroyParseContainerNames(''));
 });
+check('only host cwd/open-file processes with a verified start time are offered for stopping',function(){
+    same('12345',zfsmProcessStart('4242 (my (odd) prog) S 1 1 1 0 -1 4194560 100 0 0 0 0 0 0 0 20 0 1 0 12345 1000'));
+    same(null,zfsmProcessStart('garbage'));same(null,zfsmProcessStart(false));
+    $row=fn($o)=>array_replace(['dataset'=>'cache/data','kind'=>'cwd','mountpoint'=>'/mnt/cache/data','namespace'=>'host','pid'=>500,'start'=>'77','command'=>'bash','container'=>null],$o);
+    $rows=[$row([]),$row(['pid'=>501,'kind'=>'open_file','command'=>'mc','start'=>'78']),$row(['pid'=>502,'kind'=>'foreign_mount']),$row(['pid'=>503,'container'=>str_repeat('a',64)]),$row(['pid'=>1,'command'=>'init']),$row(['pid'=>504,'command'=>'php-fpm']),$row(['pid'=>505,'start'=>null]),$row(['pid'=>getmypid()])];
+    same(['500:77'=>['pid'=>500,'start'=>'77','command'=>'bash'],'501:78'=>['pid'=>501,'start'=>'78','command'=>'mc']],zfsmDestroyStoppableBlockers(['blockers'=>$rows]));
+    foreach([null,[],['500'],['x:1'],array_fill(0,65,'500:77')]as$bad){$threw=false;try{zfsmStopDestroyProcesses('cache/data','0',$bad);}catch(InvalidArgumentException$e){$threw=true;}same(true,$threw);}
+});
+check('signalling refuses processes absent from the fresh scan, with a changed start time, or protected',function(){
+    $stoppable=['500:77'=>['pid'=>500,'start'=>'77','command'=>'bash'],'501:78'=>['pid'=>501,'start'=>'78','command'=>'mc']];
+    $sent=[];$kill=function($pid)use(&$sent){$sent[]=$pid;return true;};
+    $a=zfsmSignalReviewedProcesses('cache/data',['500:77','501:78','502:79','500:77'],$stoppable,fn($pid)=>['500'=>'77','501'=>'999','502'=>'79'][(string)$pid]??null,$kill);
+    same([500],$sent,'Only the matching process is signalled, once');
+    same(['PID 500'],array_keys($a['succeeded']));
+    same(['PID 501','PID 502'],array_keys($a['failed']));
+    $sent=[];$b=zfsmSignalReviewedProcesses('cache/data',['500:77'],$stoppable,fn($pid)=>null,$kill);same([],$sent);same(['PID 500'],array_keys($b['failed']));
+    $c=zfsmSignalReviewedProcesses('cache/data',['500:77'],$stoppable,fn($pid)=>'77',fn($pid)=>false);same(['PID 500'],array_keys($c['failed']));
+    foreach(['dockerd','containerd-shim','smbd','sshd','libvirtd','emhttpd']as$name)same(true,in_array($name,zfsmProtectedProcessNames(),true),$name);
+    $row=['dataset'=>'cache/data','kind'=>'open_file','mountpoint'=>'/mnt/cache/data','namespace'=>'host','pid'=>600,'start'=>'5','command'=>'dockerd','container'=>null];
+    same([],zfsmDestroyStoppableBlockers(['blockers'=>[$row]]));
+});
 finishTests();
