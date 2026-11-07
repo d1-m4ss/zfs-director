@@ -226,6 +226,17 @@
       state.policyIssue = blocked;
     }
     function acknowledgment(state, text) { checkbox(state, 'acknowledge', text || 'I understand this operation cannot be undone and confirm the target shown above.'); }
+    // A blocked deletion offers only a recheck; the confirmation controls return once it is free.
+    function showDestroyControls(state, free) {
+      const ack = state.fields.acknowledge?.closest('label'), submit = state.buttons?.querySelector('button[type="submit"]');
+      if (ack) ack.hidden = !free;
+      if (submit) submit.hidden = !free;
+      if (state.previewButton && state.buttons && state.modal) {
+        state.previewButton.textContent = 'Check again';
+        state.previewButton.hidden = free;
+        state.buttons.prepend(state.previewButton);
+      }
+    }
     function invalidatePreview(state) {
       clearConfirmation(state);
       state.preview = null;
@@ -233,6 +244,7 @@
       state.previewBusy = false;
       if (state.fields.acknowledge) state.fields.acknowledge.checked = false;
       if (state.previewBox) state.previewBox.replaceChildren(element('p', 'Load a fresh preview and review every listed object before confirming.'));
+      if (state.previewButton && state.previewButton.hidden) state.previewButton.hidden = false;
       enable(state);
     }
     function renderDestroyDiagnostics(host, diagnostics) {
@@ -245,32 +257,41 @@
         entry.textContent = row.dataset + ': ' + (reasons[row.kind] || row.kind) + ' · ' + row.mountpoint + ' · PID ' + row.pid + ' (' + row.command + ') · ' + row.namespace + (row.container ? ' · Container ' + (row.container_name ? row.container_name + ' (' + row.container.slice(0,12) + ')' : row.container.slice(0,12)) : '');
         panel.append(entry);
       }
-      if (diagnostics.blocked) panel.append(element('p', 'Release the reported application references or mounts through their owner, then load a fresh preview. No process is stopped and no mount is forcibly detached by this dialog.'));
-      else panel.append(element('p', 'No blocking references found in this scan. References can change; a dry run cannot guarantee execution.'));
+      if (diagnostics.blocked) panel.append(element('p', 'Force can\'t release busy mounts held by another Linux namespace. Stop these processes or unmount through their owner, then press Check again.'));
       for (const warning of diagnostics.warnings || []) panel.append(element('p', warning, 'zfsm-muted'));
       host.append(panel);
     }
     function renderDestroySummary(host, answer) {
       const summary = element('section', undefined, 'zfsm-destroy-summary');
-      summary.append(element('h4', 'Deletion scope: ' + answer.target));
       const objects = Array.isArray(answer.objects) ? answer.objects : null;
       const dependencies = Array.isArray(answer.dependencies) ? answer.dependencies : null;
       const typed = objects && objects.every(row => ['filesystem', 'volume', 'snapshot'].includes(row?.type));
       const datasets = typed ? objects.filter(row => row.type !== 'snapshot').length : null;
       const snapshots = typed ? objects.length - datasets : null;
-      summary.append(element('p', (objects
-        ? objects.length + ' object' + (objects.length === 1 ? '' : 's') + (typed ? ' · ' + datasets + ' dataset(s) · ' + snapshots + ' snapshot(s)' : ' · Object types: Unknown')
-        : 'Affected object count: Unknown') + ' · ' + (typeof answer.recursive === 'boolean' ? answer.recursive ? 'Recursive descendants included' : 'Selected object only' : 'Scope unknown — review raw dry-run output')));
-      // Problems stay visible; routine evidence is folded into Details.
+      const count = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+      summary.append(element('p', answer.target + ' · ' + (typed ? count(datasets, 'dataset') + ' · ' + count(snapshots, 'snapshot') : objects ? count(objects.length, 'object') : 'object count unknown') + ' · ' + (typeof answer.recursive === 'boolean' ? answer.recursive ? 'recursive' : 'selected object only' : 'scope unknown'), 'zfsm-muted'));
       const services = Array.isArray(answer.service_blockers) ? answer.service_blockers : [];
       const busy = answer.diagnostics?.blocked === true;
+      // One verdict box: what holds the dataset and where to release it, or that it is free.
+      const verdict = element('section', undefined, answer.can_destroy === true ? 'zfsm-destroy-verdict zfsm-destroy-ok' : 'zfsm-destroy-verdict zfsm-destroy-services');
+      if (answer.can_destroy === true) verdict.append(element('p', '✓ Not in use. Deleting can\'t be undone.', 'zfsm-success'));
+      const names = {smb:'SMB share',nfs:'NFS export',docker:'Docker container',vm:'VM',additional_mount:'Additional mount',nested_mount:'Nested mount'};
+      const fixes = {smb:row => 'Open Shares → ' + row.name + ', set SMB Export to No', nfs:() => 'Open Shares and set NFS Export to No', docker:row => 'Stop Docker container "' + row.name + '" or remove this path from it', vm:row => 'Remove this disk from VM "' + row.name + '"', additional_mount:row => 'Unmount ' + row.path, nested_mount:row => 'Unmount ' + row.path};
+      for (const row of services) {
+        const named = row?.name && !['nfs','additional_mount','nested_mount'].includes(row.kind);
+        const who = (names[row?.kind] || 'Service reference') + (named ? ' "' + row.name + '"' : '');
+        const fix = fixes[row?.kind] && (named || !['smb','docker','vm'].includes(row.kind)) ? fixes[row.kind](row) : 'Release it through its owner';
+        verdict.append(element('p', '⛔ Can\'t delete: ' + who + ' uses ' + (row?.path || 'this dataset'), 'zfsm-error'), element('p', fix + ', then press Check again.', 'zfsm-error'));
+      }
+      if (busy) renderDestroyDiagnostics(verdict, answer.diagnostics);
+      if (answer.can_destroy !== true && !services.length && !busy) verdict.append(element('p', '⛔ Can\'t delete: ' + (dependencies && dependencies.length ? 'clones outside this scope depend on it' : 'ZFS did not approve this scope (holds or a failed dry run)') + '. See Details.', 'zfsm-error'));
+      summary.append(verdict);
       const details = element('details', undefined, 'zfsm-destroy-details');
       details.append(element('summary', 'Details'));
       function table(title, rows) {
-        if (rows && !rows.length && title !== 'Objects affected by deletion') return;
+        if (rows && !rows.length) return;
         details.append(element('strong', title));
         if (!rows) { details.append(element('p', 'Unknown — this preview did not report this information.', 'zfsm-muted')); return; }
-        if (!rows.length) { details.append(element('p', 'None reported.')); return; }
         const wrap = element('div', undefined, 'zfsm-table-wrap'), table = element('table', undefined, 'zfsm-table zfsm-readable-table');
         const head = element('thead'), headings = element('tr'), body = element('tbody');
         const columns = [['Object', 'name'], ['Type', 'type'], ['GUID', 'guid'], ['Mountpoint', 'mountpoint'], ['Encryption root', 'encryptionroot'], ['Origin', 'origin'], ['Holds', 'holds']];
@@ -289,23 +310,10 @@
         }
         table.append(head, body); wrap.append(table); details.append(wrap);
       }
-      if (services.length) {
-        const panel = element('section', undefined, 'zfsm-destroy-services');
-        panel.append(element('strong', 'Used by services'));
-        const names = {smb:'SMB share',nfs:'NFS export',docker:'Docker container',vm:'VM',additional_mount:'Additional mount',nested_mount:'Nested mount'};
-        for (const row of services) panel.append(element('p', (names[row?.kind] || 'Service reference') + (row?.name && !['nfs','additional_mount','nested_mount'].includes(row.kind) ? ' "' + row.name + '"' : '') + ' · ' + (row?.path || 'Unknown path'), 'zfsm-error'));
-        panel.append(element('p', 'Remove or stop these references through their owner (Shares, Docker or VMs), then load a fresh preview. Nothing was stopped or changed.'));
-        summary.append(panel);
-      }
-      if (busy) renderDestroyDiagnostics(summary, answer.diagnostics);
-      if (dependencies && dependencies.length) table('Clone dependencies — these can be outside the selected branch', dependencies);
-      if (answer.can_destroy !== true && !services.length && !busy) summary.append(element('p', 'Deletion blocked. The backend has not approved this scope; inspect dependencies, holds and the raw preview in Details.', 'zfsm-error'));
-      summary.append(element('p', 'Deletion is permanent and cannot be undone; keep an independent backup.', 'zfsm-danger'));
       table('Objects affected by deletion', objects);
-      if (!dependencies) table('Clone dependencies — these can be outside the selected branch', dependencies);
-      if (!busy) renderDestroyDiagnostics(details, answer.diagnostics);
+      table('Clone dependencies — these can be outside the selected branch', dependencies);
+      if (!busy && answer.diagnostics?.warnings?.length) renderDestroyDiagnostics(details, answer.diagnostics);
       details.append(element('strong', 'Raw ZFS dry-run'), element('pre', answer.preview || 'No usable preview'));
-      if (answer.can_destroy !== true) details.open = true;
       summary.append(details);
       host.append(summary);
     }
@@ -367,7 +375,8 @@
           renderDestroySummary(state.previewBox, answer);
         }
         state.preview = { token: answer.token, preview_id:answer.preview_id, choice, canProceed:canProceed&&(rollback||answer.can_destroy===true) };
-        note(state, 'Review the fresh server preview, then acknowledge to enable submission.', false);
+        state.result.textContent = ''; state.result.className = '';
+        if (['destroydataset','destroysnapshot'].includes(state.action)) showDestroyControls(state, state.preview.canProceed);
       } catch (error) {
         if (!current(state) || previewGeneration !== state.previewGeneration) return;
         state.preview = null;
@@ -413,7 +422,7 @@
       state.previewBox = element('section', undefined, 'zfsm-preview');
       state.previewBox.setAttribute('aria-label', 'Exact server preview');
       state.grid.append(state.previewBox);
-      acknowledgment(state, 'I reviewed the exact preview above and confirm this irreversible operation.');
+      acknowledgment(state, state.action === 'destroydataset' ? 'Delete ' + state.context.dataset + ' permanently' : 'I reviewed the exact preview above and confirm this irreversible operation.');
       invalidatePreview(state);
     }
     function createFields(state) {
@@ -631,8 +640,7 @@
           field(state, 'newname', 'New full dataset name', ctx.dataset, null, { required: true, maxLength: 768 });
           checkbox(state, 'force', 'Force unmount filesystems that must be unmounted during rename'); break;
         case 'destroydataset':
-          withPreview(state, 'force', 'Recursive + Force: include child datasets and snapshots; preserve external clones');
-          state.grid.append(element('p', 'Linux: Force (-f) cannot release busy filesystems or mounts held by another namespace. It does not stop processes, remove holds or destroy external clones.', 'zfsm-notice')); break;
+          withPreview(state, 'force', 'Recursive + Force: include child datasets and snapshots; preserve external clones'); break;
         case 'unlockdataset': if(ctx.node.keystatus==='available')state.grid.append(element('p','Key already loaded. Restore only saved mount GUIDs; changed identities remain blocked.'));else field(state, 'passphrase', 'Dataset passphrase', '', null, { type: 'password', required: true });state.grid.append(element('p','Only previously mounted filesystems recorded by Director are restored. Without a saved mount journal, only the key is loaded.','zfsm-notice'));break;
         case 'lockdataset': {const affected=[];function walk(n){if(n.encryptionroot===ctx.dataset)affected.push(n.name+' — mounted: '+(n.mounted||'unknown'));for(const child of Object.values(n.child||{}))walk(child);}walk(ctx.node);state.grid.append(element('p','Encryption root: '+ctx.dataset+'; dependent filesystems become inaccessible. Shares, Docker and VM usage are not verified.','zfsm-danger'));const list=element('ul');for(const text of affected)list.append(element('li',text));state.grid.append(list);acknowledgment(state, 'I confirm unmounting this encryption root and unloading its key.');break;}
         case 'promotedataset': reviewedControls(state); break;
@@ -978,7 +986,7 @@
         const buttons = element('div', undefined, 'zfsm-buttons');
         state.buttons = buttons;
         if(action!=='editdatasetproperty'){
-          const submit = element('button',state.modal?'Review':titles[action] === 'Settings' ? 'Save settings' : titles[action]); submit.type = 'submit';
+          const submit = element('button',state.modal?(action==='destroydataset'?'Delete':'Review'):titles[action] === 'Settings' ? 'Save settings' : titles[action]); submit.type = 'submit';
           if (destructive.has(action)) submit.className = 'zfsm-danger';buttons.append(submit);
         }
         if(state.modal){buttons.classList.add('zfsm-action-footer');const close=element('button','Close');close.type='button';close.dataset.closeAction='';close.addEventListener('click',()=>{if(current(state))onClose();});buttons.append(close);}

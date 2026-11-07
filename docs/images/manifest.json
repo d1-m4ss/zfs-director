@@ -7,7 +7,7 @@
     "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
     "src/frontend/ZFSMExplorer.js": "2c1e952d5a74b6e26269aa2962df7ef0d1a40db3bcd52d33a165140f935a4938",
-    "src/frontend/ZFSMForms.js": "a0edcdbdb507296ad5f83706ab1a777398d7206647215e39712b108535289f49",
+    "src/frontend/ZFSMForms.js": "86b1836021c70ae385ecd988b65e70b3904fec65e64a347457a09ff00b263001",
     "src/frontend/ZFSMHistory.js": "6248365512db7547ed7d507aa46114ba3bdb8f652aff99af706864e15b6db162",
     "src/frontend/ZFSMInventory.js": "ad9571d0c9932e790607ccf5a689e5674ac5e728a6648de24a41c4341c49855b",
     "src/frontend/ZFSMOverview.js": "6523034f0f352946ac2cdc0eee76885a12566be7472d0cf8071f04756055785a",
@@ -15,11 +15,11 @@
     "src/frontend/ZFSMProtection.css": "40fd422a946662552a733d2b3662673fd501c908ba24a763f574af6b331fdff6",
     "src/frontend/ZFSMProtection.js": "c7a95a32d3627772a9d869f23de052bdc35de4419a9a6799346cc5f46073aad1",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
-    "src/frontend/ZFSMWorkspace.css": "7274c85ed93261c8bd45ebefb05a04722506121ee0b1912c1582bd49a6e9a160",
+    "src/frontend/ZFSMWorkspace.css": "8786eb7efbdb544b2cf21d704340c77a4f4d4f4ad50a98bd106e797975a02378",
     "src/frontend/ZFSMWorkspace.js": "f0359eaa315d4a36cd7a1a678b66bb4a4e090d8dc111ccf560e94fec3ea08a7a",
     "docs/preview/data.mjs": "55c9cf4249070f972b46278784db47e18510992994b2a245ec5ffbbf37990ebf",
     "docs/preview/server.mjs": "be2a0eb85b84b74752d03a378a05aea1648986427335af56184db2f69ba93623",
-    "docs/preview/capture.mjs": "ae063ebdf68ddd94180e93e5fc7580d3cb8153bf8101fe09a9662dd7bf1a08f0"
+    "docs/preview/capture.mjs": "0824971280f5a8f26f029a1407929af43296aca5344811be65acbdc680818e76"
   },
   "capture": {
     "platform": "linux",
@@ -78,8 +78,8 @@
     },
     {
       "file": "restore-review.png",
-      "sha256": "cbe3adf20f18cb37f024a53a6f74cf3ccb9a0a0335e70a2f5d0e73bb4ef1c882",
-      "bytes": 113350,
+      "sha256": "e28118def1e957aeb551a17eb64f1fbe26355e629131cf41a4b900cdd3772599",
+      "bytes": 113257,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -96,8 +96,8 @@
     },
     {
       "file": "deletion-review.png",
-      "sha256": "acea205acbb364e117575be710f3d828868a6e09c0764b7338fa63da3cbfc720",
-      "bytes": 100875,
+      "sha256": "c884009a9d237c7286eb5ab8b806e33030d13b689ea0def9eb62cd093755cf54",
+      "bytes": 95193,
       "viewport": {
         "width": 1440,
         "height": 980

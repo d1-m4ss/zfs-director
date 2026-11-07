@@ -120,6 +120,10 @@
 #zfsm-workspace .zfsm-result-heading {display:block;margin-bottom:4px}
 #zfsm-workspace .zfsm-result-icon {margin-right:6px}
 #zfsm-workspace .zfsm-error,#zfsm-workspace .zfsm-notice[data-severity="error"] {background:var(--zfsm-error-bg);color:var(--zfsm-error)}
+#zfsm-workspace .zfsm-destroy-verdict {margin:10px 0;padding:10px 12px;border-radius:6px;background:var(--zfsm-error-bg);color:var(--zfsm-error)}
+#zfsm-workspace .zfsm-destroy-verdict.zfsm-destroy-ok {background:var(--zfsm-good-bg);color:var(--zfsm-good)}
+#zfsm-workspace .zfsm-destroy-verdict p {margin:2px 0;padding:0;background:none;color:inherit}
+#zfsm-workspace .zfsm-destroy-verdict p:first-child {font-weight:600}
 #zfsm-workspace .zfsm-preview {border-left:3px solid var(--zfsm-warning)}
 #zfsm-workspace .zfsm-form {margin:0;min-width:0;padding:0;color:var(--zfsm-text);container-type:inline-size}
 #zfsm-workspace .zfsm-form:not(.zfsm-create-form) {max-width:1040px}

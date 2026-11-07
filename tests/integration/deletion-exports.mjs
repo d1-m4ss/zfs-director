@@ -56,8 +56,9 @@ try{
  await page.locator('.zfsm-action-dialog[open] [data-preview]').click();const preview=await(await previewed).json();
  assert.equal(preview.can_destroy,false);assert.deepEqual(preview.service_blockers,[{kind:'smb',name:'fixture',path:fixture.mountpoint}]);
  const services=page.locator('.zfsm-action-dialog[open] .zfsm-destroy-services');await services.waitFor();
- assert.match(await services.innerText(),new RegExp('SMB share "fixture" · '+fixture.mountpoint.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
- assert.equal(await page.locator('.zfsm-action-dialog[open] .zfsm-destroy-details').evaluate(el=>el.open),true,'Blocked preview opens Details');
+ assert.equal((await services.innerText()).replace(/\n+/g,'\n'),'⛔ Can\'t delete: SMB share "fixture" uses '+fixture.mountpoint+'\nOpen Shares → fixture, set SMB Export to No, then press Check again.');
+ const open=page.locator('.zfsm-action-dialog[open]');assert.equal(await open.locator('[name=acknowledge]').isVisible(),false,'No confirmation while blocked');assert.equal(await open.locator('button[type=submit]').isVisible(),false,'No Delete while blocked');assert.equal(await open.getByRole('button',{name:'Check again',exact:true}).isVisible(),true);
+ assert.equal(await page.locator('.zfsm-action-dialog[open] .zfsm-destroy-details').evaluate(el=>el.open),false,'Details stay folded');assert.equal(await page.locator('.zfsm-action-dialog[open] .zfsm-destroy-summary .zfsm-danger').count(),0,'No permanence warning while blocked');
  await page.screenshot({path:output+'/dataset-preview-blocked.png',fullPage:true});
  results.push({name:'dataset deletion preview names the configured SMB share and blocks confirmation',status:'PASS'});
  stand.php.writeFile('/etc/samba/smb-shares.conf','[fixture]\npath = '+fixture.mountpoint+'\n');

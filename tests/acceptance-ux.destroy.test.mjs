@@ -23,15 +23,15 @@ test('dataset deletion review exposes exact objects, identities and external clo
  const x=await setup('destroydataset',review('cache/data',{objects:[object,{...snapshot,holds:'<img src=x onerror=alert(1)> manual-protection'}]}));
  try{
   const scope=x.root.querySelector('.zfsm-preview');
-  assert.match(scope.textContent,/2 objects/);assert.match(scope.textContent,/1 dataset/);assert.match(scope.textContent,/1 snapshot/);
+  assert.match(scope.textContent,/1 dataset/);assert.match(scope.textContent,/1 snapshot/);
   for(const value of ['cache/data','filesystem','18446744073709551615','/mnt/cache/data','Encryption root','cache/data@s1','manual-protection','cache/outside-clone','100','/mnt/cache/outside-clone','Clone dependencies','would destroy cache/data'])assert.ok(scope.textContent.includes(value),value);
-  assert.equal(scope.querySelector('img'),null);assert.match(scope.textContent,/permanent|irreversible/i);
+  assert.equal(scope.querySelector('img'),null);assert.match(scope.textContent,/can't be undone/);
  }finally{x.close();}
 });
 
 test('a blocked dataset preview remains inspectable and cannot reach mutation confirmation',async()=>{
  const x=await setup('destroydataset',review('cache/data',{can_destroy:false}));try{
-  assert.match(x.root.querySelector('.zfsm-preview').textContent,/blocked/i);acknowledge(x);
+  assert.match(x.root.querySelector('.zfsm-preview').textContent,/Can't delete/);acknowledge(x);
   assert.equal(x.root.querySelector('button[type=submit]').disabled,true);
   x.root.querySelector('form').dispatchEvent(new x.w.Event('submit',{bubbles:true,cancelable:true}));
   assert.equal(x.root.querySelector('[data-confirm-operation]'),null);assert.equal(x.calls.some(c=>c.cmd==='destroydataset'),false);
@@ -62,7 +62,7 @@ for(const action of ['destroydataset','destroysnapshot'])test(action+' requires 
 
 test('destroy preview explains Linux Force limits and names foreign namespace blockers safely',async()=>{
  const x=await setup('destroydataset',review('cache/data',{can_destroy:false,diagnostics:{complete:true,blocked:true,blockers:[{dataset:'cache/data',kind:'foreign_mount',mountpoint:'/cache/data',pid:42,command:'<img src=x>',namespace:'mnt:[5]',container:'a'.repeat(64)}],warnings:[]}}));
- try{const preview=x.root.querySelector('.zfsm-preview');assert.match(x.root.textContent,/Linux.*cannot.*busy|busy.*Linux/);for(const text of ['42','foreign','/cache/data','mnt:[5]','<img src=x>','fresh preview'])assert.ok(preview.textContent.includes(text),text);assert.equal(preview.querySelector('img'),null);acknowledge(x);assert.equal(x.root.querySelector('button[type=submit]').disabled,true);}finally{x.close();}
+ try{const preview=x.root.querySelector('.zfsm-preview');assert.match(x.root.textContent,/Linux.*cannot.*busy|busy.*Linux/);for(const text of ['42','foreign','/cache/data','mnt:[5]','<img src=x>','Check again'])assert.ok(preview.textContent.includes(text),text);assert.equal(preview.querySelector('img'),null);acknowledge(x);assert.equal(x.root.querySelector('button[type=submit]').disabled,true);}finally{x.close();}
 });
 
 test('partial destroy has a separate verified outcome and requires a new preview without automatic retry',async()=>{
