@@ -47,6 +47,19 @@ try{
    stand.php.writeFile('/etc/exports','');
   }
  }
+ // The dataset preview must show the same configured references that submission rejects.
+ stand.php.writeFile('/etc/samba/smb-shares.conf','[fixture]\npath = '+fixture.mountpoint+'\n');
+ if(await page.locator('.zfsm-action-dialog[open]').count())await page.getByRole('button',{name:'Close action',exact:true}).click();
+ await page.getByRole('button',{name:'Datasets',exact:true}).click();await page.locator('[data-node="'+fixture.owner+'"]').click();await page.locator('[data-tab=actions]').click();
+ await page.getByRole('button',{name:'Destroy dataset',exact:true}).click();
+ const previewed=page.waitForResponse(r=>r.url()===endpoint&&new URLSearchParams(r.request().postData()).get('cmd')==='previewdestroy');
+ await page.locator('.zfsm-action-dialog[open] [data-preview]').click();const preview=await(await previewed).json();
+ assert.equal(preview.can_destroy,false);assert.deepEqual(preview.service_blockers,[{kind:'smb',name:'fixture',path:fixture.mountpoint}]);
+ const services=page.locator('.zfsm-action-dialog[open] .zfsm-destroy-services');await services.waitFor();
+ assert.match(await services.innerText(),new RegExp('SMB share "fixture" · '+fixture.mountpoint.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+ assert.equal(await page.locator('.zfsm-action-dialog[open] .zfsm-destroy-details').evaluate(el=>el.open),true,'Blocked preview opens Details');
+ await page.screenshot({path:output+'/dataset-preview-blocked.png',fullPage:true});
+ results.push({name:'dataset deletion preview names the configured SMB share and blocks confirmation',status:'PASS'});
  stand.php.writeFile('/etc/samba/smb-shares.conf','[fixture]\npath = '+fixture.mountpoint+'\n');
  stand.php.writeFile('/etc/exports',fixture.mountpoint+' *(rw)\n');
  await form();const reply=await submit();assert.equal(Object.keys(reply.failed||{}).length,0,JSON.stringify(reply));

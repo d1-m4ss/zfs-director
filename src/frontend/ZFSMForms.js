@@ -258,14 +258,19 @@
       const typed = objects && objects.every(row => ['filesystem', 'volume', 'snapshot'].includes(row?.type));
       const datasets = typed ? objects.filter(row => row.type !== 'snapshot').length : null;
       const snapshots = typed ? objects.length - datasets : null;
-      summary.append(element('p', objects
+      summary.append(element('p', (objects
         ? objects.length + ' object' + (objects.length === 1 ? '' : 's') + (typed ? ' · ' + datasets + ' dataset(s) · ' + snapshots + ' snapshot(s)' : ' · Object types: Unknown')
-        : 'Affected object count: Unknown'));
-      summary.append(element('p', 'Scope: ' + (typeof answer.recursive === 'boolean' ? answer.recursive ? 'Recursive descendants included' : 'Selected object only' : 'Unknown — review raw dry-run output')));
+        : 'Affected object count: Unknown') + ' · ' + (typeof answer.recursive === 'boolean' ? answer.recursive ? 'Recursive descendants included' : 'Selected object only' : 'Scope unknown — review raw dry-run output')));
+      // Problems stay visible; routine evidence is folded into Details.
+      const services = Array.isArray(answer.service_blockers) ? answer.service_blockers : [];
+      const busy = answer.diagnostics?.blocked === true;
+      const details = element('details', undefined, 'zfsm-destroy-details');
+      details.append(element('summary', 'Details'));
       function table(title, rows) {
-        summary.append(element('strong', title));
-        if (!rows) { summary.append(element('p', 'Unknown — this preview did not report this information.', 'zfsm-muted')); return; }
-        if (!rows.length) { summary.append(element('p', 'None reported.')); return; }
+        if (rows && !rows.length && title !== 'Objects affected by deletion') return;
+        details.append(element('strong', title));
+        if (!rows) { details.append(element('p', 'Unknown — this preview did not report this information.', 'zfsm-muted')); return; }
+        if (!rows.length) { details.append(element('p', 'None reported.')); return; }
         const wrap = element('div', undefined, 'zfsm-table-wrap'), table = element('table', undefined, 'zfsm-table zfsm-readable-table');
         const head = element('thead'), headings = element('tr'), body = element('tbody');
         const columns = [['Object', 'name'], ['Type', 'type'], ['GUID', 'guid'], ['Mountpoint', 'mountpoint'], ['Encryption root', 'encryptionroot'], ['Origin', 'origin'], ['Holds', 'holds']];
@@ -282,14 +287,26 @@
           }
           body.append(line);
         }
-        table.append(head, body); wrap.append(table); summary.append(wrap);
+        table.append(head, body); wrap.append(table); details.append(wrap);
       }
+      if (services.length) {
+        const panel = element('section', undefined, 'zfsm-destroy-services');
+        panel.append(element('strong', 'Used by services'));
+        const names = {smb:'SMB share',nfs:'NFS export',docker:'Docker container',vm:'VM',additional_mount:'Additional mount',nested_mount:'Nested mount'};
+        for (const row of services) panel.append(element('p', (names[row?.kind] || 'Service reference') + (row?.name && !['nfs','additional_mount','nested_mount'].includes(row.kind) ? ' "' + row.name + '"' : '') + ' · ' + (row?.path || 'Unknown path'), 'zfsm-error'));
+        panel.append(element('p', 'Remove or stop these references through their owner (Shares, Docker or VMs), then load a fresh preview. Nothing was stopped or changed.'));
+        summary.append(panel);
+      }
+      if (busy) renderDestroyDiagnostics(summary, answer.diagnostics);
+      if (dependencies && dependencies.length) table('Clone dependencies — these can be outside the selected branch', dependencies);
+      if (answer.can_destroy !== true && !services.length && !busy) summary.append(element('p', 'Deletion blocked. The backend has not approved this scope; inspect dependencies, holds and the raw preview in Details.', 'zfsm-error'));
+      summary.append(element('p', 'Deletion is permanent and cannot be undone; keep an independent backup.', 'zfsm-danger'));
       table('Objects affected by deletion', objects);
-      table('Clone dependencies — these can be outside the selected branch', dependencies);
-      renderDestroyDiagnostics(summary, answer.diagnostics);
-      if (answer.can_destroy !== true) summary.append(element('p', 'Deletion blocked. The backend has not approved this scope; inspect dependencies, holds and the raw preview.', 'zfsm-error'));
-      summary.append(element('p', 'Deletion is permanent. These data cannot be recovered through this operation; keep an independent backup before proceeding.', 'zfsm-danger'));
-      summary.append(element('strong', 'Raw ZFS dry-run'), element('pre', answer.preview || 'No usable preview'));
+      if (!dependencies) table('Clone dependencies — these can be outside the selected branch', dependencies);
+      if (!busy) renderDestroyDiagnostics(details, answer.diagnostics);
+      details.append(element('strong', 'Raw ZFS dry-run'), element('pre', answer.preview || 'No usable preview'));
+      if (answer.can_destroy !== true) details.open = true;
+      summary.append(details);
       host.append(summary);
     }
     async function loadPreview(state) {

@@ -12,7 +12,7 @@ const target='cache/__mock__/destroy-case',snapshot=target+'@base';
 const endpoint=stand.url+'/plugins/zfs.master.ui/backend/ZFSMAdmin.php';
 async function post(fields){const r=await fetch(endpoint,{method:'POST',body:new URLSearchParams({csrf_token:'integration-token',...fields})});return r.json();}
 async function pass(name,fn){await fn();results.push({name,status:'PASS'});console.log('PASS '+name);}
-async function preview(){await page.locator('[data-preview]').click();await page.locator('.zfsm-preview pre').waitFor();}
+async function preview(){await page.locator('[data-preview]').click();await page.locator('.zfsm-preview pre').waitFor({state:'attached'});}
 async function confirm(){await page.locator('[name=acknowledge]').check();await page.locator('.zfsm-form button[type=submit]').click();const response=page.waitForResponse(r=>r.url()===endpoint&&new URLSearchParams(r.request().postData()).get('cmd')==='destroydataset');await page.locator('[data-confirm-operation]').click();return (await response).json();}
 try{
  const model=stand.readModel();model.datasets[target]={...model.datasets['cache/__mock__/project'],name:target,guid:'999001',mountpoint:'/mnt/'+target};model.snapshots[snapshot]={...model.snapshots['cache/__mock__/project@base'],name:snapshot,guid:'999002'};stand.writeModel(model);

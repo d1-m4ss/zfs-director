@@ -20,7 +20,7 @@ async function open(label='Destroy dataset'){
  await page.getByRole('button',{name:label,exact:true}).click();
  const dialog=page.getByRole('dialog',{name:label==='Take Snapshot'?'Create snapshot':label==='Edit Dataset'?'Edit properties':label,exact:true});await dialog.waitFor();return dialog;
 }
-async function preview(dialog){await dialog.locator('[data-preview]').click();await dialog.locator('.zfsm-preview pre').first().waitFor();await dialog.locator('[name=acknowledge]').check();}
+async function preview(dialog){await dialog.locator('[data-preview]').click();await dialog.locator('.zfsm-preview pre').first().waitFor({state:'attached'});await dialog.locator('[name=acknowledge]').check();}
 async function review(dialog){await dialog.locator('button[type=submit]').click();await dialog.locator('[data-confirm-operation]').waitFor();}
 async function geometry(dialog){return dialog.evaluate(el=>{
  const b=el.querySelector('.zfsm-action-body'),h=el.querySelector('.zfsm-action-heading'),f=[...el.querySelectorAll('.zfsm-action-footer')].find(n=>n.getBoundingClientRect().height>0),r=el.getBoundingClientRect();

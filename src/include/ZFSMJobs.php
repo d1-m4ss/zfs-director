@@ -156,7 +156,7 @@ function zfsmRecordRejectedConversion($source,$failed,$audit_id) {
         'destructive_mode'=>['/Destructive Mode is disabled/','Destructive Mode is disabled in ZFS Director settings.'],
         'identity_changed'=>['/identity|GUID|replaced|changed since/i','The directory or its dataset identity could not be confirmed. Refresh the inventory before submitting again.'],
         'target_invalid'=>['/direct child|already exists|invalid/i','The conversion target is invalid, already exists or is not a direct child of a mounted dataset.'],
-    ]as$key=>[$pattern,$safe])if(preg_match($pattern,$text)){$code=$key;$message=$safe;break;}
+    ]as$key=>[$pattern,$safe])if(preg_match($pattern,$text)){$code=$key;$message=$safe.($key==='dependencies'&&preg_match('/^Blocking: ([^\n]{1,1200})$/m',$text,$found)?' Blocking: '.$found[1].'.':'');break;}
     $id=gmdate('Ymd-His').'-'.bin2hex(random_bytes(6));$now=gmdate('c');
     $job=zfsmJobInitializeHistory(['schema'=>5,'type'=>'conversion','id'=>$id,'state'=>'failed','stage'=>'preflight_rejected','source'=>$source,'created'=>$now,'updated'=>$now,'started_at'=>null,'finished_at'=>$now,'error_code'=>$code,'error'=>$message,'audit_id'=>$audit_id]);
     zfsmJobAtomicWrite(zfsmJobFile($id),$job);return $job;

@@ -41,7 +41,13 @@ function zfsmReadDependencies($properties,$usage,$overrides=[]) {
 }
 
 function zfsmDependencyBlocks($report,$command,$path=null) {
-    if(!in_array($command,['renamedataset','destroydataset','movedirectory','convertdirectory','deletedirectory'],true))return false;
+    return (bool)zfsmDependencyBlockers($report,$command,$path);
+}
+
+// Each blocker names its owner so the user can release it without a terminal.
+function zfsmDependencyBlockers($report,$command,$path=null) {
+    if(!in_array($command,['renamedataset','destroydataset','movedirectory','convertdirectory','deletedirectory'],true))return [];
+    $blockers=[];
     foreach($report['services']??[] as $entry){
         $used=$entry['path']??'';
         // A parent export alone does not pin an ordinary child. Conversion
@@ -51,25 +57,42 @@ function zfsmDependencyBlocks($report,$command,$path=null) {
         // Read-only monitoring of a parent does not pin every ordinary folder.
         // Exact/nested consumers, writable/unknown modes and mounts still block.
         if($command==='deletedirectory'&&$path!==null&&$used!==''&&($entry['service']??'')==='docker'&&($entry['read_only']??null)===true&&str_starts_with($path,$used.'/'))continue;
-        if($used!==''&&($path===null||$path===$used||str_starts_with($path,$used.'/')||str_starts_with($used,$path.'/')))return true;
+        if($used!==''&&($path===null||$path===$used||str_starts_with($path,$used.'/')||str_starts_with($used,$path.'/')))$blockers[]=['kind'=>(string)($entry['service']??'unknown'),'name'=>(string)($entry['name']??''),'path'=>$used];
     }
     foreach($report['entries']??[] as $entry){
         if(!in_array($entry['kind'],['additional_mount','nested_mount'],true))continue;
-        $used=$entry['path']??'';if($path===null||$used===$path||str_starts_with($used,$path.'/'))return true;
+        $used=$entry['path']??'';if($path===null||$used===$path||str_starts_with($used,$path.'/'))$blockers[]=['kind'=>$entry['kind'],'name'=>(string)($entry['name']??''),'path'=>$used];
     }
-    return false;
+    return $blockers;
+}
+
+function zfsmDependencyBlockerText($blockers) {
+    $labels=['smb'=>'SMB share','nfs'=>'NFS export','docker'=>'Docker container','vm'=>'VM','additional_mount'=>'Additional mount','nested_mount'=>'Nested mount'];$parts=[];
+    foreach(array_slice($blockers,0,5) as $blocker){
+        $clean=fn($value)=>mb_substr(trim(preg_replace('/[\x00-\x1f\x7f]+/u',' ',(string)$value)??''),0,160);
+        $name=$clean($blocker['name']??'');$label=$labels[$blocker['kind']??'']??'Service reference';
+        if(in_array($blocker['kind']??'',['nfs','additional_mount','nested_mount'],true))$name='';
+        $parts[]=$label.($name!==''?' "'.$name.'"':'').' at '.$clean($blocker['path']??'');
+    }
+    if(count($blockers)>5)$parts[]='and '.(count($blockers)-5).' more';
+    return implode('; ',$parts);
+}
+
+function zfsmDependencyMutationBlockers($command,$fields) {
+    if($command==='cleanupmutation')$command='deletedirectory';
+    if(!in_array($command,['renamedataset','destroydataset','movedirectory','convertdirectory','deletedirectory'],true))return [];
+    $io=zfsmUsageIO();$tool=($io['tool'])('zfs');if(!$tool)return [];
+    $path=$fields['directory']??null;$name=$fields['zdataset']??'';
+    if($path!==null){$resolved=zfsmResolveDirectory($path,true);if(!$resolved)return [];$name=$resolved['dataset'];$path=$resolved['path'];}
+    if(!zfsmValidDatasetName($name))return [];
+    $columns=['name','guid','type','mounted','mountpoint'];$read=($io['process'])($tool,['list','-H','-p','-o',implode(',',$columns),$name]);$parts=explode("\t",trim($read['output']??''));
+    if(($read['code']??1)!==0||count($parts)!==count($columns))return [];
+    $properties=array_combine($columns,$parts);if($properties['name']!==$name)return [];
+    $usage=zfsmReadDatasetUsage($properties,$io);$report=zfsmReadDependencies($properties,$usage,$io);
+    return zfsmDependencyBlockers($report,$command,$path);
 }
 
 function zfsmDependencyMutationGuard($command,$fields) {
-    if($command==='cleanupmutation')$command='deletedirectory';
-    if(!in_array($command,['renamedataset','destroydataset','movedirectory','convertdirectory','deletedirectory'],true))return;
-    $io=zfsmUsageIO();$tool=($io['tool'])('zfs');if(!$tool)return;
-    $path=$fields['directory']??null;$name=$fields['zdataset']??'';
-    if($path!==null){$resolved=zfsmResolveDirectory($path,true);if(!$resolved)return;$name=$resolved['dataset'];$path=$resolved['path'];}
-    if(!zfsmValidDatasetName($name))return;
-    $columns=['name','guid','type','mounted','mountpoint'];$read=($io['process'])($tool,['list','-H','-p','-o',implode(',',$columns),$name]);$parts=explode("\t",trim($read['output']??''));
-    if(($read['code']??1)!==0||count($parts)!==count($columns))return;
-    $properties=array_combine($columns,$parts);if($properties['name']!==$name)return;
-    $usage=zfsmReadDatasetUsage($properties,$io);$report=zfsmReadDependencies($properties,$usage,$io);
-    if(zfsmDependencyBlocks($report,$command,$path))throw new RuntimeException('Operation blocked by configured service references or additional mounts. Review Usage & Dependencies and release references through their owner; no services were stopped.');
+    $blockers=zfsmDependencyMutationBlockers($command,$fields);
+    if($blockers)throw new RuntimeException("Operation blocked by configured service references or additional mounts. Review Usage & Dependencies and release references through their owner; no services were stopped.\nBlocking: ".zfsmDependencyBlockerText($blockers));
 }

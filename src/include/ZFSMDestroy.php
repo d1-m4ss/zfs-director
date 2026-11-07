@@ -57,8 +57,10 @@ function zfsmPreviewDestroy($target,$force,$secret) {
 	$token=hash_hmac('sha256',json_encode([$id,$record],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR),$secret);
 	zfsmJobAtomicWrite(zfsmDestroyPreviewFile($id),$record);
 	$diagnostics=zfsmDestroyBusyDiagnostics($scope['objects']);
-	$answer=$scope+['preview_id'=>$id,'token'=>$token,'expires'=>$record['expires'],'diagnostics'=>$diagnostics];
-	$answer['can_destroy']=$scope['can_destroy']&&!$diagnostics['blocked'];
+	// Submission rejects configured service references too; show them before confirmation.
+	$services=$scope['type']==='snapshot'?[]:zfsmDependencyMutationBlockers('destroydataset',['zdataset'=>$target]);
+	$answer=$scope+['preview_id'=>$id,'token'=>$token,'expires'=>$record['expires'],'diagnostics'=>$diagnostics,'service_blockers'=>$services];
+	$answer['can_destroy']=$scope['can_destroy']&&!$diagnostics['blocked']&&!$services;
 	return $answer;
 }
 

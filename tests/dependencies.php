@@ -49,4 +49,19 @@ check('conversion ancestor export exception never bypasses Docker VM consumers o
     foreach(['docker','vm','unknown'] as $service)foreach(['/mnt/cache/zfs','/mnt/cache/zfs/SampleCamera','/mnt/cache/zfs/SampleCamera/child'] as $path){$r=$base;$r['services'][]=['service'=>$service,'path'=>$path];same(true,zfsmDependencyBlocks($r,'convertdirectory','/mnt/cache/zfs/SampleCamera'));}
     foreach(['nested_mount','additional_mount'] as $kind)foreach(['/mnt/cache/zfs/SampleCamera','/mnt/cache/zfs/SampleCamera/child'] as $path){$r=$base;$r['entries'][]=['kind'=>$kind,'path'=>$path];same(true,zfsmDependencyBlocks($r,'convertdirectory','/mnt/cache/zfs/SampleCamera'));}
 });
+check('blocked deletion names each configured reference in the preview text and rejected journal',function(){
+    $report=['status'=>'known','entries'=>[['kind'=>'additional_mount','name'=>'cache/TimeMachineRemote','path'=>'/mnt/remotes/tm']],'services'=>[['service'=>'smb','name'=>"TimeMachine\nx",'path'=>'/mnt/cache/TimeMachineRemote'],['service'=>'docker','name'=>'timemachine','path'=>'/mnt/cache/TimeMachineRemote/data','read_only'=>false]],'services_status'=>'known'];
+    $blockers=zfsmDependencyBlockers($report,'destroydataset');
+    same([['kind'=>'smb','name'=>"TimeMachine\nx",'path'=>'/mnt/cache/TimeMachineRemote'],['kind'=>'docker','name'=>'timemachine','path'=>'/mnt/cache/TimeMachineRemote/data'],['kind'=>'additional_mount','name'=>'cache/TimeMachineRemote','path'=>'/mnt/remotes/tm']],$blockers);
+    $text=zfsmDependencyBlockerText($blockers);
+    same('SMB share "TimeMachine x" at /mnt/cache/TimeMachineRemote; Docker container "timemachine" at /mnt/cache/TimeMachineRemote/data; Additional mount at /mnt/remotes/tm',$text);
+    same([],zfsmDependencyBlockers($report,'createdataset'));
+    $many=array_fill(0,7,['kind'=>'nfs','name'=>'NFS export','path'=>'/mnt/a']);
+    same('NFS export at /mnt/a; NFS export at /mnt/a; NFS export at /mnt/a; NFS export at /mnt/a; NFS export at /mnt/a; and 2 more',zfsmDependencyBlockerText($many));
+    [$code,$message]=zfsmDeletionError("Operation blocked by configured service references or additional mounts. Review Usage & Dependencies and release references through their owner; no services were stopped.\nBlocking: ".$text);
+    same('dependencies',$code);
+    same('Deletion is blocked by service references or mounts. Review Usage & Dependencies and release them through their owner. Blocking: '.$text.'.',$message);
+    [$code,$message]=zfsmDeletionError('Deletion blocked by live filesystem references');
+    same(['dependencies','Deletion is blocked by service references or mounts. Review Usage & Dependencies and release them through their owner.'],[$code,$message]);
+});
 finishTests();
