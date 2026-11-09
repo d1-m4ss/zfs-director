@@ -58,6 +58,50 @@ foreach ([$running,'resilver in progress since Fri Oct 16 15:00:00 2026','error 
         same(2,count($GLOBALS['test_calls']));
     });
 }
+// A never-scanned pool prints no scan line (seen on OpenZFS 2.4 / backup_zfs): scrub must be startable.
+check('pool without any scan line is idle and can start a scrub', function() {
+    $text=preg_replace('/^  scan: .*\n/m','',statusFixture('','0 0 0','none requested'));
+    same(false,str_contains($text,'scan:'));
+    expectProcess('zpool',['status','-p','-t','cache'],$text);
+    expectProcess('zpool',['list','-v','-p','cache'],infoFixture());
+    $diagnostic=zfsmReadPoolDiagnostics('cache');
+    same('idle',$diagnostic['scan']['state']);
+    expectProcess('zpool',['status','-p','-t','cache'],$text);
+    expectProcess('zpool',['list','-v','-p','cache'],infoFixture());
+    expectProcess('zpool',['scrub','cache'],'');
+    $answer=zfsmStartPoolScrub('cache','1');
+    same(true,isset($answer['succeeded']['cache']));
+});
+// Verbatim `zpool status -p -t` and `zpool list -v -p` from a never-scrubbed pool on Unraid 7.3.4.
+check('real never-scrubbed pool output allows starting scrub', function() {
+    $status=<<<'ZFSM_STATUS'
+  pool: backup_zfs
+ state: ONLINE
+config:
+
+	NAME         STATE     READ WRITE CKSUM
+	backup_zfs   ONLINE       0     0     0
+	  nvme3n1p1  ONLINE       0     0     0  (untrimmed)
+
+errors: No known data errors
+ZFSM_STATUS;
+    $list=<<<'ZFSM_LIST'
+NAME                  SIZE    ALLOC           FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT
+backup_zfs   4088808865792  1032192  4088807833600        -         -      0      0   1.00    ONLINE  -
+  nvme3n1p1  4096804519936  1032192  4088807833600        -         -      0      0      -    ONLINE        -
+ZFSM_LIST;
+    $status.="\n";$list.="\n";
+    expectProcess('zpool',['status','-p','-t','backup_zfs'],$status);expectProcess('zpool',['list','-v','-p','backup_zfs'],$list);
+    $diagnostic=zfsmReadPoolDiagnostics('backup_zfs');
+    same('idle',$diagnostic['scan']['state']);same('ONLINE',$diagnostic['health']);
+    expectProcess('zpool',['status','-p','-t','backup_zfs'],$status);expectProcess('zpool',['list','-v','-p','backup_zfs'],$list);expectProcess('zpool',['scrub','backup_zfs'],'');
+    same(true,isset(zfsmStartPoolScrub('backup_zfs','1')['succeeded']['backup_zfs']));
+});
+check('present but empty scan line stays unknown and blocks scrub', function() {
+    expectProcess('zpool',['status','-p','-t','cache'],statusFixture('','0 0 0',''));
+    expectProcess('zpool',['list','-v','-p','cache'],infoFixture());
+    same('unknown',zfsmReadPoolDiagnostics('cache')['scan']['state']);
+});
 check('failed pool status blocks scrub', function() {
     expectProcess('zpool',['status','-p','-t','cache'],'no such pool',1);
     expectProcess('zpool',['list','-v','-p','cache'],infoFixture());

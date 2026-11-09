@@ -34,6 +34,14 @@ function zfsmParsePoolScan($text) {
     return $scan;
 }
 
+// A pool that was never scanned may print no scan line at all; that means no
+// scrub was requested. A scan line that is present but empty stays unknown.
+function zfsmPoolScanText($data) {
+    $scan = (string)($data['scan'] ?? '');
+    if ($scan === '' && ($data['state'] ?? '') !== '' && !preg_match('/^\s*scan:/m', (string)($data['text'] ?? ''))) return 'none requested';
+    return $scan;
+}
+
 function zfsmStartPoolScrub($pool, $confirmed) {
     if (!zfsmValidPoolName($pool)) throw new InvalidArgumentException('Invalid pool name');
     if ($confirmed !== '1') throw new InvalidArgumentException('Confirm scrub of the entire selected pool');
@@ -93,7 +101,7 @@ function zfsmObserveScrubJob($job) {
         $r=runProcess('zpool',['status','-p',$job['source']]);
         if(($r['code']??1)!==0)throw new RuntimeException('Native status unavailable');
         $parsed=zfsmParsePoolDiagnosticStatus($job['source'],$r['output']);if($parsed['issues'])throw new RuntimeException('Unknown pool status');
-        $scan=zfsmParsePoolScan($parsed['data']['scan']);$changes=['observed_at'=>time()];
+        $scan=zfsmParsePoolScan(zfsmPoolScanText($parsed['data']));$changes=['observed_at'=>time()];
         if(in_array($scan['state'],['running','paused'],true)&&$scan['kind']==='scrub'){
             if(!preg_match('/^scrub (?:in progress|paused) since ([^\r\n]+)/',$scan['text'],$match))throw new RuntimeException('Scan identity unavailable');
             if(isset($job['scan_started'])&&$job['scan_started']!==$match[1])throw new RuntimeException('Scan changed');

@@ -249,5 +249,5 @@ function zfsmReadPoolDiagnostics($pool) {
 		$reasons = array_merge($reasons,$issues);
 		if ($native === 'UNKNOWN') $reasons[] = 'Native pool health could not be determined';
 	}
-	return ['pool'=>$pool,'collected_at'=>gmdate('c'),'health'=>$native,'severity'=>$severity,'reasons'=>array_values(array_unique($reasons)),'status'=>$status['data'],'information'=>$information['data'],'scan'=>zfsmParsePoolScan($status['data']['scan']),'trim'=>$trim,'maintenance'=>zfsmNativeMaintenance($pool),'command_errors'=>$command_errors];
+	return ['pool'=>$pool,'collected_at'=>gmdate('c'),'health'=>$native,'severity'=>$severity,'reasons'=>array_values(array_unique($reasons)),'status'=>$status['data'],'information'=>$information['data'],'scan'=>zfsmParsePoolScan(zfsmPoolScanText($status['data'])),'trim'=>$trim,'maintenance'=>zfsmNativeMaintenance($pool),'command_errors'=>$command_errors];
 }
