@@ -14,7 +14,8 @@ const source=process.env.ZFSM_SOURCE||'src/frontend';
 const names=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMProtection.js','ZFSMWorkspace.js','ZFSMWorkspace.css','ZFSMProtection.css'];
 const contents=await Promise.all(names.map(name=>readFile(source+'/'+name,'utf8')));
 const hashes=Object.fromEntries(names.map((name,i)=>[name,createHash('sha256').update(contents[i]).digest('hex')]));
-const prototype=await readFile('docs/design/2026-10-19-clean-ui/ZFS-Director-Clean-UI.html','utf8');
+// The design prototype is only the visual reference for ZFSM_PHASE=reference and is not part of the repository.
+const prototype=phase==='reference'?await readFile('docs/design/2026-10-19-clean-ui/ZFS-Director-Clean-UI.html','utf8'):'';
 const screens=['overview','datasets','protection','replication','jobs','settings'];
 const errors=[],results=[],failures=[];
 const policyTimesOnly=process.env.ZFSM_POLICY_TIMES_ONLY==='1';
@@ -81,7 +82,7 @@ async function legacyChecks(page,key){
  await navigate(page,'datasets');await page.locator('[data-node="cache/a"]').click();
  for(const [tab,label]of [['overview','dataset-overview'],['details','dataset-information'],['properties','dataset-properties']]){await page.locator('[data-tab='+tab+']').click();if(tab==='properties')await page.locator('.zfsm-form-group').first().waitFor();await capture(page,key+'-'+label);}
  await page.getByRole('button',{name:'Pool & Scrub',exact:true}).click();for(const tab of ['status','information','devices']){await page.locator('.zfsm-pool-tabs [data-tab='+tab+']').click();await capture(page,key+'-pool-'+tab);}await navigate(page,'datasets');
- await page.getByRole('button',{name:'Create Dataset',exact:true}).click();await page.locator('.zfsm-create-form').waitFor();await capture(page,key+'-create-dataset');await navigate(page,'datasets');await page.locator('[data-node="cache/a"]').click();
+ await page.getByRole('button',{name:'Create Dataset',exact:true}).click();await page.locator('.zfsm-create-form').waitFor();await capture(page,key+'-create-dataset');await page.keyboard.press('Escape');await navigate(page,'datasets');await page.locator('[data-node="cache/a"]').click();
  for(const tab of ['properties','snapshots','files','actions']){check(await page.locator('[data-tab='+tab+']').count()===1,key+' missing '+tab+' tab');}
  await page.locator('[data-tab=files]').click();const chooser=page.getByRole('combobox',{name:'Snapshot to browse',exact:true});await chooser.selectOption('cache/a@manual');await page.getByRole('button',{name:'Open File Manager',exact:true}).click();await page.getByRole('dialog',{name:'Snapshot File Manager',exact:true}).waitFor();await capture(page,key+'-file-manager-tab');await page.keyboard.press('Escape');check(await chooser.evaluate(e=>e===document.activeElement),key+' File Manager tab close focus');
  await page.locator('[data-tab=snapshots]').click();await capture(page,key+'-snapshots');await page.locator('[data-file-manager]').click();await page.getByRole('heading',{name:'Snapshot File Manager',exact:true}).waitFor();
@@ -90,11 +91,12 @@ async function legacyChecks(page,key){
  await page.getByRole('button',{name:'Restore selected',exact:true}).click();await page.getByRole('button',{name:'Review restore',exact:true}).click();await page.locator('.zfsm-restore-review').waitFor();
  check(await page.getByRole('button',{name:'Start restore',exact:true}).isDisabled(),key+' restore bypassed independent confirmation');await capture(page,key+'-file-manager-restore');await page.keyboard.press('Escape');
  await page.locator('[data-tab=actions]').click();for(const label of ['Take Snapshot','Rename dataset','Edit Dataset','User / group quotas','POSIX ACL editor','Destroy dataset'])check(await page.getByRole('button',{name:label,exact:true}).count()===1,key+' inaccessible '+label);
- await capture(page,key+'-dataset-actions');await page.getByRole('button',{name:'Destroy dataset',exact:true}).click();await page.getByRole('button',{name:'Load fresh preview',exact:true}).click();await page.getByText('Synthetic reviewed deletion scope only',{exact:true}).waitFor();check(!await page.getByRole('checkbox',{name:'I reviewed the exact preview above and confirm this irreversible operation.',exact:true}).isChecked(),key+' destroy acknowledgment preselected');await capture(page,key+'-dataset-destroy');
+ await capture(page,key+'-dataset-actions');await page.getByRole('button',{name:'Destroy dataset',exact:true}).click();await page.getByRole('button',{name:'Load fresh preview',exact:true}).click();await page.locator('.zfsm-destroy-verdict').waitFor();check(!await page.getByRole('checkbox',{name:/^Delete .+ permanently$/}).isChecked(),key+' destroy acknowledgment preselected');await capture(page,key+'-dataset-destroy');
  await navigate(page,'datasets');await page.locator('[data-node="/mnt/cache/a/ordinary"]').click();for(const label of ['Convert to dataset','Move / Rename','Delete directory'])check(await page.getByRole('button',{name:label,exact:true}).count()===1,key+' inaccessible '+label);await capture(page,key+'-directory-actions');
  const calls=await page.evaluate(()=>fixture.calls);check(calls.some(c=>c.cmd==='previewrestore'&&c.snapshot_guid==='123'),key+' restore must carry snapshot GUID');check(!calls.some(c=>['restoresnapshotfiles','destroydataset','deletedirectory'].includes(c.cmd)),key+' destructive endpoint was called');
 }
 async function navigate(page,screen){
+ await page.keyboard.press('Escape');
  const direct=page.locator('.zfsm-global-nav [data-section="'+screen+'"]');
  if(await direct.count()){await direct.click();}
  else if(screen==='overview'){await page.locator('.zfsm-global-nav [data-section=protection]').click();await page.locator('[data-protection-screen=overview]').click();}
@@ -169,7 +171,7 @@ try{
    await page.evaluate(()=>zfsm_workspace.stop());await page.close();
   }
  }
-}catch(error){failures.push('Harness stopped: '+String(error.stack||error));throw error;}finally{await browser.close();await writeFile(out+'/results.json',JSON.stringify({phase,source,hashes,prototypeSha256:createHash('sha256').update(prototype).digest('hex'),results,errors,failures,scope:'Offline actual frontend scripts/CSS in Chromium; synthetic backend only. No server, SSH, native ZFS or deployment.'},null,2)+'\n');}
+}catch(error){failures.push('Harness stopped: '+String(error.stack||error));throw error;}finally{await browser.close();await writeFile(out+'/results.json',JSON.stringify({phase,source,hashes,prototypeSha256:prototype?createHash('sha256').update(prototype).digest('hex'):null,results,errors,failures,scope:'Offline actual frontend scripts/CSS in Chromium; synthetic backend only. No server, SSH, native ZFS or deployment.'},null,2)+'\n');}
 assert.deepEqual(errors,[],'Browser errors');
 if(phase==='after')assert.deepEqual(failures,[],'Visual geometry checks');
 console.log(`Evidence ${out}/results.json (${results.length} screens; ${failures.length} failures)`);
