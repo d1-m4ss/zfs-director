@@ -68,6 +68,7 @@
     copy.node = Object.freeze(Object.assign({}, context.node || {}));
     copy.job = Object.freeze(Object.assign({}, context.job || {}));
     copy.snapshots = Object.freeze(Array.isArray(context.snapshots) ? context.snapshots.filter(name => typeof name === 'string').slice() : []);
+    copy.datasets = Object.freeze(Array.isArray(context.datasets) ? context.datasets.filter(name => typeof name === 'string' && name).slice() : []);
     return Object.freeze(copy);
   }
   global.zfsmCreateInlineForms = function zfsmCreateInlineForms(options) {
@@ -582,7 +583,7 @@
       const latest = settingsValues();
       for (const [name, fresh] of Object.entries(latest)) {
         if (!state.fields[name]) continue;
-        if (!state.dirtySettings.has(name)) state.fields[name].value = fresh;
+        if (!state.dirtySettings.has(name)) { state.fields[name].value = fresh; if (state.fields[name].zfsmSync) state.fields[name].zfsmSync(); }
         else if (value(state, name) === fresh) state.dirtySettings.delete(name);
       }
       state.settingsBaseline = latest;
@@ -595,7 +596,8 @@
       field(state, 'refresh_interval', 'Refresh interval', values.refresh_interval, [['0', 'No refresh'], ['30', '30 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['300', '5 minutes'], ['900', '15 minutes'], ['1800', '30 minutes']]);
       for (const [key, label] of [['lazy_load', 'Lazy load snapshots'], ['sanoid_integration', 'Sanoid / Syncoid integration'], ['destructive_mode', 'Destructive Mode']]) field(state, key, label, values[key], [['0', 'No'], ['1', 'Yes']]);
       field(state, 'exclusion', 'Dataset exclusion regex (one pattern)', values.exclusion, null, { type: 'textarea', rows: 2, maxLength: 1024 });
-      field(state, 'directory_listing', 'Directory listing datasets (one name per line)', values.directory_listing, null, { type: 'textarea', rows: 5, maxLength: 16384 });
+      const listing = field(state, 'directory_listing', 'Directory listing datasets', values.directory_listing, null, { type: 'textarea', rows: 5, maxLength: 16384 });
+      if (state.context && Array.isArray(state.context.datasets) && typeof global.zfsmDatasetChecklist === 'function') global.zfsmDatasetChecklist(listing, () => state.context.datasets, { label: 'Directory listing datasets' });
       field(state, 'snap_max_days_alert', 'Snapshot age warning (days)', values.snap_max_days_alert, null, { type: 'number', min: 0, max: 36500, step: 1, required: true });
       field(state,'space_warning_percent','Space warning threshold (%)',values.space_warning_percent,null,{type:'number',min:1,max:99,step:1,required:true});
       field(state,'space_critical_percent','Space critical threshold (%)',values.space_critical_percent,null,{type:'number',min:2,max:100,step:1,required:true});
@@ -1081,5 +1083,66 @@
       return state.ready;
     }
     return { render, dispose };
+  };
+  // Dataset names are picked from a list instead of typed one per line. The
+  // textarea stays the form value (one name per line); this only drives it.
+  // getNames() returns the current choices; names saved earlier that are no
+  // longer offered stay visible, checked, so nothing is dropped silently.
+  global.zfsmDatasetChecklist = function (textarea, getNames, options) {
+    options = options || {};
+    const make = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
+    const wrap = textarea.closest('label') || textarea;
+    const box = make('div', undefined, 'zfsm-checklist');
+    const head = make('div', undefined, 'zfsm-checklist-head');
+    const filter = make('input'); filter.type = 'search'; filter.placeholder = 'Filter datasets…'; filter.setAttribute('aria-label', 'Filter datasets'); filter.autocomplete = 'off';
+    const count = make('span', undefined, 'zfsm-checklist-count');
+    const list = make('div', undefined, 'zfsm-checklist-list');
+    const missing = make('div', undefined, 'zfsm-checklist-missing');
+    head.append(filter, count);
+    box.append(head, list, missing);
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', options.label || textarea.getAttribute('aria-label') || 'Datasets');
+    textarea.hidden = true;
+    wrap.after(box);
+    const lines = () => String(textarea.value || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const checkbox = (name, checked) => {
+      const row = make('label', undefined, 'zfsm-checklist-row');
+      const input = make('input'); input.type = 'checkbox'; input.checked = checked; input.value = name;
+      row.append(input, make('span', name));
+      return row;
+    };
+    function commit(selected) {
+      const names = getNames();
+      const ordered = [...names.filter(name => selected.has(name)), ...lines().filter(name => selected.has(name) && !names.includes(name))];
+      textarea.value = [...new Set(ordered)].join('\n');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      sync();
+    }
+    function sync() {
+      const names = getNames(), selected = new Set(lines()), needle = filter.value.trim().toLowerCase();
+      list.replaceChildren(); missing.replaceChildren();
+      const shown = names.filter(name => !needle || name.toLowerCase().includes(needle));
+      for (const name of shown) list.append(checkbox(name, selected.has(name)));
+      if (!shown.length) list.append(make('p', names.length ? 'No dataset matches the filter.' : (options.empty || 'No datasets available.'), 'zfsm-checklist-empty'));
+      const gone = lines().filter(name => !names.includes(name));
+      if (gone.length) {
+        missing.append(make('p', 'Not found now. Kept until you uncheck them:'));
+        for (const name of gone) missing.append(checkbox(name, true));
+      }
+      missing.hidden = !gone.length;
+      count.textContent = selected.size + ' selected';
+    }
+    box.addEventListener('change', event => {
+      const input = event.target;
+      if (!input || input.type !== 'checkbox') return;
+      const selected = new Set(lines());
+      if (input.checked) selected.add(input.value); else selected.delete(input.value);
+      commit(selected);
+    });
+    filter.addEventListener('input', event => { event.stopPropagation(); sync(); });
+    filter.addEventListener('keydown', event => { if (event.key === 'Enter') event.preventDefault(); });
+    textarea.zfsmSync = sync;
+    sync();
+    return textarea;
   };
 })(typeof window === 'undefined' ? globalThis : window);
