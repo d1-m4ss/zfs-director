@@ -10,10 +10,13 @@ page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',route=>ro
 const endpoint=stand.url+'/plugins/zfs.master.ui/backend/ZFSMAdmin.php',fixture=stand.readModel().directory_fixtures,target=fixture.paths.delete;
 const helperCount=()=>stand.readModel().calls.filter(c=>c.stdin_json?.op==='delete').length;
 function monitor(path,rw){const m=stand.readModel();m.docker={name:'/metrics-demo',state:'running',pid:123,mounts:[{source:path,destination:'/storage',type:'bind',...(rw===undefined?{}:{rw})}]};stand.writeModel(m);}
-async function submit(){
+async function open(){
  if(await page.locator('.zfsm-action-dialog[open]').count())await page.getByRole('button',{name:'Close action',exact:true}).click();
  await page.locator('[data-section=datasets]').click();await page.locator('[data-node="'+target+'"]').click();await page.locator('[data-tab=actions]').click();await page.getByRole('button',{name:'Delete directory',exact:true}).click();
- await page.locator('[name=force]').check();await page.locator('[name=acknowledge]').check();await page.locator('.zfsm-form button[type=submit]').click();
+ await page.locator('[name=force]').check();await page.locator('[data-preview]').click();await page.locator('.zfsm-destroy-summary').waitFor();
+}
+async function submit(){
+ await open();await page.locator('[name=acknowledge]').check();await page.locator('.zfsm-form button[type=submit]').click();
  const response=page.waitForResponse(r=>r.url()===endpoint&&new URLSearchParams(r.request().postData()).get('cmd')==='deletedirectory');await page.locator('[data-confirm-operation]').click();return (await response).json();
 }
 async function run(id){const r=await stand.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';echo json_encode(zfsmRunDeletionJob('${id}'));`});assert.equal(r.errors,'');return JSON.parse(r.text);}
@@ -21,8 +24,11 @@ try{
  stand.php.mkdir('/usr/bin');stand.php.writeFile('/usr/bin/docker','SYNTHETIC test executable; external reads are simulated');await stand.run({code:"<?php chmod('/usr/bin/docker',0755);chmod('/usr/bin',0755);"});
  await page.goto(stand.url);await page.locator('[data-node="'+target+'"]').waitFor();
  for(const [name,path,rw]of [['writable parent',fixture.mountpoint,true],['unknown access',fixture.mountpoint,undefined],['exact read-only consumer',target,false],['nested read-only consumer',target+'/retained.txt',false]]){
-  monitor(path,rw);const reply=await submit();assert.equal(reply.job?.state,'failed',JSON.stringify(reply));assert.equal(reply.job.error_code,'dependencies');assert.equal(helperCount(),0);assert.ok(stand.php.fileExists(target+'/retained.txt'));
-  await page.getByRole('button',{name:'View failed attempt in Jobs',exact:true}).click();await page.locator('[data-job-id="'+reply.job.id+'"]').getByRole('alert').waitFor();checks.push(name+' refuses before deletion and appears in Jobs');
+  monitor(path,rw);await open();
+  assert.match(await page.locator('.zfsm-action-dialog[open] .zfsm-destroy-verdict').innerText(),/Can't delete: Docker container/);assert.equal(await page.locator('.zfsm-action-dialog[open] button[type=submit]').isVisible(),false,'No Delete while blocked');
+  const identity=fixture.metadata[target].identity,reply=await(await fetch(endpoint,{method:'POST',body:new URLSearchParams({csrf_token:'integration-token',cmd:'deletedirectory',directory:target,force:'1',expected_guid:stand.readModel().datasets[fixture.owner].guid,'directory_identity[dev]':identity.dev,'directory_identity[ino]':identity.ino})})).json();
+  assert.equal(reply.job?.state,'failed',JSON.stringify(reply));assert.equal(reply.job.error_code,'dependencies');assert.equal(helperCount(),0);assert.ok(stand.php.fileExists(target+'/retained.txt'));
+  checks.push(name+' is shown as blocked in the GUI and refused by the backend before deletion');
  }
  monitor(fixture.mountpoint,false);const queued=await submit();assert.equal(queued.job?.state,'queued',JSON.stringify(queued));assert.ok(stand.php.fileExists(target+'/retained.txt'));await page.getByRole('button',{name:'View deletion progress',exact:true}).click();const first=page.locator('[data-job-id="'+queued.job.id+'"]');await first.getByRole('progressbar',{name:'Deletion progress'}).waitFor();
  monitor(fixture.mountpoint,true);const denied=await run(queued.job.id);assert.equal(denied.state,'failed');assert.equal(denied.error_code,'dependencies');assert.equal(helperCount(),0);assert.ok(stand.php.fileExists(target+'/retained.txt'));checks.push('Worker rechecks read-only → writable change and preserves the directory');

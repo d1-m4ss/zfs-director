@@ -93,3 +93,26 @@ test('processes holding the dataset get one line and a confirmed Stop that reche
  }finally{x.close();}
 });
 
+async function directoryDialog(answers){
+ const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window,root=w.document.querySelector('main'),calls=[],viewed=[];let n=0;
+ w.eval(readFileSync('src/frontend/ZFSMForms.js','utf8'));
+ const forms=w.zfsmCreateInlineForms({getConfig:()=>({destructive_mode:1}),onViewJob:id=>viewed.push(id),request:async fields=>{calls.push(fields);return fields.cmd==='previewdeletedirectory'?answers[Math.min(n++,answers.length-1)]:{succeeded:{done:'Done'},failed:{}};}});
+ await forms.render(root,'deletedirectory',{pool:'cache',dataset:'cache/zfs',directory:'/mnt/cache/zfs/Codex_archived',type:'filesystem',node:{...object}});
+ root.querySelector('[name=force]').click();await settle();root.querySelector('[data-preview]').click();await settle();
+ return {w,root,calls,viewed,close(){forms.dispose();w.close();}};
+}
+test('folder deletion shows one verdict, offers Jobs for a blocking job and unlocks Delete only when free',async()=>{
+ const base={target:'/mnt/cache/zfs/Codex_archived',dataset:'cache/zfs',recursive:true,service_blockers:[]};
+ const x=await directoryDialog([{...base,blockers:[{kind:'lock',title:"Can't delete now: another Director operation is running (php (PID 4242))",fix:'Wait for it in Jobs, then press Check again.'},{kind:'pending_job',title:"Can't delete now: an earlier request for this folder is still queued",fix:'Open it in Jobs, wait for it or inspect it, then press Check again.',job:'20261108-221212-16a5e75556fa'}],can_delete:false},{...base,blockers:[],note:'Its dataset cache/zfs/Codex is published, so this is a leftover original.',can_delete:true}]);
+ try{
+  assert.deepEqual(JSON.parse(JSON.stringify(x.calls[0])),{cmd:'previewdeletedirectory',directory:'/mnt/cache/zfs/Codex_archived',force:'1'});
+  assert.equal(x.root.querySelector('.zfsm-destroy-verdict').textContent,"⛔ Can't delete now: another Director operation is running (php (PID 4242))Wait for it in Jobs, then press Check again.⛔ Can't delete now: an earlier request for this folder is still queuedOpen it in Jobs, wait for it or inspect it, then press Check again.");
+  assert.equal(x.root.querySelector('[name=acknowledge]').closest('label').hidden,true);assert.equal(x.root.querySelector('button[type=submit]').hidden,true);
+  const jobs=x.root.querySelector('[data-view-job]');assert.equal(jobs.textContent,'Open Jobs');jobs.click();assert.deepEqual(x.viewed,['20261108-221212-16a5e75556fa']);
+  x.root.querySelector('[data-preview]').click();await settle();
+  assert.equal(x.root.querySelector('.zfsm-destroy-verdict').textContent,"✓ Not in use. Deleting can't be undone.Its dataset cache/zfs/Codex is published, so this is a leftover original.");
+  assert.equal(x.root.querySelector('[data-view-job]'),null);assert.equal(x.root.querySelector('button[type=submit]').hidden,false);
+  assert.equal(x.root.querySelector('[name=acknowledge]').closest('label').textContent.trim(),'Delete this folder permanently');
+ }finally{x.close();}
+});
+

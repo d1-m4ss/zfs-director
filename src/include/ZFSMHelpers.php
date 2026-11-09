@@ -10,7 +10,15 @@ function zfsmOperationLockFailure($code,$owner=null) {
     $messages=['lock_busy'=>'Another operation is running: the operation lock is held. Wait for it to finish and retry.',
         'lock_open_failed'=>'Operation lock unavailable: cannot open its file. Check backend permissions and lock storage.',
         'lock_unavailable'=>'Operation lock unavailable: file identity or kernel locking could not be verified.'];
-    return new RuntimeException($messages[$code]);
+    $held=$code==='lock_busy'&&is_array($owner)?"\nHeld by: ".($owner['comm']??'process').' (PID '.$owner['pid'].')':'';
+    return new RuntimeException($messages[$code].$held);
+}
+// The worker takes the same lock briefly for each pending job. A user request
+// waits a few seconds for such a short hold instead of failing at once.
+function zfsmAcquireOperationLockWaiting($file,$seconds=5.0) {
+    $deadline=microtime(true)+$seconds;
+    while(microtime(true)<$deadline){$h=zfsmAcquireOperationLock($file,true);if($h!==null)return $h;usleep(100000);}
+    return zfsmAcquireOperationLock($file);
 }
 /** Match an observed Linux whole-file flock, never a waiter or another inode. */
 function zfsmOperationLockPid($locks,$opened) {

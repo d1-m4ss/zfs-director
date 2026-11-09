@@ -8,8 +8,30 @@ function zfsmDeletionError($text) {
         'identity_changed'=>['/identity|GUID|replaced|original dataset|no longer available/i','The target identity changed or could not be verified. Refresh the inventory and review the target again.'],
         'preview_changed'=>['/preview|dependencies changed|holds|dry run/i','The deletion preview expired, changed or is blocked. Load a fresh preview and review its objects and dependencies.'],
         'protected'=>['/protected|service directory|pool root/i','This target contains protected data. Inspect its recovery or protection information; ordinary deletion is refused.'],
-    ] as $code=>[$pattern,$message]) if (preg_match($pattern,$text)) return [$code,$message.($code==='dependencies'&&preg_match('/^Blocking: ([^\n]{1,1200})$/m',$text,$found)?' Blocking: '.$found[1].'.':'')];
+    ] as $code=>[$pattern,$message]) if (preg_match($pattern,$text)) return [$code,$message.($code==='dependencies'&&preg_match('/^Blocking: ([^\n]{1,1200})$/m',$text,$found)?' Blocking: '.$found[1].'.':'').($code==='lock_busy'&&preg_match('/^(Held by|Earlier request): ([A-Za-z0-9_.+ ()-]{1,120})$/m',$text,$found)?' '.$found[1].': '.$found[2].'.':'')];
     return ['preflight_failed','Deletion was not started. Review the target, permissions and Administrative History, then submit a fresh request.'];
+}
+// Read-only check behind the Delete directory dialog: the same reasons a
+// submission would be refused for, each with the place to resolve it.
+function zfsmDirectoryDeletionPreview($directory,$force) {
+    $recursive=zfsmDestroyChoice($force);$blockers=[];$note='';
+    $resolved=is_string($directory)?zfsmResolveDirectory($directory,true):null;
+    if(!$resolved||$resolved['path']!==$directory)return ['target'=>$directory,'recursive'=>$recursive,'blockers'=>[['kind'=>'missing','title'=>'Can\'t delete: this folder is no longer at this path','fix'=>'Refresh the dataset list.']],'service_blockers'=>[],'can_delete'=>false];
+    $path=$resolved['path'];
+    try{zfsmDirectoryRequest('delete',$resolved,['recursive'=>$recursive]);}
+    catch(Throwable$error){$blockers[]=['kind'=>'protected','title'=>'Can\'t delete: '.rtrim($error->getMessage(),'.'),'fix'=>''];}
+    foreach(zfsmPendingJobs()as$job)if(($job['source']??null)===$path)$blockers[]=['kind'=>'pending_job','title'=>'Can\'t delete now: an earlier request for this folder is still '.($job['state']??'pending'),'fix'=>'Open it in Jobs, wait for it or inspect it, then press Check again.','job'=>$job['id']];
+    foreach(zfsmUnresolvedConversions()as$job){
+        $originals=array_filter([$job['source'],$job['recovery']??null],'is_string');$hit=false;foreach($originals as$original)if(zfsmPathOverlaps($path,$original))$hit=true;
+        if(!$hit)continue;
+        if(!$job['target_published'])$blockers[]=['kind'=>'conversion','title'=>'Can\'t delete: it is the only copy of conversion into '.$job['dataset'],'fix'=>'The dataset '.$job['dataset'].' is not published yet. Open Jobs → Publish verified copy, then press Check again.','job'=>$job['id']];
+        elseif(($job['recovery']??null)===$path)$note='Its dataset '.$job['dataset'].' is published, so this is a leftover original.';
+    }
+    $services=zfsmDependencyMutationBlockers('deletedirectory',['directory'=>$path]);
+    // Probe the operation lock for a few seconds and release it at once.
+    $holder=null;try{$lock=zfsmAcquireOperationLockWaiting($GLOBALS['plugin_lock'],3.0);flock($lock,LOCK_UN);fclose($lock);}
+    catch(Throwable$error){if(preg_match('/^Held by: (.+)$/m',$error->getMessage(),$found))$holder=$found[1];$blockers[]=['kind'=>'lock','title'=>'Can\'t delete now: another Director operation is running'.($holder?' ('.$holder.')':''),'fix'=>'Wait for it in Jobs, then press Check again.'];}
+    return ['target'=>$path,'dataset'=>$resolved['dataset'],'recursive'=>$recursive,'blockers'=>$blockers,'service_blockers'=>$services,'note'=>$blockers||$services?'':$note,'can_delete'=>!$blockers&&!$services];
 }
 function zfsmRecordRejectedDeletion($kind,$source,$failed,$audit_id) {
     if (!in_array($kind,['directory','dataset'],true)||!is_string($source)||strlen($source)>4096||preg_match('/[\x00-\x1f\x7f]/',$source)||($kind==='dataset'?!zfsmValidDatasetName($source):!str_starts_with($source,'/mnt/'))) return null;
@@ -60,7 +82,7 @@ function zfsmQueueDeletion($kind,$source,$recursive,$scope=null) {
     if (is_link($queue)) throw new RuntimeException('Invalid queue lock');
     $lock=@fopen($queue,'c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Unable to lock queue');
     try {
-        foreach(zfsmPendingJobs() as $existing) if (($existing['source']??null)===$source) throw new RuntimeException('Another operation for this target is already queued or running');
+        foreach(zfsmPendingJobs() as $existing) if (($existing['source']??null)===$source) throw new RuntimeException("Another operation for this target is already queued or running\nEarlier request: job ".$existing['id'].' ('.($existing['state']??'pending').')');
         $GLOBALS['zfsm_deletion_journal_started']=true;
         zfsmJobAtomicWrite(zfsmJobFile($id),$job);
         $answer=['succeeded'=>[$source=>'Deletion queued. Follow progress and the verified result in Jobs.'],'failed'=>[],'job'=>$job];

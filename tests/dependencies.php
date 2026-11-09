@@ -64,4 +64,10 @@ check('blocked deletion names each configured reference in the preview text and 
     [$code,$message]=zfsmDeletionError('Deletion blocked by live filesystem references');
     same(['dependencies','Deletion is blocked by service references or mounts. Review Usage & Dependencies and release them through their owner.'],[$code,$message]);
 });
+check('busy deletion names the lock holder or the earlier request for the same folder',function(){
+    same(['lock_busy','Another operation is running. Wait for it to finish, refresh the target and submit a new request. Held by: php (PID 4242).'],zfsmDeletionError("Another operation is running: the operation lock is held. Wait for it to finish and retry.\nHeld by: php (PID 4242)"));
+    same(['lock_busy','Another operation is running. Wait for it to finish, refresh the target and submit a new request. Earlier request: job 20261108-221212-16a5e75556fa (queued).'],zfsmDeletionError("Another operation for this target is already queued or running\nEarlier request: job 20261108-221212-16a5e75556fa (queued)"));
+    same(['lock_busy','Another operation is running. Wait for it to finish, refresh the target and submit a new request.'],zfsmDeletionError('Unable to lock queue'));
+    same(['lock_busy','Another operation is running. Wait for it to finish, refresh the target and submit a new request.'],zfsmDeletionError("Unable to lock queue\nHeld by: <script>"));
+});
 finishTests();

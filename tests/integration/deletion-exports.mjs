@@ -23,24 +23,32 @@ async function form(){
  await page.locator('[data-node="'+target+'"]').click();
  await page.locator('[data-tab=actions]').click();
  await page.getByRole('button',{name:'Delete directory',exact:true}).click();
- await page.locator('[name=force]').check();await page.locator('[name=acknowledge]').check();
+ await page.locator('[name=force]').check();await page.locator('[data-preview]').click();await page.locator('.zfsm-destroy-summary').waitFor();
+ if(await page.locator('[name=acknowledge]').isVisible())await page.locator('[name=acknowledge]').check();
+}
+// Backend refusal stays independent of the GUI check: post the reviewed fields directly.
+function directFields(directory){
+ const m=stand.readModel(),identity=fixture.metadata[target].identity;
+ return new URLSearchParams({csrf_token:'integration-token',cmd:'deletedirectory',directory,force:'1',expected_guid:m.datasets[fixture.owner].guid,'directory_identity[dev]':identity.dev,'directory_identity[ino]':identity.ino});
 }
 try{
  await page.goto(stand.url);await page.getByRole('button',{name:'Refresh',exact:true}).click();
  await page.locator('[data-node="'+target+'"]').waitFor();
  for(const path of [target,target+'/retained.txt']){
   stand.php.writeFile('/etc/samba/smb-shares.conf','[fixture]\npath = '+path+'\n');
-  await form();const before=helperCount(),reply=await submit();
-  assert.match(JSON.stringify(reply.failed),/configured service references/);
+  await form();const before=helperCount();
+  const verdict=(await page.locator('.zfsm-action-dialog[open] .zfsm-destroy-verdict').innerText()).replace(/\n+/g,'\n');
+  assert.equal(verdict,'⛔ Can\'t delete: SMB share "fixture" uses '+path+'\nOpen Shares → fixture, set SMB Export to No, then press Check again.');
+  assert.equal(await page.locator('.zfsm-action-dialog[open] button[type=submit]').isVisible(),false,'No Delete while blocked');
+  const reply=await(await fetch(endpoint,{method:'POST',body:directFields(target)})).json();
+  assert.match(JSON.stringify(reply.failed),/configured service references/);assert.match(JSON.stringify(reply.failed),/Blocking: SMB share \\"fixture\\"/);
   assert.equal(helperCount(),before);assert.ok(stand.php.fileExists(target+'/retained.txt'));
   results.push({name:'configured export protected: '+path,status:'PASS'});
   if(path===target){
-   const fields=new URLSearchParams(stand.calls.findLast(c=>new URLSearchParams(c.body).get('cmd')==='deletedirectory').body);
-   fields.set('directory',target+'/');
    for(const service of ['smb','nfs']){
     stand.php.writeFile('/etc/samba/smb-shares.conf',service==='smb'?'[fixture]\npath = '+target+'\n':'');
     stand.php.writeFile('/etc/exports',service==='nfs'?target+' *(rw)\n':'');
-    const denied=await(await fetch(endpoint,{method:'POST',body:fields})).json();
+    const denied=await(await fetch(endpoint,{method:'POST',body:directFields(target+'/')})).json();
     assert.match(JSON.stringify(denied.failed),/configured service references/);assert.equal(helperCount(),before);
     assert.ok(stand.php.fileExists(target+'/retained.txt'));results.push({name:service+' exact export with trailing slash protected',status:'PASS'});
    }
@@ -65,6 +73,12 @@ try{
  stand.php.writeFile('/etc/exports',fixture.mountpoint+' *(rw)\n');
  await form();const reply=await submit();assert.equal(Object.keys(reply.failed||{}).length,0,JSON.stringify(reply));
  assert.equal(reply.job?.state,'queued');assert.equal(helperCount(),0);assert.ok(stand.php.fileExists(target+'/retained.txt'));
+ // A pending request for the same folder is named in the check and in a repeated submit.
+ const pending=await(await fetch(endpoint,{method:'POST',body:new URLSearchParams({csrf_token:'integration-token',cmd:'previewdeletedirectory',directory:target,force:'1'})})).json();
+ assert.equal(pending.can_delete,false);assert.deepEqual(pending.blockers.filter(b=>b.kind==='pending_job').map(b=>b.job),[reply.job.id]);
+ const repeat=await(await fetch(endpoint,{method:'POST',body:directFields(target)})).json();
+ assert.equal(repeat.job?.error_code,'lock_busy',JSON.stringify(repeat));assert.match(repeat.job.error,new RegExp('Earlier request: job '+reply.job.id+' \\(queued\\)\\.$'));
+ results.push({name:'pending request for the same folder is named by the check and by a repeated submit',status:'PASS'});
  const execution=await stand.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';echo json_encode(zfsmRunDeletionJob('${reply.job.id}'));`});assert.equal(execution.errors,'');assert.equal(JSON.parse(execution.text).state,'completed');
  assert.equal(helperCount(),1);assert.equal(stand.php.fileExists(target+'/retained.txt'),false);
  assert.ok(stand.php.fileExists(fixture.paths.convert+'/retained.txt'));
@@ -72,6 +86,6 @@ try{
  await page.getByRole('button',{name:'View deletion progress',exact:true}).click();await page.locator('[data-job-id="'+reply.job.id+'"]').getByText(/Directory and its selected contents deleted; absence verified/).waitFor();
  await page.screenshot({path:output+'/deleted-child.png',fullPage:true});
  assert.deepEqual(errors,[]);
- assert.deepEqual(stand.errors,Array(4).fill('ZFS Director backend request failed\n')); // Four intentional guard rejections.
+ assert.deepEqual(stand.errors,Array(5).fill('ZFS Director backend request failed\n')); // Five intentional guard rejections.
 }catch(error){results.push({name:'GUI deletion exports',status:'FAIL',error:error.stack});await page.screenshot({path:output+'/failure.png',fullPage:true});process.exitCode=1;}
 finally{await writeFile(output+'/results.json',JSON.stringify({results,errors,boundary:'Actual PHP endpoint/UI/guards; external ZFS and native helper effects simulated'},null,2)+'\n');console.log(JSON.stringify(results));await browser.close();await stand.close();}

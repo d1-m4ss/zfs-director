@@ -273,6 +273,7 @@
     function invalidatePreview(state) {
       clearConfirmation(state);
       state.stopButton?.remove(); state.stopButton = null; state.stopConfirm = null;
+      for (const old of state.jobLinks || []) old.remove(); state.jobLinks = [];
       state.preview = null;
       state.previewGeneration++;
       state.previewBusy = false;
@@ -363,6 +364,28 @@
       summary.append(details);
       host.append(summary);
     }
+    function renderDirectorySummary(host, answer) {
+      const summary = element('section', undefined, 'zfsm-destroy-summary');
+      summary.append(element('p', answer.target + ' · ' + (answer.recursive ? 'with all contents' : 'only if empty'), 'zfsm-muted'));
+      const verdict = element('section', undefined, answer.can_delete ? 'zfsm-destroy-verdict zfsm-destroy-ok' : 'zfsm-destroy-verdict zfsm-destroy-services');
+      if (answer.can_delete) { verdict.append(element('p', '✓ Not in use. Deleting can\'t be undone.', 'zfsm-success')); if (answer.note) verdict.append(element('p', answer.note)); }
+      for (const row of answer.blockers) { verdict.append(element('p', '⛔ ' + row.title, 'zfsm-error')); if (row.fix) verdict.append(element('p', row.fix, 'zfsm-error')); }
+      const names = {smb:'SMB share',nfs:'NFS export',docker:'Docker container',vm:'VM',additional_mount:'Additional mount',nested_mount:'Nested mount'};
+      for (const row of answer.service_blockers || []) {
+        const named = row?.name && !['nfs','additional_mount','nested_mount'].includes(row.kind);
+        verdict.append(element('p', '⛔ Can\'t delete: ' + (names[row?.kind] || 'Service reference') + (named ? ' "' + row.name + '"' : '') + ' uses ' + (row?.path || 'this folder'), 'zfsm-error'), element('p', (row.kind === 'smb' && named ? 'Open Shares → ' + row.name + ', set SMB Export to No' : 'Release it through its owner') + ', then press Check again.', 'zfsm-error'));
+      }
+      summary.append(verdict);
+      const details = element('details', undefined, 'zfsm-destroy-details');
+      details.append(element('summary', 'Details'), element('p', 'Folder: ' + answer.target), element('p', 'Dataset: ' + (answer.dataset || 'Unknown')), element('p', 'Mode: ' + (answer.recursive ? 'Recursive: all files and subdirectories' : 'Only an empty folder')));
+      summary.append(details);
+      host.append(summary);
+    }
+    function jobButtons(state, ids) {
+      for (const old of state.jobLinks || []) old.remove(); state.jobLinks = [];
+      if (!state.buttons || !ids.length || typeof options.onViewJob !== 'function') return;
+      for (const id of [...new Set(ids)]) { const link = element('button', 'Open Jobs'); link.type = 'button'; link.dataset.viewJob = id; link.addEventListener('click', () => options.onViewJob(id)); state.buttons.prepend(link); state.jobLinks.push(link); }
+    }
     async function loadPreview(state) {
       if (!current(state) || state.previewBusy || state.busy || runningActions.has(state.key)) return;
       if (policy(state)) { enable(state); return; }
@@ -385,6 +408,14 @@
           if(!answer?.token||!answer.preview_id||review?.kind!=='cleanup'||review.name!==state.context.dataset||review.directory!==state.context.directory)throw new Error(failureText(answer)||'Invalid cleanup review');
           state.previewBox.replaceChildren(element('strong','Completed '+review.operation+' operation'),element('p','Only journal.jsonl remains ('+review.records+' records). No retained data was found.'),element('p','Journal SHA-256: '+review.journal_sha256),element('p','Director will save the journal in persistent plugin storage before removing this container. The private .zfsm-maintenance directory is kept for safe cleanup.'));
           state.preview={...answer,choice,canProceed:review.can_proceed===true};note(state,'Review this exact container and acknowledge before cleanup.',false);return;
+        }
+        if(state.action==='deletedirectory'){
+          const answer=await request({cmd:'previewdeletedirectory',directory:state.context.directory,force:choice});
+          if(!current(state)||previewGeneration!==state.previewGeneration)return;
+          if(answer?.target!==state.context.directory||typeof answer.can_delete!=='boolean'||!Array.isArray(answer.blockers))throw new Error(failureText(answer)||'Invalid folder deletion check');
+          state.previewBox.replaceChildren();renderDirectorySummary(state.previewBox,answer);
+          state.preview={choice,canProceed:answer.can_delete};state.result.textContent='';state.result.className='';
+          showDestroyControls(state,answer.can_delete);jobButtons(state,answer.can_delete?[]:answer.blockers.filter(row=>row.job).map(row=>row.job));return;
         }
         if(['promotedataset','setquota','editacl'].includes(state.action)){
           const quota=state.action==='setquota',acl=state.action==='editacl',answer=await request({cmd:quota?'previewquota':acl?'previewacl':'previewpromote',zdataset:state.context.dataset,...(quota?{data:{kind:value(state,'kind'),id:value(state,'id'),value:value(state,'value')}}:acl?{acl:value(state,'acl')}:{})});
@@ -468,7 +499,7 @@
       state.previewBox = element('section', undefined, 'zfsm-preview');
       state.previewBox.setAttribute('aria-label', 'Exact server preview');
       state.grid.append(state.previewBox);
-      acknowledgment(state, state.action === 'destroydataset' ? 'Delete ' + state.context.dataset + ' permanently' : 'I reviewed the exact preview above and confirm this irreversible operation.');
+      acknowledgment(state, state.action === 'destroydataset' ? 'Delete ' + state.context.dataset + ' permanently' : state.action === 'deletedirectory' ? 'Delete this folder permanently' : 'I reviewed the exact preview above and confirm this irreversible operation.');
       invalidatePreview(state);
     }
     function createFields(state) {
@@ -693,7 +724,7 @@
         case 'setquota': return quotaFields(state);
         case 'editacl': return aclFields(state);
         case 'movedirectory': field(state, 'newname', 'New full directory path (within the same dataset)', ctx.directory, null, { required: true, maxLength: 4096 }); acknowledgment(state, 'I confirm moving this directory to the path entered above.'); break;
-        case 'deletedirectory': checkbox(state, 'force', 'Recursively delete all files and subdirectories (otherwise only an empty directory is removed)'); acknowledgment(state); break;
+        case 'deletedirectory': withPreview(state, 'force', 'Recursively delete all files and subdirectories (otherwise only an empty directory is removed)'); break;
         case 'convertdirectory': case 'resumeconversion':
           state.grid.append(element('p', 'Stop Docker containers, VMs, SMB/NFS clients and every other writer. Allow space for both copies. The original stays in a recovery directory; keep writers stopped until verification and inspection of the result. Progress and recovery controls are in Conversion Jobs.', 'zfsm-danger'));
           checkbox(state, 'offline_confirmed', 'All writers are stopped; I will inspect the result before restarting them'); break;
@@ -1032,7 +1063,7 @@
         const buttons = element('div', undefined, 'zfsm-buttons');
         state.buttons = buttons;
         if(action!=='editdatasetproperty'){
-          const submit = element('button',state.modal?(action==='destroydataset'?'Delete':'Review'):titles[action] === 'Settings' ? 'Save settings' : titles[action]); submit.type = 'submit';
+          const submit = element('button',state.modal?(['destroydataset','deletedirectory'].includes(action)?'Delete':'Review'):titles[action] === 'Settings' ? 'Save settings' : titles[action]); submit.type = 'submit';
           if (destructive.has(action)) submit.className = 'zfsm-danger';buttons.append(submit);
         }
         if(state.modal){buttons.classList.add('zfsm-action-footer');const close=element('button','Close');close.type='button';close.dataset.closeAction='';close.addEventListener('click',()=>{if(current(state))onClose();});buttons.append(close);}

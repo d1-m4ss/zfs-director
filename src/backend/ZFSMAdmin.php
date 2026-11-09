@@ -97,7 +97,7 @@ try {
 	$readonly[]='protectionexternalpreview';$administrative[]='protectionexternaltransfer';
 	$readonly=array_merge($readonly,['previewpromote','quotaoverview','previewquota']);$administrative[]='setquota';
 	$readonly=array_merge($readonly,['acleditorinfo','previewacl']);$administrative[]='editacl';
-	$readonly[]='previewcleanup';$readonly[]='previewspaceproperty';$readonly[]='previewhistoryarchive';
+	$readonly[]='previewdeletedirectory';$readonly[]='previewcleanup';$readonly[]='previewspaceproperty';$readonly[]='previewhistoryarchive';
 	if (!in_array($command,array_merge($readonly,$administrative),true)) throw new InvalidArgumentException('Unknown command');
 	$GLOBALS['zfsm_job_request_command']=$command;
 	if(isset(zfsmRequestJobCommands()[$command])&&!in_array($command,zfsmRequestJobQueuedCommands(),true))zfsmRequestJobBegin($command,$_POST);
@@ -114,7 +114,7 @@ try {
 	$controls=array('convertdirectory','cancelconversion','resumeconversion','restoresnapshotfiles','cancelrestore','archivesnapshotfiles');
 	if (!in_array($command, array_merge($readonly,$controls), true)) {
 		zfsmAuditSetStage('acquiring_lock');
-		$mutation_lock = zfsmAcquireOperationLock($GLOBALS['plugin_lock']);
+		$mutation_lock = zfsmAcquireOperationLockWaiting($GLOBALS['plugin_lock']);
         $GLOBALS['zfsm_operation_lock_handle']=$mutation_lock;
 	}
 	// Settings may have changed while audit storage was locked. Recheck policy
@@ -337,6 +337,9 @@ try {
 
 		case 'previewcleanup': echo json_encode(zfsmCleanupPreview(zfsmPostString('directory'),$request_token),JSON_THROW_ON_ERROR);break;
 		case 'cleanupmutation': zfsmReturnAnswer(zfsmCleanupCommit($_POST,$request_token),'Recovery cleanup','Completed recovery journal archived and removed','Recovery cleanup refused',true);break;
+		case 'previewdeletedirectory':
+			echo json_encode(zfsmDirectoryDeletionPreview(zfsmPostString('directory'),zfsmPostString('force','0')),JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
 		case 'deletedirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);

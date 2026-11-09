@@ -35,7 +35,7 @@ async function select(name=project,tab='Actions'){if(await page.locator('.zfsm-a
 async function action(cmd,name=project){await select(name);await page.getByRole('button',{name:names[cmd],exact:true}).click();await page.locator('.zfsm-form').waitFor();}
 async function confirm(cmd,{preview=false}={}){
     const form=page.locator('.zfsm-form');
-    if(preview||cmd==='destroysnapshot'){await form.locator('[data-preview]').click();await form.locator('.zfsm-preview pre, .zfsm-preview strong').first().waitFor({state:'attached'});}
+    if(preview||cmd==='destroysnapshot'||cmd==='deletedirectory'){await form.locator('[data-preview]').click();await form.locator('.zfsm-preview pre, .zfsm-preview strong, .zfsm-preview .zfsm-destroy-summary').first().waitFor({state:'attached'});}
     for(const key of ['acknowledge','offline_confirmed'])if(await form.locator('[name="'+key+'"]').count())await form.locator('[name="'+key+'"]').check();
     const before=mutationCalls(cmd).length;
     await form.locator('button[type="submit"]').click();await form.locator('[data-confirm-operation]').waitFor();

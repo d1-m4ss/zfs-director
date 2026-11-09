@@ -7,7 +7,7 @@
     "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
     "src/frontend/ZFSMExplorer.js": "2c1e952d5a74b6e26269aa2962df7ef0d1a40db3bcd52d33a165140f935a4938",
-    "src/frontend/ZFSMForms.js": "3160fe9c2d9f44b0649fbc9e839abcbd6df4e92507b0df26fb09e757d70e1923",
+    "src/frontend/ZFSMForms.js": "6157a45afe0603c5f386b2aa85a51e3e50014e3b6f9c2988daa9f4d7d8d24ce5",
     "src/frontend/ZFSMHistory.js": "6248365512db7547ed7d507aa46114ba3bdb8f652aff99af706864e15b6db162",
     "src/frontend/ZFSMInventory.js": "ad9571d0c9932e790607ccf5a689e5674ac5e728a6648de24a41c4341c49855b",
     "src/frontend/ZFSMOverview.js": "6523034f0f352946ac2cdc0eee76885a12566be7472d0cf8071f04756055785a",
@@ -78,8 +78,8 @@
     },
     {
       "file": "restore-review.png",
-      "sha256": "cbe3adf20f18cb37f024a53a6f74cf3ccb9a0a0335e70a2f5d0e73bb4ef1c882",
-      "bytes": 113350,
+      "sha256": "e28118def1e957aeb551a17eb64f1fbe26355e629131cf41a4b900cdd3772599",
+      "bytes": 113257,
       "viewport": {
         "width": 1440,
         "height": 980
