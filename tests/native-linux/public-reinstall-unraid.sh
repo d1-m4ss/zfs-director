@@ -14,9 +14,9 @@ install() { /usr/local/sbin/plugin install "$state/zfs-director.plg" forced > "$
 ready() {
   [[ ! -e /var/tmp/zfs.master.ui/jobs/stop && ! -e /var/tmp/zfs.master.ui/jobs/install-pending.json ]]
   (cd "$live"; sha256sum -c SHA256SUMS) > "$work/hashes.log"
-  [[ $(pgrep -fc '^/usr/bin/php .*/zfsm-worker.php --service$') == 1 ]]
-  [[ $(pgrep -fc '^/usr/bin/php .*/zfsm-worker.php --daemon$') == 1 ]]
-  [[ $(pgrep -fc '^/usr/bin/php .*/zfsm-monitor.php$') == 1 ]]
+  [[ $(pgrep -fc '^(/usr/bin/php .*/zfsm-worker.php --service|zfs-director service) *$') == 1 ]]
+  [[ $(pgrep -fc '^(/usr/bin/php .*/zfsm-worker.php --daemon|zfs-director worker) *$') == 1 ]]
+  [[ $(pgrep -fc '^(/usr/bin/php .*/zfsm-monitor.php|zfs-director monitor) *$') == 1 ]]
 }
 ready
 # Only synthetic settings/cron/legacy code are created. No ZFS commands mutate.

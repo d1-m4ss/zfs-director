@@ -37,13 +37,28 @@ def proc_info(pid):
     except (FileNotFoundError, ProcessLookupError):
         return None
 
+# The worker renames itself, so its path may no longer appear in argv.
+def is_daemon(info):
+    return '--daemon' in info['argv'] or 'zfs-director worker' in info['argv']
+
+def descends_from_test(pid):
+    # Renamed processes no longer carry this test's path: scope them by ancestry.
+    seen=set()
+    while pid>1 and pid not in seen:
+        if pid==os.getpid(): return True
+        seen.add(pid)
+        info=proc_info(pid)
+        if not info: return False
+        pid=info['ppid']
+    return False
+
 def processes(source):
     found = []
     for path in Path('/proc').iterdir():
         if not path.name.isdigit():
             continue
         info = proc_info(int(path.name))
-        if info and any(str(source) in arg for arg in info['argv']):
+        if info and (any(str(source) in arg for arg in info['argv']) or (any(arg.startswith('zfs-director ') for arg in info['argv']) and descends_from_test(info['pid']))):
             found.append(info)
     return found
 
@@ -127,11 +142,11 @@ sys.exit(91)
         def daemon(excluding=None):
             for info in processes(source):
                 observed_pids.add(info['pid'])
-                if '--daemon' in info['argv'] and info['pid']!=excluding and info['state']!='Z':
+                if is_daemon(info) and info['pid']!=excluding and info['state']!='Z':
                     return info
         first=wait_for(lambda:daemon(), 'Actual service failed to launch daemon')
         def monitor_in_group(group):
-            return next((x for x in processes(source) if str(monitor) in x['argv'] and x['pgid']==group and x['state']!='Z'),None)
+            return next((x for x in processes(source) if (str(monitor) in x['argv'] or 'zfs-director monitor' in x['argv']) and x['pgid']==group and x['state']!='Z'),None)
         old_monitor=wait_for(lambda:monitor_in_group(first['pid']), 'Actual daemon failed to launch monitor in its isolated process group')
         observed_pids.add(old_monitor['pid'])
         assert not free_lock(base/'worker.lock') and not free_lock(base/'service.lock')
@@ -139,7 +154,7 @@ sys.exit(91)
             competitor=subprocess.run(['php',str(worker),mode],env=env,capture_output=True,timeout=4)
             assert competitor.returncode==0, competitor.stderr.decode()
         assert active(first['pid']), 'Competing worker disrupted owner'
-        assert len([x for x in processes(source) if '--daemon' in x['argv'] and x['state']!='Z'])==1
+        assert len([x for x in processes(source) if is_daemon(x) and x['state']!='Z'])==1
         mark('real competing daemons/services cannot acquire owner kernel locks', {'daemon_pid':first['pid'],'monitor_pid':old_monitor['pid'],'worker_lock_held':True,'service_lock_held':True})
 
         boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()

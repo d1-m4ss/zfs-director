@@ -360,5 +360,6 @@ sub main {
         if ($op eq 'plan') { emit(make_plan($source,$dest,$args)); } else { restore($source,$dest,$args); }
     } else { file_error('Unknown file operation'); }
 }
-unless (caller) { eval { main(); 1 } or do { my $error=$@||'File operation failed'; $error=~s/\s+$//; print STDERR $json->encode({error=>$error})."\n"; exit 1; }; }
+unless (caller) {
+    $0='zfs-director file helper'; eval { main(); 1 } or do { my $error=$@||'File operation failed'; $error=~s/\s+$//; print STDERR $json->encode({error=>$error})."\n"; exit 1; }; }
 1;

@@ -224,6 +224,18 @@ class DirectoryMutations(unittest.TestCase):
         self.assertEqual(proc.returncode,0,proc.stderr)
         self.assertFalse(self.source.exists())
 
+    def test_helper_process_is_named_zfs_director(self):
+        proc = subprocess.Popen(['perl', HELPER], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            for _ in range(100):
+                cmdline = pathlib.Path(f'/proc/{proc.pid}/cmdline').read_bytes().replace(b'\0', b' ').decode()
+                if 'zfs-director folder helper' in cmdline: break
+                import time; time.sleep(0.05)
+            self.assertIn('zfs-director folder helper', cmdline)
+            self.assertNotIn('zfs.master', cmdline)
+        finally:
+            proc.kill(); proc.wait()
+            for pipe in (proc.stdin, proc.stdout, proc.stderr): pipe.close()
     def test_recursive_delete_flushes_once_not_per_file(self):
         # Deleting a large captured tree must not fsync the journal and the
         # directories for every file; that made 800k files take hours.

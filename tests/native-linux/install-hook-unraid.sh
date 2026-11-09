@@ -18,7 +18,7 @@ arm() {
   /usr/bin/php -r '$p=["registration"=>"zfs-director.plg","sha256"=>trim(file_get_contents($argv[1]."/installed.sha256")),"hold_recovery"=>false];file_put_contents($argv[2]."/install-pending.json",json_encode($p));' -- "$state" "$runtime"
 }
 hook() { /usr/bin/php "$live/scripts/zfsm-install-complete.php" plugin install zfs-director.plg > "$work/$1.log" 2>&1; }
-paused() { [[ -f "$runtime/stop" && -f "$runtime/install-pending.json" ]]; ! pgrep -f '^/usr/bin/php .*/zfsm-worker.php --daemon$' >/dev/null; }
+paused() { [[ -f "$runtime/stop" && -f "$runtime/install-pending.json" ]]; ! pgrep -f '^(/usr/bin/php .*/zfsm-worker.php --daemon|zfs-director worker) *$' >/dev/null; }
 arm
 exec 9>>"$state/protection/config.lock"; flock -n 9
 if hook lock-busy; then echo 'FAIL: busy config lock accepted';exit 1;fi
@@ -42,7 +42,7 @@ done
 cleanup
 hook healthy
 [[ ! -e "$runtime/stop" && ! -e "$runtime/install-pending.json" ]]
-[[ $(pgrep -fc '^/usr/bin/php .*/zfsm-worker.php --service$') == 1 && $(pgrep -fc '^/usr/bin/php .*/zfsm-worker.php --daemon$') == 1 && $(pgrep -fc '^/usr/bin/php .*/zfsm-monitor.php$') == 1 ]]
+[[ $(pgrep -fc '^(/usr/bin/php .*/zfsm-worker.php --service|zfs-director service) *$') == 1 && $(pgrep -fc '^(/usr/bin/php .*/zfsm-worker.php --daemon|zfs-director worker) *$') == 1 && $(pgrep -fc '^(/usr/bin/php .*/zfsm-monitor.php|zfs-director monitor) *$') == 1 ]]
 crontab -c /etc/cron.d -l > "$work/final.cron";cmp "$work/original.cron" "$work/final.cron"
 trap - EXIT
 printf 'PASS: busy-lock refusal, unknown external cron preservation, collector failure/readback rollback and healthy activation. Evidence: %s\n' "$work"

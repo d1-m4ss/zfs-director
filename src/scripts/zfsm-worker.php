@@ -11,6 +11,7 @@ if (($argv[1]??'')==='--stop') {
 }
 if (($argv[1]??'')==='--launch') { try { zfsmStartWorker(); exit(0); } catch(Throwable $error) { fwrite(STDERR,"Unable to launch ZFS worker; queued jobs retained.\n"); exit(1); } }
 if (($argv[1]??'')==='--service') {
+    if (function_exists('cli_set_process_title')) @cli_set_process_title('zfs-director service');
     if (!function_exists('posix_kill') || !function_exists('posix_setsid')) { fwrite(STDERR,"PHP POSIX support is required for safe worker supervision.\n"); exit(1); }
     if (is_link($GLOBALS['plugin_service_lock'])) exit(1);
     $service_lock=@fopen($GLOBALS['plugin_service_lock'],'c');
@@ -32,6 +33,7 @@ if (($argv[1]??'')==='--service') {
     exit(0);
 }
 if (($argv[1]??'')!=='--daemon') { fwrite(STDERR,"Use --daemon or --stop\n"); exit(2); }
+if (function_exists('cli_set_process_title')) @cli_set_process_title('zfs-director worker');
 if (!function_exists('posix_setsid') || posix_setsid()===-1) { fwrite(STDERR,"Unable to isolate worker process group.\n"); exit(1); }
 $GLOBALS['zfsm_worker_group']=posix_getpid();
 if (is_link($GLOBALS['plugin_worker_lock'])) exit(1);

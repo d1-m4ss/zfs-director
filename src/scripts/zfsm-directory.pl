@@ -413,6 +413,7 @@ sub main {
     emit({ok=>JSON::PP::true,op=>$op,recovery=>recovery(),($op eq 'delete'?(removed=>$delete_removed,total=>$delete_total):())});
 }
 unless (caller) {
+    $0='zfs-director folder helper';
     eval { main();1 } or do {my $error=$@||'Directory mutation failed';$error=~s/\s+$//;print STDERR $json->encode({error=>$error,recovery=>recovery()})."\n";exit 1;};
 }
 1;

@@ -70,7 +70,7 @@ trap - EXIT
 [[ ! -e /boot/config/plugins/$plugin && ! -e $live && ! -e $state/installed.sha256 ]]
 [[ -f /var/tmp/zfs.master.ui/jobs/stop ]]
 [[ $(stat -c '%d:%i' /var/lock/zfs.master.ui.lock) == "$lock_inode" ]]
-if pgrep -f '^/usr/bin/php .*/zfsm-(worker|monitor)\.php( |$)' >/dev/null; then
+if pgrep -f '^(/usr/bin/php .*/zfsm-(worker|monitor)\.php( .*)?|zfs-director (worker|service|monitor)) *$' >/dev/null; then
   echo 'FAIL: Director services survived removal' >&2
   exit 1
 fi

@@ -1,6 +1,7 @@
 <?php
 /* Branding renamed to ZFS Director on 2026-10-16; GPL-2.0-or-later. */
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+if (function_exists('cli_set_process_title')) @cli_set_process_title('zfs-director monitor');
 require_once dirname(__DIR__).'/backend/ZFSMOperations.php';
 $runtime=zfsmJobDirectory($GLOBALS['plugin_runtime']);
 $lockfile=$runtime.'/monitor.lock';
