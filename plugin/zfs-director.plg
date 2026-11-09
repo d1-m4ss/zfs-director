@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
-<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.09.1" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg">
-  <CHANGES>### 2026.11.09.1
-Delete directory now checks the folder first and shows one verdict: what blocks it (a running Director operation, an earlier request, an unpublished conversion, SMB/NFS/Docker/VM) or that it is free. Requests wait briefly for the background worker instead of failing with lock_busy, and a busy error names the lock holder.
+<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.09.2" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg">
+  <CHANGES>### 2026.11.09.2
+Settings can be saved while a long deletion runs (they no longer wait for the operation lock). Deleting a folder and restoring files no longer flush the disk for every file, so large folders delete in minutes instead of hours.
 
 ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.</CHANGES>
   <FILE Run="/bin/bash">
@@ -10,13 +10,13 @@ ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-la
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.1.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.2.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.1-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.1-$$
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.2-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.2-$$
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.1-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.2-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -234,7 +234,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '72645eb321c86a22dec5e206d39f6cc05bf3e0d9754b4850ec3f0ef78f5781af' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -294,6 +294,10 @@ my %nr;
 my ($root,$container,$container_name,$root_path,$journal,$source_location,$publication,$boundary);
 my $serial=0;
 my ($delete_total,$delete_removed,$delete_tick)=(0,0,0);
+# Set while emptying a tree already captured in the private container: names
+# are still claimed one by one, but durability is flushed once at the end
+# instead of fsyncing the journal and directories for every file.
+my $bulk=0;
 sub deletion_progress {
     $delete_removed++;
     if (Time::HiRes::time()-$delete_tick&gt;=0.5||$delete_removed==$delete_total) {
@@ -351,7 +355,7 @@ sub recovery {
 }
 sub record {
     my ($row)=@_; print $journal $json-&gt;encode($row)."\n" or fail('"'"'Unable to write recovery journal'"'"');
-    $journal-&gt;flush &amp;&amp; $journal-&gt;sync or fail('"'"'Unable to flush recovery journal'"'"');
+    $journal-&gt;flush &amp;&amp; ($bulk||$journal-&gt;sync) or fail('"'"'Unable to flush recovery journal'"'"');
 }
 sub mount_id {
     my ($dir)=@_; open(my $info,'"'"'&lt;'"'"','"'"'/proc/self/fdinfo/'"'"'.fileno($dir)) or fail('"'"'Unable to inspect pinned mount identity'"'"');
@@ -469,7 +473,7 @@ sub capture {
     my ($from,$name,$expected,$original)=@_; my $slot='"'"'object-'"'"'.(++$serial);
     record({event=&gt;'"'"'intent'"'"',slot=&gt;$slot,path=&gt;$original,identity=&gt;$expected});
     fail('"'"'Directory changed or cannot be claimed; no destination was overwritten'"'"') unless renamed($from,$name,$container,$slot);
-    $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush claim; inspect recovery journal'"'"');
+    ($bulk||($from-&gt;sync &amp;&amp; $container-&gt;sync)) or fail('"'"'Unable to flush claim; inspect recovery journal'"'"');
     my $captured;
     eval { $captured=openat($container,$slot,O_PATH_LINUX|O_NOFOLLOW,0); 1 } or do {
         my $error=$@; my $restored=renamed($container,$slot,$from,$name);
@@ -675,8 +679,10 @@ sub main {
         # Each recursion root is already captured under the authenticated
         # root0700 parent. Parent DAC prevents ordinary writers moving it out,
         # including through old FDs. Uncaptured preflight handles are not used.
-        remove_tree($claimed,$slot,'"'"''"'"',\%manifest);
-        $container-&gt;sync or fail('"'"'Unable to flush deletion'"'"');
+        $bulk=1;
+        eval { remove_tree($claimed,$slot,'"'"''"'"',\%manifest); 1 } or do { my $error=$@; $bulk=0; my $flushed=$journal-&gt;sync &amp;&amp; $container-&gt;sync; $error=~s/\s+$//; die $error.($flushed?'"'"''"'"':'"'"'; the recovery journal could not be flushed, inspect the recovery container'"'"')."\n"; };
+        $bulk=0;
+        $journal-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush deletion'"'"');
     }
     record({event=&gt;'"'"'complete'"'"',op=&gt;$op});
     emit({ok=&gt;JSON::PP::true,op=&gt;$op,recovery=&gt;recovery(),($op eq '"'"'delete'"'"'?(removed=&gt;$delete_removed,total=&gt;$delete_total):())});
@@ -691,9 +697,9 @@ unless (caller) {
 fi
 </INLINE>
   </FILE>
-  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.1.tgz">
-    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.1/zfs-director-2026.11.09.1.tgz</URL>
-    <MD5>8a4f578f9929e0f51afe9110d6b9fbbb</MD5>
+  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.2.tgz">
+    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.2/zfs-director-2026.11.09.2.tgz</URL>
+    <MD5>f5b9f186fbd08e11830050af62b1f79f</MD5>
   </FILE>
   <FILE Run="/bin/bash">
     <INLINE>set -euo pipefail
@@ -701,14 +707,14 @@ fi
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.1.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.2.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.1-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.1-$$
-printf '%s  %s\n' '72645eb321c86a22dec5e206d39f6cc05bf3e0d9754b4850ec3f0ef78f5781af' "$archive" | sha256sum -c -
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.2-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.2-$$
+printf '%s  %s\n' 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' "$archive" | sha256sum -c -
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.1-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.2-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -926,7 +932,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '72645eb321c86a22dec5e206d39f6cc05bf3e0d9754b4850ec3f0ef78f5781af' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -986,6 +992,10 @@ my %nr;
 my ($root,$container,$container_name,$root_path,$journal,$source_location,$publication,$boundary);
 my $serial=0;
 my ($delete_total,$delete_removed,$delete_tick)=(0,0,0);
+# Set while emptying a tree already captured in the private container: names
+# are still claimed one by one, but durability is flushed once at the end
+# instead of fsyncing the journal and directories for every file.
+my $bulk=0;
 sub deletion_progress {
     $delete_removed++;
     if (Time::HiRes::time()-$delete_tick&gt;=0.5||$delete_removed==$delete_total) {
@@ -1043,7 +1053,7 @@ sub recovery {
 }
 sub record {
     my ($row)=@_; print $journal $json-&gt;encode($row)."\n" or fail('"'"'Unable to write recovery journal'"'"');
-    $journal-&gt;flush &amp;&amp; $journal-&gt;sync or fail('"'"'Unable to flush recovery journal'"'"');
+    $journal-&gt;flush &amp;&amp; ($bulk||$journal-&gt;sync) or fail('"'"'Unable to flush recovery journal'"'"');
 }
 sub mount_id {
     my ($dir)=@_; open(my $info,'"'"'&lt;'"'"','"'"'/proc/self/fdinfo/'"'"'.fileno($dir)) or fail('"'"'Unable to inspect pinned mount identity'"'"');
@@ -1161,7 +1171,7 @@ sub capture {
     my ($from,$name,$expected,$original)=@_; my $slot='"'"'object-'"'"'.(++$serial);
     record({event=&gt;'"'"'intent'"'"',slot=&gt;$slot,path=&gt;$original,identity=&gt;$expected});
     fail('"'"'Directory changed or cannot be claimed; no destination was overwritten'"'"') unless renamed($from,$name,$container,$slot);
-    $from-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush claim; inspect recovery journal'"'"');
+    ($bulk||($from-&gt;sync &amp;&amp; $container-&gt;sync)) or fail('"'"'Unable to flush claim; inspect recovery journal'"'"');
     my $captured;
     eval { $captured=openat($container,$slot,O_PATH_LINUX|O_NOFOLLOW,0); 1 } or do {
         my $error=$@; my $restored=renamed($container,$slot,$from,$name);
@@ -1367,8 +1377,10 @@ sub main {
         # Each recursion root is already captured under the authenticated
         # root0700 parent. Parent DAC prevents ordinary writers moving it out,
         # including through old FDs. Uncaptured preflight handles are not used.
-        remove_tree($claimed,$slot,'"'"''"'"',\%manifest);
-        $container-&gt;sync or fail('"'"'Unable to flush deletion'"'"');
+        $bulk=1;
+        eval { remove_tree($claimed,$slot,'"'"''"'"',\%manifest); 1 } or do { my $error=$@; $bulk=0; my $flushed=$journal-&gt;sync &amp;&amp; $container-&gt;sync; $error=~s/\s+$//; die $error.($flushed?'"'"''"'"':'"'"'; the recovery journal could not be flushed, inspect the recovery container'"'"')."\n"; };
+        $bulk=0;
+        $journal-&gt;sync &amp;&amp; $container-&gt;sync or fail('"'"'Unable to flush deletion'"'"');
     }
     record({event=&gt;'"'"'complete'"'"',op=&gt;$op});
     emit({ok=&gt;JSON::PP::true,op=&gt;$op,recovery=&gt;recovery(),($op eq '"'"'delete'"'"'?(removed=&gt;$delete_removed,total=&gt;$delete_total):())});
@@ -1415,7 +1427,7 @@ legacy_cleanup apply
 # Automatic installation receipt distinguishes boot from an unrelated upgrade.
 if [[ "$hold_recovery" == 0 ]]; then
   receipt=$(mktemp "$installed.XXXXXX")
-  printf '%s\n' '72645eb321c86a22dec5e206d39f6cc05bf3e0d9754b4850ec3f0ef78f5781af' &gt; "$receipt"
+  printf '%s\n' 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' &gt; "$receipt"
   mv -T -- "$receipt" "$installed"
 fi
 # Startup must follow Plugin Manager registration, not precede it.
@@ -1430,7 +1442,7 @@ chmod 0755 "$hook"
   $json=json_encode(["registration"=&gt;$argv[1],"sha256"=&gt;$argv[2],"hold_recovery"=&gt;$argv[3]==="1"],JSON_THROW_ON_ERROR);
   $temporary=tempnam(dirname($path),".install-");
   if($temporary===false||file_put_contents($temporary,$json)!==strlen($json)||!rename($temporary,$path))exit(1);
-' -- "$registration" '72645eb321c86a22dec5e206d39f6cc05bf3e0d9754b4850ec3f0ef78f5781af' "$hold_recovery"
+' -- "$registration" 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' "$hold_recovery"
 # No child service inherits the installer's operation/protection locks.
 flock -u 6
 flock -u 7
@@ -1438,7 +1450,7 @@ exec 6&gt;&amp;- 7&gt;&amp;-
 flock -u 9
 exec 9&gt;&amp;-
 trap - EXIT
-echo 'ZFS Director 2026.11.09.1 code installed; Plugin Manager will verify registration and start background services next.'
+echo 'ZFS Director 2026.11.09.2 code installed; Plugin Manager will verify registration and start background services next.'
 
 </INLINE>
   </FILE>
