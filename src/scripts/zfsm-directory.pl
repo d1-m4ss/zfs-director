@@ -19,6 +19,10 @@ my %nr;
 my ($root,$container,$container_name,$root_path,$journal,$source_location,$publication,$boundary);
 my $serial=0;
 my ($delete_total,$delete_removed,$delete_tick)=(0,0,0);
+# Set while emptying a tree already captured in the private container: names
+# are still claimed one by one, but durability is flushed once at the end
+# instead of fsyncing the journal and directories for every file.
+my $bulk=0;
 sub deletion_progress {
     $delete_removed++;
     if (Time::HiRes::time()-$delete_tick>=0.5||$delete_removed==$delete_total) {
@@ -76,7 +80,7 @@ sub recovery {
 }
 sub record {
     my ($row)=@_; print $journal $json->encode($row)."\n" or fail('Unable to write recovery journal');
-    $journal->flush && $journal->sync or fail('Unable to flush recovery journal');
+    $journal->flush && ($bulk||$journal->sync) or fail('Unable to flush recovery journal');
 }
 sub mount_id {
     my ($dir)=@_; open(my $info,'<','/proc/self/fdinfo/'.fileno($dir)) or fail('Unable to inspect pinned mount identity');
@@ -194,7 +198,7 @@ sub capture {
     my ($from,$name,$expected,$original)=@_; my $slot='object-'.(++$serial);
     record({event=>'intent',slot=>$slot,path=>$original,identity=>$expected});
     fail('Directory changed or cannot be claimed; no destination was overwritten') unless renamed($from,$name,$container,$slot);
-    $from->sync && $container->sync or fail('Unable to flush claim; inspect recovery journal');
+    ($bulk||($from->sync && $container->sync)) or fail('Unable to flush claim; inspect recovery journal');
     my $captured;
     eval { $captured=openat($container,$slot,O_PATH_LINUX|O_NOFOLLOW,0); 1 } or do {
         my $error=$@; my $restored=renamed($container,$slot,$from,$name);
@@ -400,8 +404,10 @@ sub main {
         # Each recursion root is already captured under the authenticated
         # root0700 parent. Parent DAC prevents ordinary writers moving it out,
         # including through old FDs. Uncaptured preflight handles are not used.
-        remove_tree($claimed,$slot,'',\%manifest);
-        $container->sync or fail('Unable to flush deletion');
+        $bulk=1;
+        eval { remove_tree($claimed,$slot,'',\%manifest); 1 } or do { my $error=$@; $bulk=0; my $flushed=$journal->sync && $container->sync; $error=~s/\s+$//; die $error.($flushed?'':'; the recovery journal could not be flushed, inspect the recovery container')."\n"; };
+        $bulk=0;
+        $journal->sync && $container->sync or fail('Unable to flush deletion');
     }
     record({event=>'complete',op=>$op});
     emit({ok=>JSON::PP::true,op=>$op,recovery=>recovery(),($op eq 'delete'?(removed=>$delete_removed,total=>$delete_total):())});

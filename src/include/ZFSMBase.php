@@ -6,6 +6,7 @@
 	$plugin_include = $docroot."/plugins/".$plugin."/include/";
 	$plugin_session_file = "/tmp/".$plugin."-session.data";
 	$plugin_lock = '/var/lock/'.$plugin.'.lock';
+	$plugin_config_lock = '/var/lock/'.$plugin.'.config.lock';
 	$plugin_state = '/boot/config/plugins/'.$plugin.'/jobs';
 	$plugin_runtime = '/var/tmp/'.$plugin.'/jobs';
 	$plugin_worker_lock = '/var/lock/'.$plugin.'.worker.lock';

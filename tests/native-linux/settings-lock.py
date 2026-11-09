@@ -7,12 +7,16 @@ root=pathlib.Path('/usr/local/emhttp');(root/'webGui/include').mkdir(parents=Tru
 (root/'webGui/include/Helpers.php').write_text("<?php function parse_plugin_cfg($p,$s){return parse_ini_file('/boot/config/plugins/zfs.master.ui/zfs.master.ui.cfg',true,INI_SCANNER_RAW);}")
 cfg=pathlib.Path('/boot/config/plugins/zfs.master.ui/zfs.master.ui.cfg');cfg.parent.mkdir(parents=True,exist_ok=True);cfg.write_text('[general]\nsanoid_integration="0"\n')
 request=pathlib.Path('/test/settings-request.php');request.write_text("<?php $docroot='/usr/local/emhttp';$_SERVER['REQUEST_METHOD']='POST';$var=['csrf_token'=>'fixture'];$_POST=['cmd'=>'saveconfig','csrf_token'=>'fixture','settings'=>[]];require '/stand/src/backend/ZFSMAdmin.php';")
-def call():
- p=subprocess.run(['php',str(request)],capture_output=True,text=True,timeout=20);assert p.returncode==0,(p.stdout,p.stderr);return json.loads(p.stdout)
+scrub=pathlib.Path('/test/scrub-request.php');scrub.write_text("<?php $docroot='/usr/local/emhttp';$_SERVER['REQUEST_METHOD']='POST';$var=['csrf_token'=>'fixture'];$_POST=['cmd'=>'scrubpool','pool'=>'cache','confirmed'=>'1','csrf_token'=>'fixture'];require '/stand/src/backend/ZFSMAdmin.php';")
+def call(file=request):
+ p=subprocess.run(['php',str(file)],capture_output=True,text=True,timeout=20);assert p.returncode==0,(p.stdout,p.stderr);return json.loads(p.stdout)
 original=cfg.read_bytes();lock=pathlib.Path('/var/lock/zfs.master.ui.lock');lock.parent.mkdir(parents=True,exist_ok=True)
 with lock.open('a') as h:
  fcntl.flock(h,fcntl.LOCK_EX|fcntl.LOCK_NB);inode=lock.stat().st_ino
- answer=call();assert 'operation lock is held' in answer['failed']['request'],answer;assert cfg.read_bytes()==original
+ # A long ZFS job holds this lock; saving settings must not wait for it.
+ answer=call();assert 'field_errors' in answer and 'request' not in answer['failed'],answer;assert cfg.read_bytes()==original
+ # Any other mutation is still refused while the lock is held.
+ answer=call(scrub);assert 'operation lock is held' in answer['failed']['request'],answer;assert cfg.read_bytes()==original
  events=[json.loads(l) for p in cfg.parent.glob('audit/*.jsonl') for l in p.read_text().splitlines()]
  event=next(e for e in reversed(events) if e.get('phase')=='outcome');assert event['details']['error_code']=='lock_busy' and event['details']['stage']=='acquiring_lock',event
  assert event['details'].get('lock_owner')=={'pid':os.getpid(),'comm':pathlib.Path('/proc/self/comm').read_text().strip()},event
@@ -51,4 +55,4 @@ with (empty/'mutation.lock').open('a') as h:
  fcntl.flock(h,fcntl.LOCK_EX|fcntl.LOCK_NB)
  p=subprocess.run(['php',str(missing)],capture_output=True,text=True,timeout=10);assert p.returncode==0,(p.stdout,p.stderr)
  result=json.loads(p.stdout);assert 'operation lock is held' in result['message'];assert result['details']=={'stage':'acquiring_lock','error_code':'lock_busy'},result
-print(json.dumps({'status':'PASS','checks':['held flock denies actual saveconfig before settings validation','config OFF remains byte-identical','History records acquiring_lock/lock_busy and matched kernel owner PID/comm only','released owner produces no stale diagnostics','release during diagnostic inspection returns no owner','missing procfs preserves lock_busy refusal without invented owner','released same inode permits settings validation on retry'],'boundary':'Disposable native Linux; request settings deliberately incomplete, no activation or ZFS calls; production holder remains unknown'}))
+print(json.dumps({'status':'PASS','checks':['held operation flock does not block saveconfig (own settings lock) but still denies other mutations before any ZFS call','config OFF remains byte-identical','History records acquiring_lock/lock_busy and matched kernel owner PID/comm only','released owner produces no stale diagnostics','release during diagnostic inspection returns no owner','missing procfs preserves lock_busy refusal without invented owner','released same inode permits settings validation on retry'],'boundary':'Disposable native Linux; request settings deliberately incomplete, no activation or ZFS calls; production holder remains unknown'}))

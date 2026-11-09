@@ -195,7 +195,7 @@ sub rsync_copy {
         $fh->flush && $fh->sync or file_error('Unable to flush copy manifest; current files were not replaced');
         close($fh) or file_error('Unable to close copy manifest; current files were not replaced');
     }
-    my @cmd=('/usr/bin/rsync','-aHAXS','--numeric-ids','--fsync','--no-recursive','--dirs','--relative','--no-implied-dirs','--one-file-system','--from0','--files-from='.$list,'--info=progress2','--out-format=%i',($verify?('--dry-run','--checksum'):()),'--',anchor($source).'/',anchor($data).'/');
+    my @cmd=('/usr/bin/rsync','-aHAXS','--numeric-ids','--no-recursive','--dirs','--relative','--no-implied-dirs','--one-file-system','--from0','--files-from='.$list,'--info=progress2','--out-format=%i',($verify?('--dry-run','--checksum'):()),'--',anchor($source).'/',anchor($data).'/');
     open(my $pipe,'-|',@cmd) or file_error('Unable to start file copy'); my $buffer=''; my $changed=0;
     while (read($pipe,my $chunk,8192)) {
         $buffer.=$chunk;
@@ -206,6 +206,8 @@ sub rsync_copy {
         file_error('Unexpected copy output') if length($buffer)>65536;
     }
     close($pipe) or file_error($verify?'Copied files could not be verified':'Copy failed; current files were not replaced');
+    # One filesystem flush replaces an fsync per copied file (rsync --fsync).
+    if (!$verify) { system('/bin/sync','-f',anchor($data))==0 or system('/bin/sync')==0 or file_error('Unable to flush copied files; current files were not replaced'); }
     file_error('Copied files differ from the snapshot; current files were not replaced') if $changed;
 }
 sub restore {

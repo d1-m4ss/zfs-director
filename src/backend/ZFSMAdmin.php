@@ -114,11 +114,15 @@ try {
 	$controls=array('convertdirectory','cancelconversion','resumeconversion','restoresnapshotfiles','cancelrestore','archivesnapshotfiles');
 	if (!in_array($command, array_merge($readonly,$controls), true)) {
 		zfsmAuditSetStage('acquiring_lock');
-		$mutation_lock = zfsmAcquireOperationLockWaiting($GLOBALS['plugin_lock']);
+		// Settings only change the config file, so a long ZFS job holding the
+		// operation lock must not block saving them; they serialize on their own lock.
+		$config_only = in_array($command,array('saveconfig','adddirectortlisting','removedirectorylisting'),true);
+		$mutation_lock = zfsmAcquireOperationLockWaiting($config_only?$GLOBALS['plugin_config_lock']:$GLOBALS['plugin_lock']);
         $GLOBALS['zfsm_operation_lock_handle']=$mutation_lock;
 	}
 	// Settings may have changed while audit storage was locked. Recheck policy
-	// under the same mutation lock that serializes saveconfig and ZFS changes.
+	// under the mutation lock that serializes ZFS changes (settings use their own
+	// lock, so an operation already running keeps the policy it started under).
 	if (in_array($command, $destructive, true)) {
 		$zfsm_cfg=loadConfig(parse_plugin_cfg($plugin,true));
 		if ((int)$zfsm_cfg['destructive_mode'] !== 1) throw new InvalidArgumentException('Destructive Mode is disabled in ZFS Director settings');

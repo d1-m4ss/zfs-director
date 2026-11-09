@@ -224,6 +224,28 @@ class DirectoryMutations(unittest.TestCase):
         self.assertEqual(proc.returncode,0,proc.stderr)
         self.assertFalse(self.source.exists())
 
+    def test_recursive_delete_flushes_once_not_per_file(self):
+        # Deleting a large captured tree must not fsync the journal and the
+        # directories for every file; that made 800k files take hours.
+        for n in range(300): (self.source / f'f{n}').write_text('x')
+        (self.source / 'sub').mkdir()
+        for n in range(50): (self.source / 'sub' / f'g{n}').write_text('x')
+        prelude = f"""
+            require '{HELPER}';
+            my $syncs = 0;
+            {{ no warnings 'redefine'; my $orig = \\&IO::Handle::sync; *IO::Handle::sync = sub {{ $syncs++; goto &$orig; }}; }}
+            eval {{ main(); 1 }} or do {{ print STDERR $@; exit 1; }};
+            print STDERR "SYNCS=$syncs\\n";
+        """
+        proc = subprocess.run(['perl','-e',prelude], input=json.dumps(self.request(recursive=True)), text=True, capture_output=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        syncs = int(proc.stderr.split('SYNCS=')[1].split()[0])
+        self.assertLess(syncs, 40, f'{syncs} flushes for 351 objects')
+        self.assertFalse(self.source.exists())
+        journal = next(self.root.glob('.zfsm-mutation-*/journal.jsonl')).read_text().splitlines()
+        events = [json.loads(row)['event'] for row in journal]
+        self.assertEqual(events[-1], 'complete')
+        self.assertEqual(events.count('deleted'), 352)
     def test_delete_progress_counts_only_successful_unlinks_and_keeps_outside_data(self):
         (self.source / 'file').write_text('delete')
         (self.source / 'child').mkdir()
