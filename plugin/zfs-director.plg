@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
-<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.09.2" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg">
-  <CHANGES>### 2026.11.09.2
-Settings can be saved while a long deletion runs (they no longer wait for the operation lock). Deleting a folder and restoring files no longer flush the disk for every file, so large folders delete in minutes instead of hours.
+<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.09.3" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg">
+  <CHANGES>### 2026.11.09.3
+Background processes now show up as zfs-director worker, service, monitor and helpers instead of ZFS Master paths.
 
 ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.</CHANGES>
   <FILE Run="/bin/bash">
@@ -10,13 +10,13 @@ ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-la
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.2.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.3.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.2-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.2-$$
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.3-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.3-$$
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.2-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.3-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -234,7 +234,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'b640343551249f23597af8f84fe31fab7186ad1b1f9e4299739907bb8e2cabda' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -688,6 +688,7 @@ sub main {
     emit({ok=&gt;JSON::PP::true,op=&gt;$op,recovery=&gt;recovery(),($op eq '"'"'delete'"'"'?(removed=&gt;$delete_removed,total=&gt;$delete_total):())});
 }
 unless (caller) {
+    $0='"'"'zfs-director folder helper'"'"';
     eval { main();1 } or do {my $error=$@||'"'"'Directory mutation failed'"'"';$error=~s/\s+$//;print STDERR $json-&gt;encode({error=&gt;$error,recovery=&gt;recovery()})."\n";exit 1;};
 }
 1;
@@ -697,9 +698,9 @@ unless (caller) {
 fi
 </INLINE>
   </FILE>
-  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.2.tgz">
-    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.2/zfs-director-2026.11.09.2.tgz</URL>
-    <MD5>f5b9f186fbd08e11830050af62b1f79f</MD5>
+  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.3.tgz">
+    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.3/zfs-director-2026.11.09.3.tgz</URL>
+    <MD5>6b9a880b48ac15188882489eba85fcef</MD5>
   </FILE>
   <FILE Run="/bin/bash">
     <INLINE>set -euo pipefail
@@ -707,14 +708,14 @@ fi
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.2.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.09.3.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.2-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.2-$$
-printf '%s  %s\n' 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' "$archive" | sha256sum -c -
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.09.3-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.09.3-$$
+printf '%s  %s\n' 'b640343551249f23597af8f84fe31fab7186ad1b1f9e4299739907bb8e2cabda' "$archive" | sha256sum -c -
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.2-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.09.3-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -932,7 +933,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'b640343551249f23597af8f84fe31fab7186ad1b1f9e4299739907bb8e2cabda' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -1386,6 +1387,7 @@ sub main {
     emit({ok=&gt;JSON::PP::true,op=&gt;$op,recovery=&gt;recovery(),($op eq '"'"'delete'"'"'?(removed=&gt;$delete_removed,total=&gt;$delete_total):())});
 }
 unless (caller) {
+    $0='"'"'zfs-director folder helper'"'"';
     eval { main();1 } or do {my $error=$@||'"'"'Directory mutation failed'"'"';$error=~s/\s+$//;print STDERR $json-&gt;encode({error=&gt;$error,recovery=&gt;recovery()})."\n";exit 1;};
 }
 1;
@@ -1427,7 +1429,7 @@ legacy_cleanup apply
 # Automatic installation receipt distinguishes boot from an unrelated upgrade.
 if [[ "$hold_recovery" == 0 ]]; then
   receipt=$(mktemp "$installed.XXXXXX")
-  printf '%s\n' 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' &gt; "$receipt"
+  printf '%s\n' 'b640343551249f23597af8f84fe31fab7186ad1b1f9e4299739907bb8e2cabda' &gt; "$receipt"
   mv -T -- "$receipt" "$installed"
 fi
 # Startup must follow Plugin Manager registration, not precede it.
@@ -1442,7 +1444,7 @@ chmod 0755 "$hook"
   $json=json_encode(["registration"=&gt;$argv[1],"sha256"=&gt;$argv[2],"hold_recovery"=&gt;$argv[3]==="1"],JSON_THROW_ON_ERROR);
   $temporary=tempnam(dirname($path),".install-");
   if($temporary===false||file_put_contents($temporary,$json)!==strlen($json)||!rename($temporary,$path))exit(1);
-' -- "$registration" 'df0ed4a80d1e83313c2af2f9b9d31a0125aa60ed69490574a628248787d6eee5' "$hold_recovery"
+' -- "$registration" 'b640343551249f23597af8f84fe31fab7186ad1b1f9e4299739907bb8e2cabda' "$hold_recovery"
 # No child service inherits the installer's operation/protection locks.
 flock -u 6
 flock -u 7
@@ -1450,7 +1452,7 @@ exec 6&gt;&amp;- 7&gt;&amp;-
 flock -u 9
 exec 9&gt;&amp;-
 trap - EXIT
-echo 'ZFS Director 2026.11.09.2 code installed; Plugin Manager will verify registration and start background services next.'
+echo 'ZFS Director 2026.11.09.3 code installed; Plugin Manager will verify registration and start background services next.'
 
 </INLINE>
   </FILE>
