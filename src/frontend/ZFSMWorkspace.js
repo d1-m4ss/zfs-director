@@ -6,6 +6,12 @@ function zfsmCreateWorkspace(options) {
     if(!root)throw new Error('ZFS workspace root is missing');
     const preferenceKey='zfsm-workspace-preferences-v1',cacheKey='zfsm-workspace-inventory-v1';
     const controllers=new Set();
+    // Fixed-height frame: the workspace fills the viewport below its own top edge, so the page itself
+    // does not scroll; each screen scrolls in exactly one place inside the frame.
+    root.dataset.frame='fixed';
+    const sizeFrame=()=>{const style=getComputedStyle(root);root.dataset.wide=String(root.clientWidth-parseFloat(style.paddingLeft||0)-parseFloat(style.paddingRight||0)>850);const top=root.getBoundingClientRect().top+(window.scrollY||0);root.style.setProperty('--zfsm-frame-height',Math.max(520,Math.floor(window.innerHeight-top-32))+'px');};
+    sizeFrame();window.addEventListener('resize',sizeFrame);window.addEventListener('load',sizeFrame);
+    const frameObserver=typeof ResizeObserver==='function'?new ResizeObserver(sizeFrame):null;frameObserver?.observe(document.documentElement);
     // While a modal dialog is open, wheel and touch gestures outside it must not move the page behind it.
     const modalScrollGuard=event=>{
         const dialog=root.querySelector('dialog[open]');if(!dialog)return;
@@ -311,18 +317,32 @@ function zfsmCreateWorkspace(options) {
             render(properties,'loaded');
         }).catch(error=>{if(current())render(null,'unavailable',error.message);});
     }
+    // Dataset information: one short list at a time, grouped into tabs instead of one tall page.
+    let infoGroup='general';
+    const infoGroups=[['general','General',/^(name|type|guid|creation|mountpoint|mounted|origin|canmount|readonly|pool|parent_name|parent_guid|children|snapshot_count)$/],['space','Space',/^(used|available|referenced|usedby|written|logicalused|logicalreferenced|quota|refquota|reservation|refreservation|compressratio|volsize|recordsize|volblocksize|compression|snapshot_limit|filesystem_limit)/],['encryption','Encryption',/^(encryption|keystatus|keylocation|keyformat|pbkdf|encryptionroot|key)/]];
+    function infoGroupOf(key){for(const [id,,pattern] of infoGroups)if(pattern.test(key))return id;return 'other';}
     function renderDatasetInformation(host,item){
         if(item.kind==='directory')return;
         const error=data.errors&&data.errors[pool];if(error)host.append(node('p',error,'zfsm-error'));
         if(!inventoryFresh)host.append(node('p','Cached inventory is stale. Refresh before acting on current state.','zfsm-notice'));
-        const properties=node('dl',undefined,'zfsm-properties');
         const byteKeys=new Set(['used','available','referenced','usedbysnapshots','quota','recordsize','volblocksize','volsize']);
+        const rows=new Map(infoGroups.map(([id])=>[id,[]]));rows.set('other',[]);
         for(const [key,value] of Object.entries(item.node)){
             if(value!==null&&typeof value==='object')continue;if(['_error','_snapshot_error'].includes(key))continue;
             let text=value===null?'—':String(value);if(key==='creation')text=date(value);else if(key==='compressratio')text=Number(value)/100+'x';else if(byteKeys.has(key))text=key==='quota'&&Number(value)===0?'Unlimited':bytes(value);
-            properties.append(node('dt',key),node('dd',text));
+            rows.get(infoGroupOf(key)).push([key,text]);
         }
-        host.append(node('h3','Dataset information'),properties);
+        const present=[...infoGroups.map(([id,label])=>[id,label]),['other','Other']].filter(([id])=>rows.get(id).length);
+        if(!present.some(([id])=>id===infoGroup))infoGroup=present[0]?.[0]||'general';
+        host.append(node('h3','Dataset information'));
+        const list=node('dl',undefined,'zfsm-properties');
+        const draw=()=>{list.replaceChildren();for(const [key,text] of rows.get(infoGroup)||[])list.append(node('dt',key),node('dd',text));};
+        if(present.length>1){
+            const bar=node('nav',undefined,'zfsm-subtabs');bar.setAttribute('aria-label','Dataset information groups');
+            for(const [id,label] of present){const control=button(label+' · '+rows.get(id).length,()=>{infoGroup=id;for(const other of bar.querySelectorAll('button'))other.setAttribute('aria-pressed',String(other.dataset.group===id));draw();},{'data-group':id,'aria-pressed':String(id===infoGroup)});bar.append(control);}
+            host.append(bar);
+        }
+        draw();host.append(list);
     }
     function renderPoolDevices(host){
         host.append(node('h3','Pool devices'),node('p','Pool: '+pool,'zfsm-muted'));
@@ -657,5 +677,5 @@ function zfsmCreateWorkspace(options) {
     if(Number(config.refresh_interval)===0){const cached=storageRead(cacheKey);if(cached&&cached.data&&cached.data.pools&&cached.data.datasets&&cached.data.devices){data=cached.data;inventoryFresh=false;if(!data.pools[pool])pool=Object.keys(data.pools)[0]||'';if(!selected())selection=pool;selectionIdentity=selectionFingerprint();renderPools();renderSection();}}
     inventory.refresh();
     if(protection)protection.availability().catch(()=>{protectionButton.hidden=true;replicationButton.hidden=true;});
-    return {refresh:()=>inventory.refresh(),stop:()=>{if(stopped)return;stopped=true;window.removeEventListener('wheel',modalScrollGuard,true);window.removeEventListener('touchmove',modalScrollGuard,true);protection?.stop();inventory.stop();clearTimeout(jobsTimer);clearTimeout(diagnosticTimer);invalidateForm();disposeSnapshots();disposeExplorer();themeObserver.disconnect();media.removeEventListener('change',themeListener);for(const controller of controllers)controller.abort();controllers.clear();},getState:()=>({section,tab,pool,selection,layout,theme})};
+    return {refresh:()=>inventory.refresh(),stop:()=>{if(stopped)return;stopped=true;window.removeEventListener('resize',sizeFrame);window.removeEventListener('load',sizeFrame);frameObserver?.disconnect();window.removeEventListener('wheel',modalScrollGuard,true);window.removeEventListener('touchmove',modalScrollGuard,true);protection?.stop();inventory.stop();clearTimeout(jobsTimer);clearTimeout(diagnosticTimer);invalidateForm();disposeSnapshots();disposeExplorer();themeObserver.disconnect();media.removeEventListener('change',themeListener);for(const controller of controllers)controller.abort();controllers.clear();},getState:()=>({section,tab,pool,selection,layout,theme})};
 }

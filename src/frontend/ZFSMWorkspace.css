@@ -493,3 +493,32 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
 #zfsm-workspace .zfsm-checklist-row input {margin-top:3px}
 #zfsm-workspace .zfsm-checklist-missing {border:1px dashed var(--zfsm-border,#444);border-radius:6px;padding:4px 8px}
 #zfsm-workspace .zfsm-checklist-missing p,#zfsm-workspace .zfsm-checklist-empty {margin:4px 0;font-size:12px;opacity:.8}
+
+/* Fixed-height frame (set by the workspace script): the page does not scroll, each screen scrolls in one place. */
+#zfsm-workspace[data-frame="fixed"] {position:relative;height:var(--zfsm-frame-height,auto);overflow:hidden;display:flex;flex-direction:column}
+#zfsm-workspace[data-frame="fixed"]>.zfsm-shell {flex:1 1 auto;min-height:0}
+#zfsm-workspace[data-frame="fixed"] .zfsm-sidebar {overflow-y:auto;overscroll-behavior:contain}
+#zfsm-workspace[data-frame="fixed"] .zfsm-main {display:flex;flex-direction:column;min-height:0}
+#zfsm-workspace[data-frame="fixed"] .zfsm-header {flex:0 0 auto}
+#zfsm-workspace[data-frame="fixed"] .zfsm-main-body {position:relative;flex:1 1 auto;min-height:0;width:100%;overflow:auto;overscroll-behavior:contain}
+#zfsm-workspace[data-frame="fixed"][data-layout="table"] .zfsm-browser {max-height:none;overflow:visible}
+#zfsm-workspace[data-frame="fixed"][data-layout="table"] .zfsm-detail {max-height:none;overflow:visible}
+#zfsm-workspace[data-frame="fixed"]:not([data-wide="true"]) .zfsm-browser {max-height:none;overflow:visible}
+@container(max-width:850px) {
+  #zfsm-workspace[data-frame="fixed"] .zfsm-shell {grid-template-rows:auto auto minmax(0,1fr);min-height:0}
+  #zfsm-workspace[data-frame="fixed"] .zfsm-main-body {min-height:0}
+}
+/* Datasets: the tree and the detail pane scroll on their own, the tab bar and the pane heading stay put. */
+/* Wide layout only: data-wide is set by the workspace script (container queries cannot reach inside .zfsm-detail, itself a container). */
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-main-body:has(>.zfsm-content>.zfsm-workarea) {overflow:hidden;display:flex;flex-direction:column;padding-bottom:18px}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-content:has(>.zfsm-workarea) {flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-content:has(>.zfsm-workarea)>* {flex:0 0 auto}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-content>.zfsm-workarea {flex:1 1 auto;min-height:0;align-items:stretch}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-workarea>.zfsm-browser {max-height:none;height:100%;min-height:0;overflow:auto;overscroll-behavior:contain}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-workarea>.zfsm-detail,
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-workarea[data-pool-view="true"]>.zfsm-detail {max-height:none;height:100%;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-detail>.zfsm-detail-heading {flex:0 0 auto}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-detail>:last-child {flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+/* Dataset information groups. */
+#zfsm-workspace .zfsm-subtabs {display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+
