@@ -14,16 +14,22 @@ try{
         $flag=$parsed['general']['sanoid_integration']??'0';if((string)$flag!=='0'&&!(($acceptedBoot||$managedInstall)&&(string)$flag==='1'))$requireRecovery('Integration settings require inspection before upgrade');
     }
     $jobs=$root.'/jobs';if(is_link($jobs))throw new RuntimeException('Jobs path requires inspection');
+    $pendingJobs=[];
     if(is_dir($jobs)){
         $scan=opendir($jobs);$count=0;
         try{while(($name=readdir($scan))!==false){if(++$count>4096)$requireRecovery('Jobs scan incomplete; restore stopped for inspection');if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\.json$/D',$name))continue;$file=$jobs.'/'.$name;
             if(is_link($file)||!is_file($file)||filesize($file)>131072)throw new RuntimeException('Job requires inspection before upgrade');$j=json_decode(file_get_contents($file),true,32);if(!is_array($j))$requireRecovery('Malformed job requires inspection');
-            if(!is_array($j)||!is_string($j['state']??null)||in_array($j['state'],['queued','running'],true))$requireRecovery('Pending or unverified jobs require inspection; worker stays stopped');
+            if(!is_array($j)||!is_string($j['state']??null))$requireRecovery('A job with an unreadable state requires inspection; background services stay paused.');
+            if(in_array($j['state'],['queued','running'],true)){$label=trim(preg_replace('/[^\x20-\x7e]+/','',(string)($j['type']??'job').' '.(string)($j['source']??$j['label']??'')));$pendingJobs[]=substr($label===''?'job':$label,0,90).' ('.$j['state'].')';continue;}
             // Terminal file jobs can still release holds or delete ZIP staging.
             // Future expiry/retry times only defer that work after activation.
             if(in_array($j['type']??null,['restore','archive'],true)&&($j['hold_owned']??null)!==false)$requireRecovery('File job protection requires inspection; worker stays stopped');
             if(($j['type']??null)==='archive'&&($j['archive_removed']??null)!==true)$requireRecovery('Retained ZIP cleanup requires inspection; worker stays stopped');
         }}finally{closedir($scan);}
+    }
+    if($pendingJobs){
+        $shown=implode('; ',array_slice($pendingJobs,0,3)).(count($pendingJobs)>3?'; and '.(count($pendingJobs)-3).' more':'');
+        $requireRecovery('Update paused: '.count($pendingJobs).' job(s) still queued or running: '.$shown.'. Nothing was changed, but background services stay PAUSED until the update succeeds. Next: open Main > ZFS Director > Jobs and wait for or cancel these jobs; if services are not running, resume them with: rm -f /var/tmp/zfs.master.ui/jobs/stop && /usr/bin/php /usr/local/emhttp/plugins/zfs.master.ui/scripts/zfsm-worker.php -'.'-launch ; then run Plugins > Check for Updates again.');
     }
     echo "ZFS Director preflight: no pending execution or file cleanup. Settings and schedules retained.\n";
 }catch(Throwable$e){fwrite(STDERR,'ZFS Director upgrade blocked: '.$e->getMessage()."\n");exit(1);}

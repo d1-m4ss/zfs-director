@@ -29,6 +29,13 @@ test('installation still refuses queued work, held snapshots and pending ZIP cle
         const r=await preflight('1',job);assert.equal(r.exitCode,1,r.text);
     }
 });
+test('a refused update names the pending jobs and what to do next',async()=>{
+    const r=await preflight('1',{state:'queued',type:'replication',source:'cache/immich'});
+    const text=r.errors+r.text;assert.equal(r.exitCode,1,text);
+    assert.match(text,/Update paused: 1 job\(s\) still queued or running: replication cache\/immich \(queued\)/);
+    assert.match(text,/Nothing was changed/);assert.match(text,/Main > ZFS Director > Jobs/);assert.match(text,/zfsm-worker\.php --launch/);assert.match(text,/Check for Updates/);
+    assert.doesNotMatch(text,/Pending or unverified/);
+});
 test('installation accepts inspected recovery and released file jobs but rejects invalid integration flags',async()=>{
     for(const job of [{state:'recovery_required',type:'conversion'},{state:'completed',type:'restore',hold_owned:false},{state:'completed',type:'archive',hold_owned:false,archive_removed:true}]){
         const r=await preflight('1',job);assert.equal(r.exitCode,0,r.errors+r.text);

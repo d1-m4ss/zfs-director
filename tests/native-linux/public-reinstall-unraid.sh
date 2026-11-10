@@ -85,7 +85,7 @@ job="$state/jobs/20261022-230000-ffffffffffff.json"
 [[ ! -e "$job" ]]
 printf '{"state":"queued","type":"conversion"}\n' > "$job"
 if install pending; then echo 'FAIL: pending work accepted';exit 1;fi
-grep -q 'Pending or unverified jobs' "$work/pending.log"
+grep -q 'still queued or running' "$work/pending.log"
 [[ -f /var/tmp/zfs.master.ui/jobs/stop ]]
 rm -- "$job"
 install resume-after-test

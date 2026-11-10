@@ -195,7 +195,7 @@ def build(output, release_base=None, plugin_url_base=None):
     install = f'''set -euo pipefail
 # Plugin Manager displays stdout only; keep actionable errors in its dialog.
 exec 2>&1
-trap 'status=$?; echo "ZFS Director installation failed at line $LINENO (exit $status). See the preceding reason; retained data was not removed."; exit "$status"' ERR
+trap 'status=$?; echo "ZFS Director was NOT updated (exit $status). Nothing was changed: your settings, schedules and data are intact. The reason is shown above."; exit "$status"' ERR
 umask 077
 archive=/boot/config/plugins/zfs.master.ui/{archive.name}
 live=/usr/local/emhttp/plugins/zfs.master.ui
