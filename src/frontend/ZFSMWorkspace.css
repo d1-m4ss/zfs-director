@@ -86,7 +86,8 @@
 #zfsm-workspace .zfsm-inventory-table {min-width:960px}
 #zfsm-workspace .zfsm-inventory-table th,#zfsm-workspace .zfsm-inventory-table td,#zfsm-workspace .zfsm-inventory-table button {white-space:nowrap;overflow-wrap:normal}
 #zfsm-workspace .zfsm-readable-table th,#zfsm-workspace .zfsm-readable-table td {white-space:nowrap;overflow-wrap:normal}
-#zfsm-workspace .zfsm-snapshot-table {min-width:980px}
+#zfsm-workspace .zfsm-snapshot-table {width:100%;table-layout:auto}
+#zfsm-workspace .zfsm-snapshot-table :is(th,td) {overflow-wrap:anywhere}
 #zfsm-workspace .zfsm-snapshot-table td:last-child {min-width:155px}
 #zfsm-workspace .zfsm-operations {max-width:180px;min-width:0;margin:0}
 #zfsm-workspace .zfsm-operations>summary {display:inline-flex;align-items:center;gap:8px;cursor:pointer;list-style:none;padding:4px 9px;min-height:28px;border:1px solid var(--zfsm-border);border-radius:5px;background:var(--zfsm-panel);color:var(--zfsm-text)}
@@ -152,6 +153,9 @@
 #zfsm-workspace .zfsm-action-dialog {width:min(960px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);margin:auto;padding:0;overflow:hidden;border:1px solid var(--zfsm-border);border-radius:12px;background:var(--zfsm-panel);color:var(--zfsm-text);box-shadow:0 20px 60px #0007}
 #zfsm-workspace .zfsm-action-dialog[open] {display:flex;flex-direction:column}
 #zfsm-workspace .zfsm-action-dialog::backdrop {background:#0009}
+#zfsm-workspace dialog {overscroll-behavior:contain}
+/* A modal dialog scrolls on its own; the page behind stays where it is. */
+html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) body {overflow:hidden !important}
 #zfsm-workspace .zfsm-action-heading {display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 18px;border-bottom:1px solid var(--zfsm-border);flex:0 0 auto}
 #zfsm-workspace .zfsm-action-heading h2 {margin:0;min-width:0;font-size:20px;line-height:1.3;overflow-wrap:anywhere}
 #zfsm-workspace .zfsm-action-heading button {flex-shrink:0}
@@ -358,7 +362,7 @@
 #zfsm-workspace .zfsm-file-dialog[open]{display:flex;flex-direction:column}
 #zfsm-workspace .zfsm-file-dialog> *{flex-shrink:0;min-width:0}
 #zfsm-workspace .zfsm-file-dialog .zfsm-explorer-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden}
-#zfsm-workspace .zfsm-file-dialog::backdrop{background:#000a}
+#zfsm-workspace .zfsm-file-dialog::backdrop{background:#0009}
 #zfsm-workspace .zfsm-explorer-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:17px;border-bottom:1px solid var(--zfsm-border)}
 #zfsm-workspace .zfsm-explorer-header>div{min-width:0}
 #zfsm-workspace .zfsm-explorer-header h3{font-size:20px;margin:0 0 6px}

@@ -6,6 +6,14 @@ function zfsmCreateWorkspace(options) {
     if(!root)throw new Error('ZFS workspace root is missing');
     const preferenceKey='zfsm-workspace-preferences-v1',cacheKey='zfsm-workspace-inventory-v1';
     const controllers=new Set();
+    // While a modal dialog is open, wheel and touch gestures outside it must not move the page behind it.
+    const modalScrollGuard=event=>{
+        const dialog=root.querySelector('dialog[open]');if(!dialog)return;
+        const point=event.touches&&event.touches[0]?event.touches[0]:event,rect=dialog.getBoundingClientRect();
+        if(point.clientX<rect.left||point.clientX>rect.right||point.clientY<rect.top||point.clientY>rect.bottom)event.preventDefault();
+    };
+    window.addEventListener('wheel',modalScrollGuard,{passive:false,capture:true});
+    window.addEventListener('touchmove',modalScrollGuard,{passive:false,capture:true});
     const inventoryJobs=new Set();
     let stopped=false,config=Object.assign({},options.config),data=null,lastInventory=null,inventoryFresh=false,lastSuccessfulRefresh='',section='datasets',tab='overview',pool='',selection='';
     let layout='tree',theme='auto',viewGeneration=0,activeForm=null,snapshotHost=null,detailBody=null,browserHost=null,detailHeading=null;
@@ -649,5 +657,5 @@ function zfsmCreateWorkspace(options) {
     if(Number(config.refresh_interval)===0){const cached=storageRead(cacheKey);if(cached&&cached.data&&cached.data.pools&&cached.data.datasets&&cached.data.devices){data=cached.data;inventoryFresh=false;if(!data.pools[pool])pool=Object.keys(data.pools)[0]||'';if(!selected())selection=pool;selectionIdentity=selectionFingerprint();renderPools();renderSection();}}
     inventory.refresh();
     if(protection)protection.availability().catch(()=>{protectionButton.hidden=true;replicationButton.hidden=true;});
-    return {refresh:()=>inventory.refresh(),stop:()=>{if(stopped)return;stopped=true;protection?.stop();inventory.stop();clearTimeout(jobsTimer);clearTimeout(diagnosticTimer);invalidateForm();disposeSnapshots();disposeExplorer();themeObserver.disconnect();media.removeEventListener('change',themeListener);for(const controller of controllers)controller.abort();controllers.clear();},getState:()=>({section,tab,pool,selection,layout,theme})};
+    return {refresh:()=>inventory.refresh(),stop:()=>{if(stopped)return;stopped=true;window.removeEventListener('wheel',modalScrollGuard,true);window.removeEventListener('touchmove',modalScrollGuard,true);protection?.stop();inventory.stop();clearTimeout(jobsTimer);clearTimeout(diagnosticTimer);invalidateForm();disposeSnapshots();disposeExplorer();themeObserver.disconnect();media.removeEventListener('change',themeListener);for(const controller of controllers)controller.abort();controllers.clear();},getState:()=>({section,tab,pool,selection,layout,theme})};
 }
