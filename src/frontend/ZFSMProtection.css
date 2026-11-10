@@ -186,4 +186,4 @@
 #zfsm-workspace .zfsm-run-progress { display:flex; flex-direction:column; gap:8px; margin:10px 0; }
 #zfsm-workspace .zfsm-run-progress progress { width:100%; }
 #zfsm-workspace .zfsm-run-progress p { margin:0; }
-
+#zfsm-workspace .zfsm-run-verdict .zfsm-run-hazard { color:var(--zfsm-warning); }

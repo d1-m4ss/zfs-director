@@ -9,4 +9,11 @@ check('capacity alert cannot turn incomplete diagnostics into actionable known h
 check('partial checkpoint metadata cannot masquerade as a verified current lag',function(){same(null,zfsmProtectionCurrentVerification(['verified'=>true,'checkpoints'=>[['guid'=>'1','creation'=>100],['guid'=>'2']]],1000)['lag_seconds']);});
 check('oversized maintenance history is preserved instead of silently replaced',function(){zfsmJobDirectory('/large-maintenance');$raw=str_repeat('x',524289);file_put_contents('/large-maintenance/maintenance-history.json',$raw);try{zfsmRecordMaintenanceTransition('/large-maintenance',maintenanceDiagnostic(100),'ok',[]);}catch(RuntimeException $error){}same($raw,file_get_contents('/large-maintenance/maintenance-history.json'));});
 check('replication age alerts support numeric definition IDs and disable switch',function(){$store=['replications'=>['123'=>['enabled'=>true,'source'=>'cache/a']]];$jobs=[['schema'=>4,'type'=>'replication','definition_id'=>'123','created'=>'2026-10-18','verified_outcome'=>'completed','verification'=>['verified'=>true,'checkpoints'=>[['guid'=>'11','creation'=>100]]]]];same(1,count(zfsmProtectionLagAlerts('cache',$store,$jobs,1,10000)));same([],zfsmProtectionLagAlerts('cache',$store,$jobs,0,10000));});
+check('failed replication alert names the job and the recorded reason',function(){
+ $store=['replications'=>['5f91932124fad7a0'=>['enabled'=>true,'name'=>'Immich backup','source'=>'cache/immich']]];
+ $jobs=[['schema'=>4,'type'=>'replication','definition_id'=>'5f91932124fad7a0','created'=>'2026-11-10','verified_outcome'=>'failed','verification'=>['verified'=>false,'reason'=>"Native transfer failed (exit 2).\nInspect source and receiver."]]];
+ same(['Replication Immich backup (5f91932124fad7a0) requires inspection; the latest run is not verified complete: Native transfer failed (exit 2). Inspect source and receiver.'],zfsmProtectionLagAlerts('cache',$store,$jobs,24,strtotime('2026-11-10T12:00:00Z')));
+ $jobs[0]['verification']=['verified'=>false];
+ same(['Replication Immich backup (5f91932124fad7a0) requires inspection; the latest run is not verified complete.'],zfsmProtectionLagAlerts('cache',$store,$jobs,24,strtotime('2026-11-10T12:00:00Z')));
+});
 finishTests();

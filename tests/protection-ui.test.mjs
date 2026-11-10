@@ -397,3 +397,12 @@ test('a finished cancelled or failed run shows its real final stage and outcome'
   }finally{t.app.stop();t.w.close();}
  }
 });
+
+test('run inspection shows a destination hazard as a warning but still allows the run',async()=>{
+ const review=realReplicationReview();review.inspection.hazards=['Destination dataset backup/a already exists but has no snapshots, so syncoid cannot receive into it and this part will fail.'];
+ const t=await mount(true,f=>f.cmd==='protectionrunpreview'?{preview_id:'e'.repeat(32),token:'signed',review}:undefined);t.data.replications=[replicationDef];
+ try{await t.app.render('replication');click(t.root.querySelector('[data-replication-id=r1]'),'Run now');await wait();const dlg=t.root.querySelector('dialog');
+  const verdict=dlg.querySelector('.zfsm-run-verdict');assert.equal(verdict.dataset.state,'ready');assert.match(verdict.textContent,/✓ Ready to run/);
+  assert.equal(verdict.querySelector('.zfsm-run-hazard').textContent,'⚠ '+review.inspection.hazards[0]);assert.ok([...dlg.querySelectorAll('button')].find(b=>b.textContent==='Run reviewed job'));
+ }finally{t.app.stop();t.w.close();}
+});

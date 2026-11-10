@@ -22,7 +22,7 @@ function zfsmProtectionLagAlerts($pool,$store,$jobs,$hours,$now=null) {
     foreach($store['replications']??[] as $id=>$definition){if(empty($definition['enabled'])||explode('/',$definition['source']??'',2)[0]!==$pool)continue;$latest=null;
         foreach($jobs as $job)if(($job['definition_id']??null)===(string)$id&&($job['type']??'')==='replication'&&($job['schema']??null)===4){if($latest===null||strcmp($job['created']??'',$latest['created']??'')>0)$latest=$job;}
         if(!$latest)continue;$verification=zfsmProtectionCurrentVerification($latest['verification']??[],$now);
-        if(in_array($latest['verified_outcome']??'',['failed','blocked','unknown','interrupted','recovery_required'],true))$alerts[]='Replication '.$id.' requires inspection; the latest run is not verified complete.';
+        if(in_array($latest['verified_outcome']??'',['failed','blocked','unknown','interrupted','recovery_required'],true)){$reason=$latest['verification']['reason']??($latest['error']??'');$alerts[]='Replication '.($definition['name']??$id).' ('.$id.') requires inspection; the latest run is not verified complete'.(is_string($reason)&&$reason!==''?': '.substr(preg_replace('/\s+/',' ',$reason),0,300):'.');}
         elseif($verification['lag_seconds']!==null&&$verification['lag_seconds']>$hours*3600)$alerts[]='Replication '.$id.' exceeds the configured verified checkpoint age ('.$hours.' hours).';
     }return $alerts;
 }

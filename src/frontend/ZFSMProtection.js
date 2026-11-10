@@ -319,6 +319,7 @@ function zfsmCreateProtection(options) {
         if(blockers.length)for(const message of blockers)verdict.append(el('p',message));else if(sentence)verdict.append(el('p',sentence));
         box.append(verdict);
         if(rows.length){const table=el('table',undefined,'zfsm-run-table'),head=el('tr');for(const label of ['Dataset','New snapshots','Latest to send'])head.append(el('th',label));const thead=el('thead');thead.append(head);table.append(thead);const body=el('tbody');for(const row of rows){const tr=el('tr');for(const cell of row)tr.append(el('td',cell));body.append(tr);}table.append(body);const wrap=el('div',undefined,'zfsm-run-table-wrap');wrap.append(table);box.append(wrap);}
+        for(const hazard of Array.isArray(inspection.hazards)?inspection.hazards:[])verdict.append(el('p','⚠ '+hazard,'zfsm-run-hazard'));
         for(const warning of review?.warnings||[])box.append(el('p',String(warning),'zfsm-muted'));
         const raw=details(box,'Details (raw inspection)');pre(raw,'Inspection',review);
         host.append(box);

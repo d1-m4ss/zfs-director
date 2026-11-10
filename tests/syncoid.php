@@ -46,4 +46,66 @@ check('progress counter counts only dataset starts, across split chunks, and kee
  $buffer='';same(0,zfsmProtectionProgressLines($buffer,"user@host: ssh key SECRET without newline"));same(true,strlen($buffer)>0);
  $buffer=str_repeat('x',9000);zfsmProtectionProgressLines($buffer,'y');same('',$buffer);
 });
+// Replication scenarios on simulated `zfs list` output (no ZFS runs locally; real syncoid is not executed).
+function inspectScenario($sourceLines,$destinationLines,$tokens=null,$target='backup/a',$extra=[]){
+ $j=zfsmSyncoidJob(array_merge(['name'=>'R','source'=>'cache/a','target'=>$target,'recursive'=>true],$extra));
+ $list=['list','-H','-p','-r','-t','filesystem,volume,snapshot','-o','name,type,guid,creation,createtxg'];
+ expectProcess('zfs',array_merge($list,['cache/a']),$sourceLines);
+ expectProcess('zfs',array_merge($list,[$target]),$destinationLines===null?'cannot open \''.$target.'\': dataset does not exist':$destinationLines,$destinationLines===null?1:0);
+ if($destinationLines!==null)expectProcess('zfs',['get','-H','-r','-o','name,value','receive_resume_token',$target],$tokens??($target."\t-\n"));
+ return zfsmSyncoidInspect($j);
+}
+$sourceFull="cache/a\tfilesystem\t100\t1\t1\ncache/a@s1\tsnapshot\t11\t10\t5\ncache/a@s2\tsnapshot\t12\t20\t6\ncache/a/child\tfilesystem\t101\t1\t2\ncache/a/child@s1\tsnapshot\t21\t10\t5\n";
+$sourceEmpty="cache/a\tfilesystem\t100\t1\t1\n";
+$emptyDestination="backup/a\tfilesystem\t200\t2\t2\n";
+check('scenario: destination that does not exist yet is allowed and is created by the first run',function()use($sourceFull){
+ $r=inspectScenario($sourceFull,null);same([],$r['blockers']);same([],$r['target']);same([''=>'12','/child'=>'21'],$r['expected']);
+});
+check('scenario: empty source (no snapshots) into a new destination is allowed and does not crash',function()use($sourceEmpty){
+ $r=inspectScenario($sourceEmpty,null);same([],$r['blockers']);same([],$r['expected']);same([],$r['source']['']['snapshots']);
+});
+check('scenario: existing destination without snapshots is a hazard for that dataset (root or child), never a blocker, whether the source is empty or not',function()use($sourceFull,$sourceEmpty,$emptyDestination){
+ foreach([$sourceFull,$sourceEmpty]as$source){$r=inspectScenario($source,$emptyDestination);same([],$r['blockers']);same(1,count($r['hazards']));same(true,str_contains($r['hazards'][0],'backup/a already exists but has no snapshots'));same(true,str_contains($r['hazards'][0],'this part will fail'));}
+ $childOnly="backup/a\tfilesystem\t200\t2\t2\nbackup/a@s1\tsnapshot\t11\t10\t5\nbackup/a@s2\tsnapshot\t12\t20\t6\nbackup/a/child\tfilesystem\t201\t2\t3\n";
+ $r=inspectScenario($sourceFull,$childOnly,"backup/a\t-\nbackup/a/child\t-\n");same([],$r['blockers']);same(1,count($r['hazards']));same(true,str_contains($r['hazards'][0],'backup/a/child already exists'));
+});
+check('scenario: a root that never gets its own snapshot by design (only children replicated, no sync snapshot) is not flagged',function(){
+ $src="cache/a\tfilesystem\t100\t1\t1\ncache/a/child\tfilesystem\t101\t1\t2\ncache/a/child@s1\tsnapshot\t21\t10\t5\n";
+ $dst="backup/a\tfilesystem\t200\t2\t2\nbackup/a/child\tfilesystem\t201\t2\t3\nbackup/a/child@s1\tsnapshot\t21\t10\t5\n";
+ $r=inspectScenario($src,$dst,"backup/a\t-\nbackup/a/child\t-\n",'backup/a',['no_sync_snap'=>true]);same([],$r['blockers']);same([],$r['hazards']);
+ $r=inspectScenario($src,$dst,"backup/a\t-\nbackup/a/child\t-\n",'backup/a',['no_sync_snap'=>false]);same(1,count($r['hazards']));
+});
+check('scenario: an empty destination holding an interrupted first receive (resume token) is not flagged',function()use($sourceFull,$emptyDestination){
+ $r=inspectScenario($sourceFull,$emptyDestination,"backup/a\t1-abcdef-token\n");same([],$r['blockers']);same([],$r['hazards']);same(true,$r['target']['']['resume']);
+});
+check('syncoid refusing an existing empty destination is reported as an actionable failure without raw output',function(){
+ $r=zfsmSyncoidFailure("CRITICAL ERROR: Target backup/a exists but has no snapshots matching with cache/a!\n  Replication to target would require destroying existing\n  target. Cancelling.\nssh key SECRET",2);
+ same('destination_without_snapshots',$r['error_code']);same(false,str_contains(json_encode($r),'SECRET'));same(true,str_contains($r['reason'],'cannot receive into it'));
+});
+check('scenario: normal incremental run, destination has a common lineage, is not blocked',function()use($sourceFull){
+ $dst="backup/a\tfilesystem\t200\t2\t2\nbackup/a@s1\tsnapshot\t11\t10\t5\nbackup/a/child\tfilesystem\t201\t2\t3\nbackup/a/child@s1\tsnapshot\t21\t10\t5\n";
+ $r=inspectScenario($sourceFull,$dst,"backup/a\t-\nbackup/a/child\t-\n");same([],$r['blockers']);same([],$r['hazards']);
+});
+check('scenario: choosing another source for a destination that already holds different data never overwrites: it is blocked',function()use($sourceFull){
+ $other="backup/a\tfilesystem\t200\t2\t2\nbackup/a@older-other-dataset\tsnapshot\t999\t10\t5\nbackup/a@another\tsnapshot\t998\t11\t6\n";
+ $r=inspectScenario($sourceFull,$other);
+ same(['Destination has a snapshot outside source lineage: @older-other-dataset','Destination has a snapshot outside source lineage: @another'],array_map(fn($b)=>str_replace('Destination has a snapshot outside source lineage: ','Destination has a snapshot outside source lineage: ',$b),$r['blockers']));
+});
+check('scenario: foreign child datasets on the destination are blocked, not deleted',function()use($sourceFull){
+ $dst="backup/a\tfilesystem\t200\t2\t2\nbackup/a@s1\tsnapshot\t11\t10\t5\nbackup/a/mine\tfilesystem\t300\t2\t3\n";
+ $r=inspectScenario($sourceFull,$dst,"backup/a\t-\nbackup/a/mine\t-\n");same(['Foreign destination dataset /mine'],$r['blockers']);
+});
+check('scenario: destination and source with the same dataset identity are rejected',function()use($sourceFull){
+ rejectReplication(fn()=>inspectScenario($sourceFull,"backup/a\tfilesystem\t100\t2\t2\nbackup/a@s1\tsnapshot\t11\t10\t5\n"));
+});
+check('scenario: destination inside the source, equal to it, or overlapping another job is refused',function(){
+ foreach(['cache/a','cache/a/backup']as$target)rejectReplication(fn()=>zfsmSyncoidJob(['name'=>'R','source'=>'cache/a','target'=>$target]));
+ same(true,zfsmProtectionScopeOverlap('backup/a','backup/a'));same(true,zfsmProtectionScopeOverlap('backup/a','backup/a/b'));same(true,zfsmProtectionScopeOverlap('backup/a/b','backup/a'));same(false,zfsmProtectionScopeOverlap('backup/a','backup/ab'));
+});
+check('scenario: no run argument can delete, roll back or overwrite the destination',function(){
+ foreach([[],['recursive'=>true],['resume'=>false],['use_hold'=>true],['no_sync_snap'=>true],['bookmark'=>true,'no_sync_snap'=>true],['recursive'=>true,'exclusions'=>['cache/a/skip']]]as$extra){
+  $a=zfsmSyncoidArgv(zfsmSyncoidJob(array_merge(['name'=>'R','source'=>'cache/a','target'=>'backup/a'],$extra)),syncoidCaps());
+  same(false,in_array('--force-delete',$a,true));same(true,in_array('--no-rollback',$a,true));same(true,in_array('--recvoptions=u',$a,true));
+ }
+});
 finishTests();
