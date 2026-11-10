@@ -29,7 +29,7 @@ try{
     }
     if($pendingJobs){
         $shown=implode('; ',array_slice($pendingJobs,0,3)).(count($pendingJobs)>3?'; and '.(count($pendingJobs)-3).' more':'');
-        $requireRecovery('Update paused: '.count($pendingJobs).' job(s) still queued or running: '.$shown.'. Nothing was changed, but background services stay PAUSED until the update succeeds. Next: open Main > ZFS Director > Jobs and wait for or cancel these jobs; if services are not running, resume them with: rm -f /var/tmp/zfs.master.ui/jobs/stop && /usr/bin/php /usr/local/emhttp/plugins/zfs.master.ui/scripts/zfsm-worker.php -'.'-launch ; then run Plugins > Check for Updates again.');
+        $requireRecovery('Update paused: '.count($pendingJobs).' job(s) still queued or running: '.$shown.'. Nothing was changed and the installed version keeps running. Next: open Main > ZFS Director > Jobs, wait for these jobs to finish or cancel them, then run Plugins > Check for Updates again.');
     }
     echo "ZFS Director preflight: no pending execution or file cleanup. Settings and schedules retained.\n";
 }catch(Throwable$e){fwrite(STDERR,'ZFS Director upgrade blocked: '.$e->getMessage()."\n");exit(1);}

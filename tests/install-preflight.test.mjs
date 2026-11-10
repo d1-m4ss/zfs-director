@@ -33,7 +33,7 @@ test('a refused update names the pending jobs and what to do next',async()=>{
     const r=await preflight('1',{state:'queued',type:'replication',source:'cache/immich'});
     const text=r.errors+r.text;assert.equal(r.exitCode,1,text);
     assert.match(text,/Update paused: 1 job\(s\) still queued or running: replication cache\/immich \(queued\)/);
-    assert.match(text,/Nothing was changed/);assert.match(text,/Main > ZFS Director > Jobs/);assert.match(text,/zfsm-worker\.php --launch/);assert.match(text,/Check for Updates/);
+    assert.match(text,/Nothing was changed and the installed version keeps running/);assert.match(text,/Main > ZFS Director > Jobs/);assert.match(text,/Check for Updates/);assert.doesNotMatch(text,/--launch/);
     assert.doesNotMatch(text,/Pending or unverified/);
 });
 test('installation accepts inspected recovery and released file jobs but rejects invalid integration flags',async()=>{

@@ -43,6 +43,24 @@ assert check.returncode==0,check.stdout+check.stderr
 assert settings.read_bytes()==enabled_bytes,'Installer rewrote enabled integration settings'
 settings.write_bytes(b'[general]\nsanoid_integration=0\nlegacy=settings\n')
 
+# A refused update after the worker was stopped must hand the old worker back, but
+# only when the installer itself stopped it (a stop marker that was already there stays).
+import fcntl
+lock_path=base/'var/lock/zfs.master.ui.lock';lock_path.parent.mkdir(parents=True,exist_ok=True)
+stop_marker=base/'var/tmp/zfs.master.ui/jobs/stop'
+holder=open(lock_path,'a');fcntl.flock(holder,fcntl.LOCK_EX|fcntl.LOCK_NB)
+busy=run();fcntl.flock(holder,fcntl.LOCK_UN);holder.close();lock_path.unlink()
+assert busy.returncode!=0 and 'an operation is active' in busy.stdout,busy.stdout+busy.stderr
+assert not stop_marker.exists(),'a refused update must not leave the worker stopped'
+assert stop_log.read_text().endswith('--launch') and 'restarted' in busy.stdout,busy.stdout+busy.stderr
+assert (live/'old-code').is_file() and all(hashlib.sha256(p.read_bytes()).hexdigest()==sha for p,sha in expected.items())
+stop_log.unlink()
+stop_marker.parent.mkdir(parents=True,exist_ok=True,mode=0o700);stop_marker.write_text('maintenance\n');stop_marker.chmod(0o600)
+holder=open(lock_path,'a');fcntl.flock(holder,fcntl.LOCK_EX|fcntl.LOCK_NB)
+kept=run();fcntl.flock(holder,fcntl.LOCK_UN);holder.close();lock_path.unlink()
+assert kept.returncode!=0 and stop_marker.is_file() and '--launch' not in stop_log.read_text(),kept.stdout+kept.stderr
+stop_marker.unlink();stop_log.unlink()
+
 # A kernel without required fanotify must reject the real installer before
 # stopping the old worker, taking its mutation lock, or replacing any code.
 deny='''import ctypes,os,sys,platform
