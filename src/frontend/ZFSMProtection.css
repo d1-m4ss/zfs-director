@@ -175,3 +175,15 @@
   #zfsm-workspace .zfsm-policy-period>.zfsm-field.zfsm-policy-period-toggle { grid-column:1/-1; padding:0; }
   #zfsm-workspace .zfsm-policy-time-hint { grid-column:1/-1; }
 }
+#zfsm-workspace .zfsm-run-summary { display:flex; flex-direction:column; gap:10px; margin:8px 0; }
+#zfsm-workspace .zfsm-run-verdict { padding:10px 12px; border-radius:6px; background:var(--zfsm-good-bg); color:var(--zfsm-good); }
+#zfsm-workspace .zfsm-run-verdict[data-state=blocked] { background:var(--zfsm-error-bg); color:var(--zfsm-error); }
+#zfsm-workspace .zfsm-run-verdict p { margin:4px 0 0; color:var(--zfsm-text); }
+#zfsm-workspace .zfsm-run-table-wrap { max-height:260px; overflow:auto; border:1px solid var(--zfsm-border); border-radius:6px; }
+#zfsm-workspace .zfsm-run-table { width:100%; border-collapse:collapse; font-size:12px; }
+#zfsm-workspace .zfsm-run-table :is(th,td) { padding:6px 10px; text-align:left; border-bottom:1px solid var(--zfsm-border); overflow-wrap:anywhere; }
+#zfsm-workspace .zfsm-run-table th { color:var(--zfsm-muted); font-size:11px; text-transform:uppercase; }
+#zfsm-workspace .zfsm-run-progress { display:flex; flex-direction:column; gap:8px; margin:10px 0; }
+#zfsm-workspace .zfsm-run-progress progress { width:100%; }
+#zfsm-workspace .zfsm-run-progress p { margin:0; }
+

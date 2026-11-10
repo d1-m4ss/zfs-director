@@ -213,8 +213,8 @@ test('successful wizard inspection keeps keyboard focus inside its Review stage'
 for(const operation of ['run','cancel'])test('late protection '+operation+' completion cannot navigate after leaving its review',async()=>{
  let release;const navigations=[];const t=await mount(true,fields=>fields.cmd==='protection'+operation?new Promise(resolve=>{release=()=>resolve({succeeded:{job:'Accepted'},failed:{}});}):undefined,{onNavigate:screen=>navigations.push(screen)});try{if(operation==='run'){await t.app.render('policies');click(t.root.querySelector('[data-policy-id=abc]'),'Run now');await wait();click(t.root.querySelector('dialog'),'Run reviewed job');}else{t.data.jobs=[{id:'job-running',type:'policy',state:'running',source:'cache/a',verified_outcome:'running'}];await t.app.render('jobs');click(t.root,'View run');click(t.root.querySelector('dialog'),'Cancel run');}await wait();assert.ok(release);t.app.leave();release();await wait();assert.deepEqual(navigations,[]);}finally{t.app.stop();t.w.close();}
 });
-for(const operation of ['run','cancel'])test('successful protection '+operation+' still navigates to Jobs from its active review',async()=>{
- const navigations=[];const t=await mount(true,undefined,{onNavigate:screen=>navigations.push(screen)});try{if(operation==='run'){await t.app.render('policies');click(t.root.querySelector('[data-policy-id=abc]'),'Run now');await wait();click(t.root.querySelector('dialog'),'Run reviewed job');}else{t.data.jobs=[{id:'job-running',type:'policy',state:'running',source:'cache/a',verified_outcome:'running'}];await t.app.render('jobs');click(t.root,'View run');click(t.root.querySelector('dialog'),'Cancel run');}await wait();assert.deepEqual(navigations,['jobs']);assert.equal(t.root.querySelector('dialog'),null);}finally{t.app.stop();t.w.close();}
+for(const operation of ['run','cancel'])test('successful protection '+operation+' reaches Jobs from its active review',async()=>{
+ const navigations=[];const t=await mount(true,undefined,{onNavigate:screen=>navigations.push(screen)});try{if(operation==='run'){await t.app.render('policies');click(t.root.querySelector('[data-policy-id=abc]'),'Run now');await wait();click(t.root.querySelector('dialog'),'Run reviewed job');}else{t.data.jobs=[{id:'job-running',type:'policy',state:'running',source:'cache/a',verified_outcome:'running'}];await t.app.render('jobs');click(t.root,'View run');click(t.root.querySelector('dialog'),'Cancel run');}await wait();if(operation==='run'){assert.deepEqual(navigations,[]);const dlg=t.root.querySelector('dialog');assert.ok(dlg,'the run stays in its window');click(dlg,'Open in Jobs');await wait();assert.deepEqual(navigations,['jobs']);assert.equal(t.root.querySelector('dialog'),null);}else{assert.deepEqual(navigations,['jobs']);assert.equal(t.root.querySelector('dialog'),null);}}finally{t.app.stop();t.w.close();}
 });
 test('late definition control cannot close a newer editor or refresh its screen',async()=>{
  let release;const t=await mount(true,fields=>fields.cmd==='protectioncontrol'?new Promise(resolve=>{release=()=>resolve({succeeded:{abc:'Disabled'},failed:{}});}):undefined);try{await t.app.render('policies');click(t.root.querySelector('[data-policy-id=abc]'),'Disable');await wait();click(t.root.querySelector('dialog'),'Confirm disable');await wait();t.app.leave();await t.app.render('policies');click(t.root,'New policy');const newer=t.root.querySelector('dialog'),before=t.calls.length;release();await wait();assert.equal(t.root.querySelector('dialog'),newer);assert.equal(newer.open,true);assert.equal(t.calls.length,before);}finally{t.app.stop();t.w.close();}
@@ -326,4 +326,74 @@ for(const kind of ['policy','replication'])test(kind+' commit disables navigatio
 test('policy and protection run show completed-with-warnings counts without an error alert',async()=>{
  const t=await mount();const job={id:'warning-job',type:'policy',definition_id:'abc',state:'completed',stage:'finished',verified_outcome:'completed_with_warnings',verification:{exit_code:0,reason:'Deleted 1 snapshot; kept 2 protected snapshots.',snapshots_pruned:['cache/a@old'],retention:{protected:[{name:'cache/a@manual'},{name:'cache/a@held'}]}}};t.data.jobs=[job];t.data.policies[0].last_job=job;
  try{await t.app.render('policies');assert.match(t.root.querySelector('[data-policy-id=abc]').cells[3].textContent,/Completed with warnings/);await t.app.render('jobs');click(t.root,'View run');const dlg=t.root.querySelector('dialog');assert.match(dlg.textContent,/Completed with warnings/);assert.match(dlg.textContent,/Snapshots deleted: 1/);assert.match(dlg.textContent,/Protected snapshots kept: 2/);assert.equal(t.root.querySelector('[role=alert]'),null);assert.ok(dlg.querySelector('[data-severity=warning]'));}finally{t.app.stop();t.w.close();}
+});
+
+const realReplicationReview=()=>{
+ const snap=(name,txg)=>({name,creation:1766949364,txg});
+ return {type:'run',value:{type:'replication',id:'r1'},warnings:['No automatic rollback, foreign snapshot cleanup or destination deletion.'],inspection:{
+  source:{'':{guid:'1',snapshots:{111:snap('2025-12-28-211604','1'),222:snap('autosnap_daily','2')},resume:false},'/library':{guid:'2',snapshots:{333:snap('2025-12-28-211604','1'),444:snap('autosnap_daily','2')},resume:false}},
+  target:{'':{guid:'9',snapshots:[],resume:false}},expected:{'':'222','/library':'444'},blockers:[]}};
+};
+const replicationDef={id:'r1',name:'Nightly',source:'cache/a',target:'backup/a',owner:'managed',mode:'local',schedule:'0 2 * * *',enabled:true};
+test('replication run inspection is one verdict with a per-dataset table and folded raw details',async()=>{
+ const t=await mount(true,f=>f.cmd==='protectionrunpreview'?{preview_id:'e'.repeat(32),token:'signed',review:realReplicationReview()}:undefined);t.data.replications=[replicationDef];
+ try{await t.app.render('replication');click(t.root.querySelector('[data-replication-id=r1]'),'Run now');await wait();const dlg=t.root.querySelector('dialog');
+  assert.match(dlg.querySelector('.zfsm-run-verdict').textContent,/✓ Ready to run/);assert.match(dlg.querySelector('.zfsm-run-verdict').textContent,/2 datasets, 4 snapshots to send\./);assert.match(dlg.querySelector('.zfsm-run-verdict').textContent,/destination is empty/);
+  const rows=[...dlg.querySelectorAll('.zfsm-run-table tbody tr')].map(tr=>[...tr.cells].map(c=>c.textContent));
+  assert.deepEqual(rows,[['cache/a','2','autosnap_daily'],['cache/a/library','new dataset · 2','autosnap_daily']]);
+  assert.equal(dlg.querySelector('details.zfsm-protection-details').open,false,'raw JSON is folded');assert.ok([...dlg.querySelectorAll('button')].find(b=>b.textContent==='Run reviewed job'));
+ }finally{t.app.stop();t.w.close();}
+});
+test('replication run inspection with blockers explains why and offers no Run button',async()=>{
+ const review=realReplicationReview();review.inspection.blockers=['Destination has snapshots that do not exist on the source.'];
+ const t=await mount(true,f=>f.cmd==='protectionrunpreview'?{preview_id:'e'.repeat(32),token:'signed',review}:undefined);t.data.replications=[replicationDef];
+ try{await t.app.render('replication');click(t.root.querySelector('[data-replication-id=r1]'),'Run now');await wait();const dlg=t.root.querySelector('dialog');
+  assert.match(dlg.querySelector('.zfsm-run-verdict').textContent,/⛔ Can't run/);assert.match(dlg.querySelector('.zfsm-run-verdict').textContent,/do not exist on the source/);assert.equal(dlg.querySelector('.zfsm-run-verdict').dataset.state,'blocked');
+  assert.equal([...dlg.querySelectorAll('button')].some(b=>b.textContent==='Run reviewed job'),false);
+ }finally{t.app.stop();t.w.close();}
+});
+test('a started run stays in its window with stage, elapsed time and the final result',async()=>{
+ let polls=0,started=false;const t=await mount(true,f=>{
+  if(f.cmd==='protectionrunpreview')return {preview_id:'e'.repeat(32),token:'signed',review:realReplicationReview()};
+  if(f.cmd==='protectionrun'){started=true;return {succeeded:{'job-1':'Queued'},failed:{},job:{id:'job-1'}};}
+  if(f.cmd==='protectiondata'&&started){polls++;return {...t.data,jobs:[{id:'job-1',type:'replication',state:polls<2?'running':'completed',stage:polls<2?'transferring':'finished',verified_outcome:'up_to_date',datasets_started:polls<2?3:7,datasets_total:7}]};}
+ });t.data.replications=[replicationDef];
+ try{await t.app.render('replication');click(t.root.querySelector('[data-replication-id=r1]'),'Run now');await wait();click(t.root.querySelector('dialog'),'Run reviewed job');await wait();
+  const dlg=t.root.querySelector('dialog');assert.ok(dlg,'dialog stays open');assert.match(dlg.querySelector('.zfsm-run-progress').textContent,/Running replication «Nightly»/);assert.match(dlg.querySelector('.zfsm-run-progress').textContent,/Waiting to start/);assert.ok(dlg.querySelector('progress'));
+  await new Promise(r=>setTimeout(r,1150));await wait();assert.match(dlg.querySelector('.zfsm-run-progress').textContent,/Sending data · datasets sent so far: 3 \(of 7 in the job; up-to-date ones are skipped\)/);
+  await new Promise(r=>setTimeout(r,2150));await wait();assert.equal(dlg.querySelector('progress'),null,'progress ends with the job');assert.match(dlg.querySelector('.zfsm-run-progress').textContent,/Finished/);assert.match(dlg.querySelector('.zfsm-run-progress').textContent,/Up to date/);
+ }finally{t.app.stop();t.w.close();}
+});
+test('policy run inspection states the scope and whether deletion is off',async()=>{
+ const t=await mount(true,f=>f.cmd==='protectionrunpreview'?{preview_id:'e'.repeat(32),token:'signed',review:{type:'run',value:{type:'policy',id:'abc'},warnings:[],inspection:{datasets:{'cache/a':'123'},snapshots:{'cache/a@x':{}}}}}:undefined);
+ try{await t.app.render('policies');click(t.root.querySelector('[data-policy-id=abc]'),'Run now');await wait();const dlg=t.root.querySelector('dialog');
+  assert.match(dlg.querySelector('.zfsm-run-verdict').textContent,/1 dataset \(the source; children are not included\), 1 existing snapshot\. Creates due snapshots; automatic deletion is off\./);
+ }finally{t.app.stop();t.w.close();}
+});
+
+test('policy run inspection does not claim child datasets for a non-recursive policy but counts them for a recursive one',async()=>{
+ const review={type:'run',value:{type:'policy',id:'abc'},warnings:[],inspection:{datasets:{'cache/a':'1','cache/a/b':'2','cache/a/c':'3'},snapshots:{}}};
+ for(const [recursive,expected] of [[false,/1 dataset \(the source; children are not included\)/],[true,/3 datasets found under the source/]]){
+  const t=await mount(true,f=>f.cmd==='protectionrunpreview'?{preview_id:'e'.repeat(32),token:'signed',review}:undefined);t.data.policies[0].recursive=recursive;
+  try{await t.app.render('policies');click(t.root.querySelector('[data-policy-id=abc]'),'Run now');await wait();assert.match(t.root.querySelector('dialog .zfsm-run-verdict').textContent,expected);}finally{t.app.stop();t.w.close();}
+ }
+});
+test('replication run inspection only says the destination is empty when no destination dataset has snapshots',async()=>{
+ const review=realReplicationReview();review.inspection.target={'':{guid:'9',snapshots:[]},'/library':{guid:'8',snapshots:{333:{name:'2025-12-28-211604'}}}};
+ const t=await mount(true,f=>f.cmd==='protectionrunpreview'?{preview_id:'e'.repeat(32),token:'signed',review}:undefined);t.data.replications=[replicationDef];
+ try{await t.app.render('replication');click(t.root.querySelector('[data-replication-id=r1]'),'Run now');await wait();const text=t.root.querySelector('dialog .zfsm-run-verdict').textContent;
+  assert.doesNotMatch(text,/destination is empty/);assert.match(text,/2 datasets, 3 snapshots to send\./);
+ }finally{t.app.stop();t.w.close();}
+});
+test('a finished cancelled or failed run shows its real final stage and outcome',async()=>{
+ for(const [state,stageName,outcome,expected] of [['cancelled','cancelled','blocked',/Cancelled/],['failed','finished','failed',/Finished with an error/]]){
+  let started=false;const t=await mount(true,f=>{
+   if(f.cmd==='protectionrunpreview')return {preview_id:'e'.repeat(32),token:'signed',review:realReplicationReview()};
+   if(f.cmd==='protectionrun'){started=true;return {succeeded:{'job-1':'Queued'},failed:{},job:{id:'job-1'}};}
+   if(f.cmd==='protectiondata'&&started)return {...t.data,jobs:[{id:'job-1',type:'replication',state,stage:stageName,verified_outcome:outcome,error:'Receiver refused the stream'}]};
+  });t.data.replications=[replicationDef];
+  try{await t.app.render('replication');click(t.root.querySelector('[data-replication-id=r1]'),'Run now');await wait();click(t.root.querySelector('dialog'),'Run reviewed job');await wait();await new Promise(r=>setTimeout(r,1150));await wait();
+   const card=t.root.querySelector('dialog .zfsm-run-progress').textContent;assert.match(card,expected);assert.match(card,/Receiver refused the stream/);
+  }finally{t.app.stop();t.w.close();}
+ }
 });

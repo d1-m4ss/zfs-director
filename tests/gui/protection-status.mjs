@@ -16,7 +16,7 @@ async function open(width,section){
    policies:[{id:'p1',name:'Daily',owner:'managed',dataset:'cache/a',enabled:true,hourly:24,daily:7,last_job:run('up_to_date')},{id:'p2',name:'Fresh',owner:'managed',dataset:'cache/b',enabled:false,hourly:24,daily:7},{id:'p3',name:'sanoid',owner:'external',dataset:'cache/a',enabled:true}],
    replications:[{id:'r1',name:'Nightly',owner:'managed',source:'cache/a',target:'backup/x',mode:'local',schedule:'0 2 * * *',enabled:true,last_job:run('completed')},{id:'r2',name:'Paused',owner:'managed',source:'cache/b',target:'backup/x',mode:'local',schedule:'0 3 * * *',enabled:false}],
    jobs:[],templates:{},issues:[],credentials:[],scheduler:{external:[],issues:[]}};
-  window.zfsm_workspace=zfsmCreateWorkspace({root:document.querySelector('main'),config:{refresh_interval:0,destructive_mode:1},request:async fields=>{if(fields.cmd==='inventory')return {op:'getAll',data:{pools:{cache:{Health:'ONLINE',Size:1000,Used:1}},datasets:{cache:tree},devices:{cache:''},errors:{}}};if(fields.cmd==='conversionjobs')return {jobs:[],worker_running:true};if(fields.cmd==='pooldiagnostics')throw Error('Synthetic unavailable');if(fields.cmd==='protectiondetect')return {visible:true,installed:true,enabled:true,compatible:true,state:'healthy',issues:[],sanoid:{version:'2.3.0'},syncoid:{version:'2.3.0'}};if(fields.cmd==='protectiondata')return structuredClone(selectorData);throw Error('Unexpected command '+fields.cmd);}});
+  window.zfsm_workspace=zfsmCreateWorkspace({root:document.querySelector('main'),config:{refresh_interval:0,destructive_mode:1},request:async fields=>{if(fields.cmd==='inventory')return {op:'getAll',data:{pools:{cache:{Health:'ONLINE',Size:1000,Used:1}},datasets:{cache:tree},devices:{cache:''},errors:{}}};if(fields.cmd==='conversionjobs')return {jobs:[],worker_running:true};if(fields.cmd==='pooldiagnostics')throw Error('Synthetic unavailable');if(fields.cmd==='protectiondetect')return {visible:true,installed:true,enabled:true,compatible:true,state:'healthy',issues:[],sanoid:{version:'2.3.0'},syncoid:{version:'2.3.0'}};if(fields.cmd==='protectiondata')return structuredClone(selectorData);if(fields.cmd==='protectionrunpreview'){const snap=(name)=>({name,creation:1766949364,txg:'1'});return {preview_id:'e'.repeat(32),token:'signed',review:{type:'run',value:{type:'replication',id:'r1'},warnings:['No automatic rollback, foreign snapshot cleanup or destination deletion.'],inspection:{source:{'':{guid:'1',snapshots:{111:snap('2025-12-28-211604'),222:snap('autosnap_2026-11-09_20:17:05_daily')}},'/a-rather-long-child-dataset-name/library':{guid:'2',snapshots:{333:snap('2025-12-28-211604'),444:snap('autosnap_2026-11-09_20:17:05_daily')}}},target:{'':{guid:'9',snapshots:[]}},expected:{'':'222','/a-rather-long-child-dataset-name/library':'444'},blockers:[]}}};}throw Error('Unexpected command '+fields.cmd);}});
  });
  await page.locator('[data-section='+section+']').click();return page;
 }
@@ -58,6 +58,14 @@ try{
    assert.deepEqual(await page.locator('tr[data-definition-id=r1] .zfsm-protection-when span').allTextContents(),['Monday, 09-11-2026','22:17:05']);
    assert.deepEqual(await overlaps(page),[],'replication: no cell overlaps');
    await page.screenshot({path:out+'/'+width+'-replication.png'});
+   // Run inspection: one verdict, a table that fits, raw JSON folded away.
+   await page.locator('tr[data-definition-id=r1]').click();await page.getByRole('button',{name:'Run now',exact:true}).first().click();
+   const run=page.getByRole('dialog');await run.locator('.zfsm-run-verdict').waitFor();
+   assert.match(await run.locator('.zfsm-run-verdict').innerText(),/Ready to run/);
+   assert.equal(await run.locator('details pre').first().isVisible(),false,'raw JSON is folded');
+   assert.deepEqual(await run.evaluate(d=>({wide:d.scrollWidth>d.clientWidth+1})),{wide:false},'run window must not scroll sideways');
+   assert.equal(await run.locator('.zfsm-run-table-wrap').evaluate(w=>w.scrollWidth<=w.clientWidth+1),true,'table fits its box');
+   await page.screenshot({path:out+'/'+width+'-run-inspection.png'});
    results.push({width,status:'PASS'});
   }catch(e){results.push({width,status:'FAIL',error:e.stack});if(page&&!page.isClosed())await page.screenshot({path:out+'/FAIL-'+width+'.png'});throw e;}finally{if(page&&!page.isClosed())await page.close();}
  }

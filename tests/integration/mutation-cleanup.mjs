@@ -57,8 +57,9 @@ try{
  await check('fresh preview and confirmation visible in both views and four themes',async()=>{
   assert.equal(await page.locator('.zfsm-form button[type=submit]').isDisabled(),true);
   for(const view of ['Workspace','Compact']){
+   await page.keyboard.press('Escape');
    await page.getByRole('button',{name:view,exact:true}).click();
-   await page.locator('[data-node="'+target+'"]').click();await page.getByRole('button',{name:'Clean completed recovery',exact:true}).click();
+   await page.locator('[data-node="'+target+'"]').click();await page.locator('[data-tab=actions]').click();await page.getByRole('button',{name:'Clean completed recovery',exact:true}).click();
    if(!await page.getByText('Completed delete operation',{exact:true}).count()){await page.getByRole('button',{name:'Load fresh preview',exact:true}).click();await page.getByText('Completed delete operation',{exact:true}).waitFor();}
    for(const theme of ['dark','gray','light','azure']){await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);await page.screenshot({path:output+'/'+view.replaceAll(' ','-')+'-'+theme+'.png',fullPage:true});}
   }

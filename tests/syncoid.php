@@ -39,4 +39,11 @@ check('remote unknown credentials cannot produce an SSH command',function(){
 check('native failure reasons are actionable without returning credential or CLI output',function(){
  $r=zfsmSyncoidFailure('private key SECRET: cannot receive: out of space',1);same('insufficient_space',$r['error_code']);same(false,str_contains(json_encode($r),'SECRET'));same('host_identity',zfsmSyncoidFailure('Host key verification failed.',255)['error_code']);same('ssh_timeout',zfsmSyncoidFailure('Connection timed out',255)['error_code']);
 });
+check('progress counter counts only dataset starts, across split chunks, and keeps no text',function(){
+ $buffer='';$total=0;
+ foreach(["INFO: Sending oldest full snapshot cache/a@x to new target filesystem backup/a (~ 1.2 MB):\n","INFO: Sending incremen","tal cache/a/b@x ... y to backup/a/b (~ 4 KB):\nWARN: something\n","INFO: Skipping dataset (syncoid:sync=false): cache/a/c...\nINFO: Resuming interrupted zfs send/receive from cache/a/d to backup/a/d (~ 1 MB remaining):\nDEBUG: NEWEST SNAPSHOT: x\n"] as $chunk)$total+=zfsmProtectionProgressLines($buffer,$chunk);
+ same(4,$total);same('',$buffer);
+ $buffer='';same(0,zfsmProtectionProgressLines($buffer,"user@host: ssh key SECRET without newline"));same(true,strlen($buffer)>0);
+ $buffer=str_repeat('x',9000);zfsmProtectionProgressLines($buffer,'y');same('',$buffer);
+});
 finishTests();

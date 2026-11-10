@@ -152,13 +152,25 @@ function zfsmQueueProtection(array $request,bool $interactive=true): array {
         zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);if(!$interactive)zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'queued');return ['succeeded'=>[$job['id']=>'Queued'],'failed'=>[],'job'=>$job];
     });
 }
+// Counts datasets that syncoid starts sending (or skips). Only the number is kept:
+// the text of native output may expose SSH identities or paths and is discarded.
+function zfsmProtectionProgressLines(string &$buffer,string $chunk): int {
+    $buffer.=$chunk;$count=0;
+    while(($end=strpos($buffer,"\n"))!==false){
+        $line=substr($buffer,0,$end);$buffer=substr($buffer,$end+1);
+        if(preg_match('/^INFO: (?:Sending |Resuming interrupted |Skipping dataset)/',$line))$count++;
+    }
+    if(strlen($buffer)>8192)$buffer='';
+    return $count;
+}
 function zfsmProtectionStream(array $job,string $binary,array $args,?callable $tick=null): array {
-    $stageRecorded=false;
-    return zfsmStreamProcess($binary,$args,function($chunk)use($job,&$stageRecorded,$tick){
+    $stageRecorded=false;$buffer='';$started=0;
+    return zfsmStreamProcess($binary,$args,function($chunk)use($job,&$stageRecorded,&$buffer,&$started,$tick){
         if($tick!==null)$tick();
         // Native output is intentionally not journaled: it may expose SSH
         // identities/paths. Unknown byte/percentage values stay unknown.
         if($chunk!==''&&!$stageRecorded){zfsmJobUpdate($job['id'],['stage'=>'transferring']);$stageRecorded=true;}
+        if($job['type']==='replication'&&$chunk!==''){$added=zfsmProtectionProgressLines($buffer,$chunk);if($added>0){$started+=$added;zfsmJobUpdate($job['id'],['datasets_started'=>$started]);}}
     },fn()=>zfsmReadJob($job['id'])['cancel_requested']===true,null,null,true);
 }
 function zfsmRunProtectionJob(array $job): void {

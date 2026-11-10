@@ -122,6 +122,7 @@ function zfsmSyncoidRememberTarget(array &$definition,array $target): void {
 function zfsmSyncoidExecute(array $job): array {
     $d=zfsmProtectionRequireExecution();$s=zfsmProtectionReadStore();$j=$s['replications'][$job['definition_id']]??null;if(!$j)throw new RuntimeException('Replication definition was removed.');if(!$j['enabled'])return ['outcome'=>'skipped','reason'=>'Replication is disabled.','exit_code'=>null];
     $before=zfsmSyncoidInspect($j);if($before['source']['']['guid']!==$j['source_guid']||(($before['target']['']['guid']??null)!==$j['target_guid']))throw new RuntimeException('Source or destination identity changed; fresh review required.');if($before['blockers'])return ['outcome'=>'blocked','exit_code'=>null,'reason'=>implode(' ',$before['blockers']),'verified'=>false];
+    if(isset($job['id'])&&is_array($before['source']))zfsmJobUpdate($job['id'],['datasets_total'=>count($before['source'])]);
     $argv=zfsmSyncoidArgv($j,zfsmSyncoidCapabilities($j,$d));
     $lastProbe=0;$observe=function()use(&$j,&$lastProbe){if($j['target_guid']!==null||microtime(true)-$lastProbe<2)return;$lastProbe=microtime(true);try{$target=zfsmSyncoidInventory($j,true);}catch(Throwable$e){return;}if(isset($target['']['guid']))zfsmSyncoidRememberTarget($j,$target);};
     $result=function_exists('zfsmProtectionStream')?zfsmProtectionStream($job,$d['syncoid']['path'],$argv,$observe):runProcess($d['syncoid']['path'],$argv);

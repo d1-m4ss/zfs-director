@@ -296,7 +296,66 @@ function zfsmCreateProtection(options) {
         }
         e.form.addEventListener('input',invalidate);e.form.addEventListener('change',invalidate);draw();
     }
-    async function runReview(def,type){const host=modal('Inspect before running'),revision=generation;try{const p=await request({cmd:'protectionrunpreview',type,id:def.id});if(stopped||dialog!==host||revision!==generation)return;pre(host,'Fresh inspection',p.review);host.append(btn('Run reviewed job',async()=>{if(stopped||dialog!==host||revision!==generation)return;try{await request({cmd:'protectionrun',preview_id:p.preview_id,token:p.token});if(stopped||dialog!==host||revision!==generation)return;close();await navigate('jobs');}catch(e){if(!stopped&&dialog===host&&revision===generation)notice(host,e.message,true);}}));}catch(e){if(!stopped&&dialog===host&&revision===generation)notice(host,e.message,true);}}
+    // Fresh inspection as one verdict plus a per-dataset table; the raw JSON stays in a folded section.
+    function snapshotsOf(value){return Array.isArray(value)?value:Object.entries(value||{}).map(([guid,item])=>({guid,...(item||{})}));}
+    function runSummary(host,review,def,type){
+        const inspection=review?.inspection||{},box=el('div',undefined,'zfsm-run-summary');
+        const blockers=(Array.isArray(inspection.blockers)?inspection.blockers:[]).map(item=>typeof item==='string'?item:(item?.message||item?.reason||JSON.stringify(item)));
+        let sentence='',rows=[];
+        if(type==='replication'&&inspection.source&&typeof inspection.source==='object'){
+            let fresh=0;
+            for(const [suffix,source] of Object.entries(inspection.source)){
+                const have=new Set(snapshotsOf(inspection.target?.[suffix]?.snapshots).map(item=>item.guid)),all=snapshotsOf(source?.snapshots),missing=all.filter(item=>!have.has(item.guid)),latest=all.find(item=>item.guid===inspection.expected?.[suffix]);
+                fresh+=missing.length;rows.push([(def.source||'')+suffix,inspection.target&&!inspection.target[suffix]?'new dataset · '+missing.length:String(missing.length),latest?.name||'—']);
+            }
+            const empty=!Object.values(inspection.target||{}).some(node=>snapshotsOf(node?.snapshots).length);
+            sentence=rows.length+' dataset'+(rows.length===1?'':'s')+', '+(fresh?fresh+' snapshot'+(fresh===1?'':'s')+' to send.':'nothing new to send; the run only verifies the receiver.')+(empty&&fresh?' The destination is empty, so the first run sends everything.':'');
+        }else if(type==='policy'&&inspection.datasets&&typeof inspection.datasets==='object'){
+            const count=Object.keys(inspection.datasets).length,existing=Object.keys(inspection.snapshots||{}).length;
+            sentence=(def.recursive?count+' dataset'+(count===1?'':'s')+' found under the source':'1 dataset (the source; children are not included)')+', '+existing+' existing snapshot'+(existing===1?'':'s')+'. Creates due snapshots'+(def.autoprune?' and prunes old ones by the saved retention.':'; automatic deletion is off.');
+        }
+        const verdict=el('div',undefined,'zfsm-run-verdict');verdict.dataset.state=blockers.length?'blocked':'ready';
+        verdict.append(el('strong',blockers.length?'⛔ Can\'t run':'✓ Ready to run'));
+        if(blockers.length)for(const message of blockers)verdict.append(el('p',message));else if(sentence)verdict.append(el('p',sentence));
+        box.append(verdict);
+        if(rows.length){const table=el('table',undefined,'zfsm-run-table'),head=el('tr');for(const label of ['Dataset','New snapshots','Latest to send'])head.append(el('th',label));const thead=el('thead');thead.append(head);table.append(thead);const body=el('tbody');for(const row of rows){const tr=el('tr');for(const cell of row)tr.append(el('td',cell));body.append(tr);}table.append(body);const wrap=el('div',undefined,'zfsm-run-table-wrap');wrap.append(table);box.append(wrap);}
+        for(const warning of review?.warnings||[])box.append(el('p',String(warning),'zfsm-muted'));
+        const raw=details(box,'Details (raw inspection)');pre(raw,'Inspection',review);
+        host.append(box);
+        return blockers.length===0;
+    }
+    const runStages={queued:'Waiting to start',inspecting:'Checking source and destination',transferring:'Sending data',finished:'Finished',cancelled:'Cancelled'};
+    // The run stays in this window: stage and elapsed time until the job reaches a final state.
+    function watchRun(host,jobId,revision,def,type){
+        const card=el('div',undefined,'zfsm-run-progress'),title=el('strong','Running '+(type==='policy'?'snapshot policy':'replication')+' «'+(def.name||def.dataset||def.source||'')+'»'),stage=el('p'),bar=el('progress'),elapsed=el('p',undefined,'zfsm-muted'),result=el('div');
+        bar.setAttribute('aria-label','Run in progress');card.append(title,stage,bar,elapsed,result);host.append(card);
+        const started=Date.now();let finished=false,misses=0;
+        const alive=()=>!stopped&&dialog===host&&revision===generation;
+        const tick=()=>{const seconds=Math.floor((Date.now()-started)/1000);elapsed.textContent='Elapsed '+String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');};
+        stage.textContent='Waiting to start';tick();
+        const poll=async()=>{
+            if(!alive()||finished)return;
+            tick();
+            try{
+                const fresh=await request({cmd:'protectiondata'});if(!alive())return;
+                const job=(fresh?.jobs||[]).find(item=>item.id===jobId);
+                if(!job&&++misses>=5)stage.textContent='The job is not listed yet; open Jobs to follow it.';
+                if(job){misses=0;
+                    stage.textContent=(runStages[job.stage]||String(job.stage||job.state||''))+(Number.isInteger(job.datasets_started)&&job.datasets_started>0?' · datasets sent so far: '+job.datasets_started+(Number.isInteger(job.datasets_total)&&job.datasets_total>0?' (of '+job.datasets_total+' in the job; up-to-date ones are skipped)':''):'');
+                    if(!['queued','running'].includes(job.state)){
+                        finished=true;bar.remove();stage.textContent=job.state==='failed'?'Finished with an error':(runStages[job.stage]||'Finished');
+                        result.replaceChildren(status(job.verified_outcome||job.state));
+                        const reason=job.verification?.reason||job.error;if(reason)result.append(el('p',String(reason)));
+                        return;
+                    }
+                }
+            }catch(error){if(alive())stage.textContent='Status temporarily unavailable; the job keeps running.';}
+            setTimeout(poll,2000);
+        };
+        setTimeout(poll,1000);
+        return card;
+    }
+    async function runReview(def,type){const host=modal('Inspect before running'),revision=generation;try{const p=await request({cmd:'protectionrunpreview',type,id:def.id});if(stopped||dialog!==host||revision!==generation)return;const ready=runSummary(host,p.review,def,type);if(!ready)return;const run=btn('Run reviewed job',async()=>{if(stopped||dialog!==host||revision!==generation)return;run.disabled=true;try{const answer=await request({cmd:'protectionrun',preview_id:p.preview_id,token:p.token});if(stopped||dialog!==host||revision!==generation)return;const jobId=answer?.job?.id||Object.keys(answer?.succeeded||{})[0];host.replaceChildren(host.firstChild);const open=btn('Open in Jobs',async()=>{close();await navigate('jobs');});if(jobId&&typeof jobId==='string')watchRun(host,jobId,revision,def,type);host.append(open);}catch(e){run.disabled=false;if(!stopped&&dialog===host&&revision===generation)notice(host,e.message,true);}});host.append(run);}catch(e){if(!stopped&&dialog===host&&revision===generation)notice(host,e.message,true);}}
     async function controlReview(def,type,action){const host=modal('Review '+action+' definition'),revision=generation;try{const p=await request({cmd:'protectioncontrolpreview',type,id:def.id,action});if(stopped||dialog!==host||revision!==generation)return;pre(host,'Scope / configuration change',p.review);host.append(btn('Confirm '+action,async()=>{if(stopped||dialog!==host||revision!==generation)return;try{const answer=await request({cmd:'protectioncontrol',preview_id:p.preview_id,token:p.token});if(stopped||dialog!==host||revision!==generation)return;close();await render(screen);if(answer.scheduler_warning)notice(root,answer.scheduler_warning,true);}catch(e){if(!stopped&&dialog===host&&revision===generation)notice(host,e.message,true);}}));}catch(e){if(!stopped&&dialog===host&&revision===generation)notice(host,e.message,true);}}
     async function importPolicy(def){const e=editorBase('Review ownership transfer');try{const p=await request({cmd:'protectionimportpreview',id:def.id});if(dialog!==e.host)return;reviewedSave(e,p,'protectionimport','Confirm ownership transfer');}catch(error){notice(e.errors,error.message,true);}}
     function externalTransfer(source,preferredType){
