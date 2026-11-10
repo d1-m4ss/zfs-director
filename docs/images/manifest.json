@@ -12,8 +12,8 @@
     "src/frontend/ZFSMInventory.js": "ad9571d0c9932e790607ccf5a689e5674ac5e728a6648de24a41c4341c49855b",
     "src/frontend/ZFSMOverview.js": "6523034f0f352946ac2cdc0eee76885a12566be7472d0cf8071f04756055785a",
     "src/frontend/ZFSMPoolView.js": "2a7b0ff85050a1acdc4f55169da1e9cb5811717b2cad4ab27bc671af07c74df9",
-    "src/frontend/ZFSMProtection.css": "40fd422a946662552a733d2b3662673fd501c908ba24a763f574af6b331fdff6",
-    "src/frontend/ZFSMProtection.js": "8155547fa907def1d1f1449fb76cabd796254b1007dd2306d9ff6aa609970bdb",
+    "src/frontend/ZFSMProtection.css": "be7fd3a7a6e0c2a8a547277fcf5862cbffd58f6a0d69e9eca9454914d39675b8",
+    "src/frontend/ZFSMProtection.js": "ca27d24fba909bb315cbc93575bc191bf9337d431ae1522f9a45a42fc89023a6",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "46c531b4a43761d7bbf1b33945789ea9fa8cec79d3944d4a7042f2ede55cb555",
     "src/frontend/ZFSMWorkspace.js": "e454d4b440d6dab3c54d8cc23f1039bfbc7bcb36483fa518a03804fba8af0429",
@@ -105,8 +105,8 @@
     },
     {
       "file": "policies.png",
-      "sha256": "d4c6ddafa9be0000f764cef123fae7ccf319fc7fab9205995a819720f2bf5770",
-      "bytes": 153342,
+      "sha256": "dc15b06ac0c7e506c697151bc061af88ef2adf0d91da0179ce23e0b22a88f11e",
+      "bytes": 155450,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -114,8 +114,8 @@
     },
     {
       "file": "snapshot-policy.png",
-      "sha256": "766ae71f5536cb950b08be10b2ec45ab9b6cb29af75f466e7d7232be6e512907",
-      "bytes": 155202,
+      "sha256": "b3462c9f09f63e0f1a04c217695bb82504e135dae999667bf51594ee51d265b6",
+      "bytes": 153203,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -123,8 +123,8 @@
     },
     {
       "file": "replication.png",
-      "sha256": "f2903cdc80af364f73e54285ce080ee25d3d62b96c53d219f889873eb2f02ac0",
-      "bytes": 99310,
+      "sha256": "c07b6d249f626157bb9f6ea366fbd1fd88c1840d2f975168267b43cfd8ad2355",
+      "bytes": 102088,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -132,8 +132,8 @@
     },
     {
       "file": "replication-wizard.png",
-      "sha256": "c7d8c6dab2bec128522bd2dcbb010f5fe3a0e74228ecf023b2b9c71926bdfab9",
-      "bytes": 109904,
+      "sha256": "1846855b2777c055f8bb8ac743961bd78c41fe09e9f06a26e61eb2a941539171",
+      "bytes": 112608,
       "viewport": {
         "width": 1440,
         "height": 980

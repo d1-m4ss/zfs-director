@@ -75,6 +75,12 @@
 #zfsm-workspace .zfsm-protection-list .zfsm-protection-table :is(th,td) { min-width:0; max-width:none; padding:14px 13px; }
 #zfsm-workspace .zfsm-protection-list .zfsm-protection-table th:first-child { width:31%; }
 #zfsm-workspace .zfsm-protection-list .zfsm-protection-table th:nth-child(2) { width:27%; }
+#zfsm-workspace .zfsm-protection-list .zfsm-protection-table th:nth-child(3) { width:19%; }
+#zfsm-workspace .zfsm-protection-list .zfsm-protection-table th:nth-child(4) { width:23%; }
+#zfsm-workspace .zfsm-protection-when { display:flex; flex-direction:column; gap:2px; }
+#zfsm-workspace .zfsm-status-stack { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-width:0; }
+#zfsm-workspace .zfsm-status-stack small { color:var(--zfsm-muted); }
+#zfsm-workspace .zfsm-status-stack .zfsm-protection-badge { white-space:normal; }
 #zfsm-workspace .zfsm-protection-list tr[data-definition-id] { cursor:pointer; }
 #zfsm-workspace .zfsm-protection-list tr[data-definition-id]:hover { background:var(--zfsm-track); }
 #zfsm-workspace .zfsm-protection-list tr.is-selected { background:var(--zfsm-selected); box-shadow:inset 3px 0 var(--zfsm-accent); }
