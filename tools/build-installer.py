@@ -17,7 +17,7 @@ import zipfile
 from urllib.parse import urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-VERSION = '2026.11.09.10'
+VERSION = '2026.11.09.11'
 STOP_MARKER = r'''use strict;
 use warnings;
 use Fcntl qw(:DEFAULT :mode);
@@ -184,7 +184,7 @@ def build(output, release_base=None, plugin_url_base=None):
     plugin_url = update_base + '/' + plugin_name if release_base else 'file:///boot/config/plugins/zfs.master.ui/' + plugin_name
     plugin = ET.Element('PLUGIN', name='zfs.master.ui', author='d1-m4ss', version=VERSION, min='7.3.3',
                         icon='database', launch='Main/ZFSDirector', pluginURL=plugin_url)
-    ET.SubElement(plugin, 'CHANGES').text = f'### {VERSION}\nA refused or failed update now restarts the installed version's background services, so scheduled jobs never stay paused. Clearer update messages: which jobs are still queued or running and what to do next.\n\nZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.'
+    ET.SubElement(plugin, 'CHANGES').text = f'### {VERSION}\nA refused or failed update restarts the background services of the installed version, so scheduled jobs never stay paused. Clearer update messages: which jobs are still queued or running and what to do next.\n\nZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.'
     package = ET.SubElement(plugin, 'FILE', Name=f'/boot/config/plugins/zfs.master.ui/{archive.name}')
     ET.SubElement(package, 'URL' if release_base else 'LOCAL').text = release_base + '/' + archive.name if release_base else package.attrib['Name']
     ET.SubElement(package, 'MD5').text = hashlib.md5(archive.read_bytes()).hexdigest()
