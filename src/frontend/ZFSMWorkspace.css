@@ -522,3 +522,32 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
 /* Dataset information groups. */
 #zfsm-workspace .zfsm-subtabs {display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
 
+/* Compact top area: pools, refresh time and the two buttons share one row, so the work panes get the height. */
+#zfsm-workspace .zfsm-topbar {display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:0 0 8px}
+#zfsm-workspace .zfsm-topbar>.zfsm-pools {flex:1 1 auto;margin:0;gap:8px;min-width:0}
+#zfsm-workspace .zfsm-topbar>.zfsm-pools:empty {display:none}
+#zfsm-workspace .zfsm-topbar>.zfsm-refresh-status {order:2;margin:0;font-size:11px;color:var(--zfsm-muted);white-space:nowrap}
+#zfsm-workspace .zfsm-topbar>.zfsm-dataset-tools {order:3;margin:0 0 0 auto;gap:6px}
+#zfsm-workspace .zfsm-topbar>.zfsm-dataset-tools:not(:has(>:not([hidden]))) {display:none}
+#zfsm-workspace .zfsm-topbar .zfsm-pool-button {padding:5px 11px;min-height:30px}
+#zfsm-workspace .zfsm-topbar .zfsm-dataset-tools button {min-height:30px;padding:4px 11px}
+#zfsm-workspace[data-frame="fixed"] .zfsm-header {min-height:48px;padding:6px 20px}
+#zfsm-workspace[data-frame="fixed"] .zfsm-main-body {padding:12px 20px}
+#zfsm-workspace[data-frame="fixed"] .zfsm-content>.zfsm-tabs {padding-bottom:0;margin-bottom:8px}
+#zfsm-workspace[data-frame="fixed"] .zfsm-tabs button {padding:6px 10px}
+#zfsm-workspace[data-frame="fixed"] .zfsm-pagehead {margin-bottom:12px}
+#zfsm-workspace[data-frame="fixed"][data-wide="true"]:not([data-layout="table"]) .zfsm-main-body:has(>.zfsm-content>.zfsm-workarea) {padding-bottom:10px}
+/* Why a pool shows Warning/Error: the reason and where to go. */
+#zfsm-workspace .zfsm-topbar>.zfsm-attention {order:4;flex:1 1 100%;display:flex;flex-direction:column;gap:4px}
+#zfsm-workspace .zfsm-reason-line {display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:12px}
+#zfsm-workspace .zfsm-reason-line>span:not(.zfsm-health-icon) {min-width:0;flex:1 1 320px;overflow-wrap:anywhere}
+#zfsm-workspace .zfsm-reason-line button {min-height:26px;padding:2px 9px;font-size:12px}
+#zfsm-workspace .zfsm-attention-pool {display:flex;flex-direction:column;gap:4px;padding:6px 10px;border:1px solid var(--zfsm-warning);border-radius:6px;background:var(--zfsm-warning-bg);color:var(--zfsm-warning)}
+#zfsm-workspace .zfsm-attention-pool .zfsm-reason-line>span:not(.zfsm-health-icon) {color:var(--zfsm-text)}
+#zfsm-workspace .zfsm-dashboard-reasons {display:flex;flex-direction:column;gap:6px;margin:-4px 0 12px;padding:8px 12px;border-left:3px solid var(--zfsm-warning);background:var(--zfsm-warning-bg)}
+/* The overview card already explains the warning, the strip would repeat it. */
+#zfsm-workspace[data-screen="overview"] .zfsm-topbar>.zfsm-attention {display:none}
+/* Jobs toolbar: the buttons sit on the same line as the selects, not level with their captions. */
+#zfsm-workspace .zfsm-jobs-toolbar {align-items:flex-end}
+#zfsm-workspace .zfsm-jobs-toolbar>button {min-height:36px}
+

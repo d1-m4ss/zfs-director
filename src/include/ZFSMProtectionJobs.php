@@ -146,10 +146,10 @@ function zfsmQueueProtection(array $request,bool $interactive=true): array {
         if(zfsmWorkerStopRequested())throw new RuntimeException('Director is paused for maintenance; scheduled execution was not queued.');
         $store=zfsmProtectionReadStore();$d=$store[$type==='policy'?'policies':'replications'][$id]??null;if(!$d||!$d['enabled'])throw new RuntimeException('Definition is missing or disabled.');
         foreach(zfsmPendingJobs()as$j)if(($j['schema']??null)===4&&$j['type']===$type&&$j['definition_id']===$id)return ['succeeded'=>[$j['id']=>'Already queued/running for this definition'],'failed'=>[],'job'=>$j];
-        $job=zfsmNewProtectionJob($type,$d);
+        $job=zfsmNewProtectionJob($type,$d);$job['trigger']=$interactive?'manual':'schedule';
         try{$backend=zfsmProtectionRequire($interactive);if(!$backend['enabled'])throw new RuntimeException('Sanoid / Syncoid integration is disabled; managed execution is blocked. Existing schedules are unchanged.');zfsmProtectionCheckDefinitionSchedules($type,$d,zfsmProtectionSchedules());}
         catch(Throwable$e){if($interactive)throw $e;zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);$job=zfsmProtectionFinish($job['id'],['outcome'=>'blocked','reason'=>$e->getMessage(),'exit_code'=>null]);zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'failed');return ['succeeded'=>[],'failed'=>[$job['id']=>$e->getMessage()],'job'=>$job];}
-        zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);if(!$interactive)zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'queued');return ['succeeded'=>[$job['id']=>'Queued'],'failed'=>[],'job'=>$job];
+        zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);if(!$interactive&&$type!=='policy')zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'queued');return ['succeeded'=>[$job['id']=>'Queued'],'failed'=>[],'job'=>$job];
     });
 }
 // Counts datasets that syncoid starts sending (or skips). Only the number is kept:
@@ -173,10 +173,28 @@ function zfsmProtectionStream(array $job,string $binary,array $args,?callable $t
         if($job['type']==='replication'&&$chunk!==''){$added=zfsmProtectionProgressLines($buffer,$chunk);if($added>0){$started+=$added;zfsmJobUpdate($job['id'],['datasets_started'=>$started]);}}
     },fn()=>zfsmReadJob($job['id'])['cancel_requested']===true,null,null,true);
 }
+// Sanoid is asked every minute whether a snapshot is due. A scheduled check that created and
+// removed nothing is not worth a journal file (or a history entry) every minute.
+function zfsmProtectionIdleCheck(array $job,array $out): bool {
+    return $job['type']==='policy'&&($job['trigger']??'')==='schedule'&&($out['outcome']??'')==='up_to_date'&&empty($out['snapshots_created'])&&empty($out['snapshots_pruned']);
+}
+function zfsmProtectionDropIdleCheck(string $id): bool {
+    $gate=zfsmJobHistoryGate(true,true);if($gate===null)return false;
+    try{
+        $file=zfsmJobFile($id);$paths=[$file,$file.'.lock',zfsmJobDirectory($GLOBALS['plugin_runtime']).'/'.zfsmJobId($id).'.json'];
+        foreach($paths as$path)if(is_link($path)||(file_exists($path)&&!is_file($path)))return false;
+        $job=zfsmReadJob($id);
+        if(!zfsmProtectionIdleCheck($job,$job['verification']??[])||$job['state']!=='completed'||!empty($job['cancel_requested']))return false;
+        foreach($paths as$path)if(file_exists($path)&&!@unlink($path))return false;
+        return true;
+    }finally{flock($gate,LOCK_UN);fclose($gate);}
+}
 function zfsmRunProtectionJob(array $job): void {
     $job=zfsmReadJob($job['id']);if(zfsmJobProblem($job)||!in_array($job['state'],['queued','running'],true))return;
     $file=zfsmProtectionDirectory().'/execution.lock';if(is_link($file))throw new RuntimeException('Untrusted protection execution lock.');$lock=@fopen($file,'c');if(!$lock||!flock($lock,LOCK_EX|LOCK_NB)){if($lock)fclose($lock);return;}
     $mutation=null;$audit=null;
+    // Known before anything can throw, so the compensating audit below always has its fields.
+    $quiet=$job['type']==='policy'&&($job['trigger']??'')==='schedule';$auditFields=['job_id'=>$job['id'],'source'=>$job['source'],'target'=>$job['target']];
     try{if(!zfsmProtectionRecoverJob($job))return;
         // Administrative requests take mutation then config locks. Publish the
         // running reservation under that same order before releasing mutation.
@@ -185,10 +203,11 @@ function zfsmRunProtectionJob(array $job): void {
         // next worker pass on contention; invalid storage still fails closed.
         $job=zfsmProtectionConfigLock(function()use($job){if((int)loadConfig(parse_plugin_cfg($GLOBALS['plugin'],true))['sanoid_integration']!==1)throw new RuntimeException('Sanoid / Syncoid integration is disabled; queued execution requires review.');$live=zfsmReadJob($job['id']);if($live['state']!=='queued'||$live['cancel_requested'])return null;$store=zfsmProtectionReadStore();$d=$store[$live['type']==='policy'?'policies':'replications'][$live['definition_id']]??null;if(!$d||!hash_equals($live['definition_hash'],hash('sha256',json_encode($d,JSON_THROW_ON_ERROR))))throw new RuntimeException('Queued definition changed; inspect and queue a fresh run.');zfsmProtectionCheckDefinitionSchedules($live['type'],$d,zfsmProtectionSchedules());return zfsmJobUpdate($live['id'],['state'=>'running','stage'=>'inspecting','verified_outcome'=>'running','started_at'=>gmdate('c')]);},true);
         if($job===null)return;
-        $GLOBALS['zfsm_operation_lock_handle']=$lock;$audit=zfsmAuditBegin('protectionexecute',['job_id'=>$job['id'],'source'=>$job['source'],'target'=>$job['target']]);
+        $GLOBALS['zfsm_operation_lock_handle']=$lock;if(!$quiet)$audit=zfsmAuditBegin('protectionexecute',$auditFields);
         if($job['type']==='replication'){flock($mutation,LOCK_UN);fclose($mutation);$mutation=null;}
-        $out=$job['type']==='policy'?zfsmSanoidExecute($job):zfsmSyncoidExecute($job);zfsmProtectionFinish($job['id'],$out);zfsmAuditFinish($audit,['status'=>in_array($out['outcome'],['completed','completed_with_warnings','up_to_date','skipped'],true)?'succeeded':'failed','reason'=>$out['reason']??'Verified protection outcome recorded.']);$audit=null;
-    }catch(Throwable$e){zfsmProtectionFinish($job['id'],['outcome'=>'recovery_required','reason'=>$e->getMessage(),'exit_code'=>null]);if($audit!==null)zfsmAuditFinish($audit,['status'=>'recovery_required','reason'=>'Protection execution requires inspection.']);}
+        $out=$job['type']==='policy'?zfsmSanoidExecute($job):zfsmSyncoidExecute($job);zfsmProtectionFinish($job['id'],$out);$auditResult=['status'=>in_array($out['outcome'],['completed','completed_with_warnings','up_to_date','skipped'],true)?'succeeded':'failed','reason'=>$out['reason']??'Verified protection outcome recorded.'];
+        if($quiet){if(zfsmProtectionIdleCheck($job,$out)){zfsmProtectionDropIdleCheck($job['id']);}else{$audit=zfsmAuditBegin('protectionexecute',$auditFields);zfsmAuditFinish($audit,$auditResult);}}else zfsmAuditFinish($audit,$auditResult);$audit=null;
+    }catch(Throwable$e){zfsmProtectionFinish($job['id'],['outcome'=>'recovery_required','reason'=>$e->getMessage(),'exit_code'=>null]);if($audit===null&&!empty($quiet)){$audit=zfsmAuditBegin('protectionexecute',$auditFields);}if($audit!==null)zfsmAuditFinish($audit,['status'=>'recovery_required','reason'=>'Protection execution requires inspection.']);}
     finally{unset($GLOBALS['zfsm_operation_lock_handle']);if(is_resource($mutation)){flock($mutation,LOCK_UN);fclose($mutation);}flock($lock,LOCK_UN);fclose($lock);}
 }
 function zfsmProtectionMutationGuard(string $command,array $fields): void {

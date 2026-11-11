@@ -47,7 +47,7 @@ function zfsmRenderPoolDiagnostics(container, diagnostic, type, options = {}) {
     const severity=['ok','warning','error','unknown'].includes(diagnostic.severity)?diagnostic.severity:'unknown';
     const notice=node('div',undefined,severity==='error'?'zfsm-error':'zfsm-notice'); notice.dataset.severity=severity;
     const health=node('strong',(diagnostic.health||'UNKNOWN')+' · '+({ok:'Healthy',warning:'Warning',error:'Error',unknown:'Unknown'}[severity])),dot=node('span',undefined,'zfsm-status-dot');dot.dataset.severity=severity;dot.setAttribute('aria-hidden','true');health.prepend(dot);notice.append(health);
-    for(const reason of diagnostic.reasons||[])notice.append(node('p',reason));
+    for(const reason of diagnostic.reasons||[]){const line=node('p',reason);if(typeof options.reasonActions==='function'){const wrap=node('div',undefined,'zfsm-reason-line');wrap.append(node('span',reason),...options.reasonActions(reason));notice.append(wrap);}else notice.append(line);}
     if(diagnostic.stale)notice.append(node('p','Retained output is stale. The latest diagnostic request failed.'));
     container.append(notice);
     if(diagnostic.collected_at)container.append(node('p','Last checked: '+zfsmFormatDateTime(diagnostic.collected_at),'zfsm-muted'));

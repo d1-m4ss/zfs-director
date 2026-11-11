@@ -16,4 +16,13 @@ check('failed replication alert names the job and the recorded reason',function(
  $jobs[0]['verification']=['verified'=>false];
  same(['Replication Immich backup (5f91932124fad7a0) requires inspection; the latest run is not verified complete.'],zfsmProtectionLagAlerts('cache',$store,$jobs,24,strtotime('2026-11-10T12:00:00Z')));
 });
+check('a replication warning is linked to its definition',function(){
+ $store=['replications'=>['5f91932124fad7a0'=>['enabled'=>true,'name'=>'Immich backup','source'=>'cache/immich']]];
+ $jobs=[['schema'=>4,'type'=>'replication','definition_id'=>'5f91932124fad7a0','created'=>'2026-11-10','verified_outcome'=>'failed','verification'=>['verified'=>false,'reason'=>'Native transfer failed (exit 2).']]];
+ $alerts=zfsmProtectionLagAlerts('cache',$store,$jobs,24,strtotime('2026-11-10T12:00:00Z'),true);
+ same([['text'=>'Replication Immich backup (5f91932124fad7a0) requires inspection; the latest run is not verified complete: Native transfer failed (exit 2).','type'=>'replication','id'=>'5f91932124fad7a0']],$alerts);
+ $diagnostic=zfsmMaintenanceEvaluate(['pool'=>'cache','severity'=>'ok','reasons'=>[],'information'=>['rows'=>[]]],[],$alerts);
+ same('warning',$diagnostic['severity']);same([$alerts[0]['text']],$diagnostic['reasons']);
+ same([['reason'=>$alerts[0]['text'],'type'=>'replication','id'=>'5f91932124fad7a0']],$diagnostic['reason_links']);
+});
 finishTests();

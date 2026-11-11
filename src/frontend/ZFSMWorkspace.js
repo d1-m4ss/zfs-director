@@ -92,7 +92,7 @@ function zfsmCreateWorkspace(options) {
     const createButton=button('Create Dataset',()=>{if(pool)openActionForm('createdataset',selected()?context(selected()):{pool});},{'data-section':'create',class:'zfsm-primary'});sectionButtons.set('create',createButton);datasetTools.append(poolToolsButton,createButton);
     const status=node('div','Loading workspace…','zfsm-refresh-status');status.setAttribute('role','status');
     const cleanupNotice=node('section',undefined,'zfsm-notice');cleanupNotice.hidden=true;cleanupNotice.setAttribute('role','status');
-    const poolHost=node('nav',undefined,'zfsm-pools');poolHost.setAttribute('aria-label','Pools');const content=node('div',undefined,'zfsm-content'),body=node('div',undefined,'zfsm-main-body');body.append(status,cleanupNotice,datasetTools,poolHost,content);workspace.append(header,body);shell.append(sidebar,workspace);root.append(shell);applyTheme();
+    const poolHost=node('nav',undefined,'zfsm-pools');poolHost.setAttribute('aria-label','Pools');const content=node('div',undefined,'zfsm-content'),body=node('div',undefined,'zfsm-main-body');const topbar=node('div',undefined,'zfsm-topbar'),attentionHost=node('div',undefined,'zfsm-attention');attentionHost.hidden=true;attentionHost.setAttribute('role','status');topbar.append(poolHost,status,datasetTools,attentionHost);body.append(cleanupNotice,topbar,content);workspace.append(header,body);shell.append(sidebar,workspace);root.append(shell);applyTheme();
     const forms=zfsmCreateInlineForms({request,getConfig:()=>config,getDataset:name=>flatten(name.split('/')[0],false).find(row=>row.name===name)?.node,getDatasets:name=>flatten(name,false).filter(item=>item.kind==='dataset').map(item=>item.name),getOperationIssue:snapshotOperationIssue,getMutationFields:mutationFields,onComplete:operationComplete,onClose:()=>closeActionForm(),onViewJob:id=>{jobsExpanded.delete(id);jobsPage=1;jobsFilter='all';jobsSort='newest';jobsView='working';navigate('jobs');}});
     const protectionHost=node('div',undefined,'zfsm-protection'),protectionButton=sectionButtons.get('protection'),replicationButton=sectionButtons.get('replication');protectionButton.hidden=true;replicationButton.hidden=true;
     const protection=typeof zfsmCreateProtection==='function'?zfsmCreateProtection({root:protectionHost,request,getLayout:()=>layout,embeddedNavigation:true,getDatasets:()=>Object.keys(data?.datasets||{}).flatMap(name=>flatten(name,false).filter(item=>item.kind==='dataset').map(item=>item.name)),onAvailability:(visible,detection)=>{const ready=Boolean(visible&&detection?.visible&&detection?.compatible);protectionButton.hidden=!ready;replicationButton.hidden=!ready;if(typeof detection?.enabled==='boolean'){config.sanoid_integration=detection.enabled?1:0;if(activeForm?.action==='saveconfig')forms.render(activeForm.host,activeForm.action,activeForm.context);}},onNavigate:next=>navigate(next==='settings'?'settings':next==='replication'?'replication':next==='jobs'?'jobs':'protection'),onJobs:()=>navigate('jobs'),onHistory:()=>navigate('history')}):null;
@@ -152,8 +152,29 @@ function zfsmCreateWorkspace(options) {
         if((information.rows||[]).some(row=>row.section!=='spares'&&badState(row.health)))return true;
         return /Permanent errors|\b[1-9][0-9]*\s+(?:data\s+)?errors?\b/i.test(status.errors||'')||/\b[1-9][0-9]*\s+errors?\b/i.test(status.scan||'');
     }
+    // Why a pool is not healthy, with a way to get to the place that explains it.
+    function openPoolStatus(name){if(!name)return;pool=name;selection=name;selectionChanged=false;selectionIdentity=selectionFingerprint();section='datasets';tab='status';savePreferences();renderSection();renderPools();}
+    function openReplication(id){
+        navigate('replication');let tries=0;
+        const focus=()=>{if(stopped)return;const row=root.querySelector('[data-replication-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');if(row){row.click();row.scrollIntoView({block:'nearest'});return;}if(++tries<50)setTimeout(focus,100);};
+        setTimeout(focus,100);
+    }
+    function reasonActions(name,reason){
+        const actions=[],link=(diagnostics.get(name)?.reason_links||[]).find(item=>item.reason===reason);
+        if(link&&link.type==='replication')actions.push(button('Open replication',()=>openReplication(link.id),{'data-reason-action':'replication'}));
+        if(!(section==='datasets'&&tab==='status'&&pool===name))actions.push(button('Pool status',()=>openPoolStatus(name),{'data-reason-action':'status'}));
+        return actions;
+    }
+    function attentionReasons(name){const diagnostic=diagnostics.get(name);return diagnostic&&['warning','error'].includes(diagnostic.severity)?(diagnostic.reasons||[]):[];}
+    function reasonBlock(name,className,limit){
+        const reasons=attentionReasons(name);if(!reasons.length)return null;
+        const box=node('div',undefined,className);
+        for(const reason of reasons.slice(0,limit)){const line=node('div',undefined,'zfsm-reason-line');const text=node('span',reason.length>180?reason.slice(0,177)+'…':reason);text.title=reason;const mark=node('span','⚠','zfsm-health-icon');mark.setAttribute('aria-hidden','true');line.append(mark,text,...reasonActions(name,reason));box.append(line);}
+        if(reasons.length>limit)box.append(node('p','+'+(reasons.length-limit)+' more reason(s) in Pool status.','zfsm-muted'));
+        return box;
+    }
     function renderPools(){
-        const focused=document.activeElement&&document.activeElement.dataset.pool;poolHost.replaceChildren();
+        const focused=document.activeElement&&document.activeElement.dataset.pool;poolHost.replaceChildren();attentionHost.replaceChildren();for(const name of Object.keys(data&&data.pools||{})){const block=reasonBlock(name,'zfsm-attention-pool',2);if(block){block.prepend(node('strong',name));attentionHost.append(block);}}attentionHost.hidden=!attentionHost.hasChildNodes();
         for(const [name,info] of Object.entries(data&&data.pools||{})){
             const severity=severityFor(name),item=button('',()=>{pool=name;selection=name;selectionChanged=false;selectionIdentity=selectionFingerprint();section='datasets';tab='overview';savePreferences();renderSection();renderPools();},{'data-pool':name,'data-severity':severity,'aria-pressed':name===pool});
             const diagnostic=diagnostics.get(name),native=diagnostic&&diagnostic.health!=='UNKNOWN'?diagnostic.health:info.Health;
@@ -167,7 +188,7 @@ function zfsmCreateWorkspace(options) {
     function disposeSnapshots(){if(snapshotHost)zfsmDisposeSnapshots(snapshotHost);}
     function disposeExplorer(){if(explorer){explorer.dispose();explorer=null;}if(explorerDialog){explorerDialog.remove();explorerDialog=null;}}
     function navigate(next){if(next==='datasets'){recoveryFiles(false);return;}section=next;renderSection();}
-    function updateNavigation(){const poolView=section==='datasets'&&poolTabs.has(tab);for(const [key,item]of sectionButtons){item.setAttribute('aria-pressed',String(section===key));item.setAttribute('aria-current',section===key?'page':'false');}poolToolsButton.setAttribute('aria-pressed',String(poolView));const datasetView=section==='datasets';datasetTools.hidden=!datasetView;poolHost.hidden=!datasetView;status.hidden=!datasetView&&status.dataset.error!=='true';screenTitle.textContent=({overview:'Overview',datasets:'Datasets',protection:'Snapshot Policies',replication:'Replication',jobs:'Jobs',history:'Administrative History',settings:'Settings','protection-settings':'Settings',create:'Create Dataset'})[section]||'Datasets';}
+    function updateNavigation(){root.dataset.screen=section;const poolView=section==='datasets'&&poolTabs.has(tab);for(const [key,item]of sectionButtons){item.setAttribute('aria-pressed',String(section===key));item.setAttribute('aria-current',section===key?'page':'false');}poolToolsButton.setAttribute('aria-pressed',String(poolView));const datasetView=section==='datasets';datasetTools.hidden=!datasetView;poolHost.hidden=!datasetView;status.hidden=!datasetView&&status.dataset.error!=='true';screenTitle.textContent=({overview:'Overview',datasets:'Datasets',protection:'Snapshot Policies',replication:'Replication',jobs:'Jobs',history:'Administrative History',settings:'Settings','protection-settings':'Settings',create:'Create Dataset'})[section]||'Datasets';}
     function renderSection(){
         protection?.leave();
         clearTimeout(diagnosticTimer);scrubReview='';
@@ -209,7 +230,7 @@ function zfsmCreateWorkspace(options) {
         const head=pageHeading(host,'Overview','Pools, datasets and background operations.'),open=button('Open datasets',()=>navigate('datasets'),{class:'zfsm-primary'});head.append(open);
         const metrics=node('div',undefined,'zfsm-dashboard-metrics'),datasetCount=data?Object.keys(data.datasets||{}).reduce((n,name)=>n+flatten(name,false).filter(row=>row.kind==='dataset').length,0):'Unknown';
         for(const [label,value]of [['Imported pools',data?Object.keys(data.pools||{}).length:'Unknown'],['Datasets',datasetCount],['Background tasks',backgroundTaskStatus()]]){const metric=node('section',undefined,'zfsm-dashboard-metric');metric.append(node('span',label),node('strong',value));if(label==='Background tasks')metric.append(node('small','Prepares ZIP downloads, restores files and converts directories.','zfsm-muted'));metrics.append(metric);}host.append(metrics);
-        const list=node('section',undefined,'zfsm-dashboard-pools');list.append(node('h3','Storage pools'));if(!data)list.append(node('p','No current inventory. Refresh to inspect actual ZFS state.','zfsm-muted'));else for(const [name,p]of Object.entries(data.pools||{})){const row=node('div',undefined,'zfsm-dashboard-pool');row.append(button(name,()=>{pool=name;selection=name;selectionIdentity=selectionFingerprint();navigate('datasets');}),overviewPoolHealth(name),node('span',p.Health||'UNKNOWN'),node('span',bytes(p.Used)+' / '+bytes(p.Size)));list.append(row);}host.append(list);if(data&&!inventoryFresh)host.append(node('p','Inventory is stale. Refresh before relying on these values.','zfsm-notice'));
+        const list=node('section',undefined,'zfsm-dashboard-pools');list.append(node('h3','Storage pools'));if(!data)list.append(node('p','No current inventory. Refresh to inspect actual ZFS state.','zfsm-muted'));else for(const [name,p]of Object.entries(data.pools||{})){const row=node('div',undefined,'zfsm-dashboard-pool');row.append(button(name,()=>{pool=name;selection=name;selectionIdentity=selectionFingerprint();navigate('datasets');}),overviewPoolHealth(name),node('span',p.Health||'UNKNOWN'),node('span',bytes(p.Used)+' / '+bytes(p.Size)));list.append(row);const why=reasonBlock(name,'zfsm-dashboard-reasons',3);if(why)list.append(why);}host.append(list);if(data&&!inventoryFresh)host.append(node('p','Inventory is stale. Refresh before relying on these values.','zfsm-notice'));
     }
     function renderBrowser(){
         if(!browserHost)return;
@@ -261,7 +282,7 @@ function zfsmCreateWorkspace(options) {
         if(tab==='devices'){host.replaceChildren();renderPoolDevices(host);}
         else {
             const target=pool;
-            zfsmRenderPoolDiagnostics(host,diagnostics.get(target),tab,{busy:scrubBusy.has(target),review:scrubReview===target,
+            zfsmRenderPoolDiagnostics(host,diagnostics.get(target),tab,{reasonActions:reason=>reasonActions(target,reason),busy:scrubBusy.has(target),review:scrubReview===target,
                 onReview:()=>{scrubReview=target;renderCurrentPoolTab();},onCancel:()=>{scrubReview='';renderCurrentPoolTab();},onScrub:()=>startScrub(target)});
         }
         scheduleDiagnostics();
@@ -570,7 +591,7 @@ function zfsmCreateWorkspace(options) {
         const focused=focusedNode?.getAttribute('aria-label'),focusedSummary=focusedNode?.tagName==='SUMMARY'?focusedNode.closest('[data-job-id]')?.dataset.jobId:null,focusedDiagnostics=Boolean(focusedNode?.closest('[data-job-diagnostics]'));
         jobsHost.replaceChildren();
         if(jobsScope!==JSON.stringify(jobRequestFields())){const notice=node('p',jobsError||'Loading current jobs…',jobsError?'zfsm-error':'zfsm-notice');notice.setAttribute('role',jobsError?'alert':'status');jobsHost.append(notice);return;}
-        const toolbar=node('div',undefined,'zfsm-buttons');
+        const toolbar=node('div',undefined,'zfsm-buttons zfsm-jobs-toolbar');
         function choice(label,values,current,change){const wrap=node('label'),select=node('select');select.setAttribute('aria-label',label);for(const [value,caption]of values){const option=node('option',caption);option.value=value;select.append(option);}select.value=current;select.addEventListener('change',()=>{change(select.value);jobsPage=1;jobsClear=null;loadJobs();});wrap.append(node('span',label+' '),select);toolbar.append(wrap);}
         choice('Filter jobs',[['all','All operations'],['active','Active'],['needs_attention','Needs attention'],['completed','Completed'],['recovery','Recovery'],['snapshot','Snapshots'],['restore','Restore'],['archive','ZIP'],['download','Downloads'],['conversion','Conversion'],['deletion','Deletion'],['operation','Other operations'],['maintenance','Maintenance'],['policy','Snapshot policies'],['replication','Replication']],jobsFilter,value=>jobsFilter=value);
         choice('Jobs per page',[[10,'10'],[25,'25'],[50,'50'],[100,'100']],jobsPageSize,value=>{jobsPageSize=Number(value);savePreferences();});

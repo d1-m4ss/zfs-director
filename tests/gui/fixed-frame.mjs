@@ -29,6 +29,9 @@ try{
    await page.locator('[data-node="'+project+'"]').click();
    const frame=await page.evaluate(()=>{const r=document.querySelector('#zfsm-workspace').getBoundingClientRect();return {mode:document.querySelector('#zfsm-workspace').dataset.frame,bottom:Math.round(r.bottom),vh:innerHeight,page:document.documentElement.scrollHeight-innerHeight};});
    assert.equal(frame.mode,'fixed');assert.ok(frame.bottom<=frame.vh,'the frame must end inside the viewport @'+width+' '+JSON.stringify(frame));assert.ok(frame.page<=1,'the page itself must not scroll @'+width+' '+JSON.stringify(frame));
+   if(width>=1280){const room=await page.evaluate(()=>{const area=document.querySelector('.zfsm-workarea').getBoundingClientRect();return {area:Math.round(area.height),vh:innerHeight};});assert.ok(room.area>=room.vh*0.6,'the work panes use most of the window height @'+width+' '+JSON.stringify(room));}
+   // Jobs toolbar: the Clear button shares the baseline of the selects.
+   if(width>=1280){await page.locator('[data-section=jobs]').click();await page.waitForTimeout(200);const row=await page.evaluate(()=>{const bar=document.querySelector('.zfsm-jobs-toolbar');const select=bar.querySelector('select').getBoundingClientRect(),clear=[...bar.querySelectorAll('button')].find(b=>/Clear completed/.test(b.textContent)).getBoundingClientRect();return {selectBottom:Math.round(select.bottom),clearBottom:Math.round(clear.bottom)};});assert.ok(Math.abs(row.selectBottom-row.clearBottom)<=3,'Clear button is level with the selects @'+width+' '+JSON.stringify(row));await page.locator('[data-section=datasets]').click();await page.locator('[data-node="'+project+'"]').click();}
    for(const tab of ['overview','details','properties','snapshots','actions']){
     await page.locator('[data-tab='+tab+']').click();await page.waitForTimeout(120);
     const found=await scrollers(page);

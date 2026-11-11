@@ -22,31 +22,58 @@ function zfsmCreateProtection(options) {
         if(value&&!available.includes(value)){const missing=el('option',value+' — unavailable');missing.value=value;missing.disabled=true;control.append(missing);control.value=value;notice(host,'This saved dataset is unavailable. Select a current dataset before reviewing changes.',true);}
         return control;
     }
-    // Local destinations are picked from the pool's datasets, like the source;
-    // "New dataset…" reveals a text name because a receiver often does not exist yet.
-    // The returned text input stays the form value ("target"); call zfsmRefresh()
-    // after the mode or source changes.
+    // Local destination = an existing parent dataset + the name of the replica created inside it
+    // (syncoid takes the full replica name, so "parent only" would replace the parent itself).
+    // The text input named "target" stays the form value (the full name); in Remote mode it is typed by hand.
+    // Call zfsmRefresh() after the mode or the source changes.
     function destinationField(host,value,getSource,getMode){
-        const NEW='__new__',choice=field(host,'target_choice','Destination dataset','',  'text',[['','Choose destination']]),input=field(host,'target','New dataset name',value||'');
-        const choiceWrap=choice.closest('label'),inputWrap=input.closest('label'),inputLabel=inputWrap.firstChild;
-        const overlaps=(a,b)=>a===b||a.startsWith(b+'/')||b.startsWith(a+'/');
-        function options(){const source=getSource();return datasets().filter(name=>!source||!overlaps(name,source));}
+        const parentChoice=field(host,'target_parent','Destination parent dataset','','text',[['','Choose where to put the replica']]);
+        const nameInput=field(host,'target_name','Replica name','');
+        const preview=el('p',undefined,'zfsm-dest-preview');preview.setAttribute('role','status');host.append(preview);
+        const input=field(host,'target','Destination dataset (full name on the remote server)',value||'');
+        const parentWrap=parentChoice.closest('label'),nameWrap=nameInput.closest('label'),inputWrap=input.closest('label');
+        const base=full=>String(full||'').split('/').pop(),validName=name=>/^[A-Za-z0-9_.:-]+(?:\/[A-Za-z0-9_.:-]+)*$/.test(name);
+        const inside=(name,root)=>name===root||name.startsWith(root+'/');
+        let touched=false,started=false;
+        function options(){const source=getSource();return datasets().filter(name=>!source||!inside(name,source));}
         function rebuild(){
-            const available=options(),current=input.value.trim();
-            choice.replaceChildren(...[['','Choose destination'],...available.map(n=>[n,n]),[NEW,'✎ New dataset…']].map(([v,t])=>{const o=el('option',t);o.value=v;return o;}));
-            choice.value=!current?(choice.dataset.new==='1'?NEW:''):available.includes(current)?current:NEW;
+            const available=options(),keep=parentChoice.value;
+            parentChoice.replaceChildren(...[['','Choose where to put the replica'],...available.map(n=>[n,n])].map(([v,t])=>{const o=el('option',t);o.value=v;return o;}));
+            if(keep&&!available.includes(keep)){const o=el('option',keep+' (current)');o.value=keep;parentChoice.append(o);}
+            parentChoice.value=keep;
+        }
+        function applyFull(full){
+            const cut=full.lastIndexOf('/');if(cut<=0)return false;const parent=full.slice(0,cut),name=full.slice(cut+1);
+            if(!options().includes(parent)){const o=el('option',parent+' (current)');o.value=parent;parentChoice.append(o);}
+            parentChoice.value=parent;nameInput.value=name;touched=true;return true;
+        }
+        function compute(){const parent=parentChoice.value,name=nameInput.value.trim();return parent&&name&&validName(name)?parent+'/'+name:'';}
+        function describe(){
+            const remote=getMode()==='remote',target=input.value.trim();preview.hidden=remote;if(remote)return;
+            nameInput.setCustomValidity(!nameInput.value.trim()||validName(nameInput.value.trim())?'':'Use letters, digits and _ . : - only.');
+            if(!target){preview.textContent=nameInput.value.trim()&&!validName(nameInput.value.trim())?'The replica name may use letters, digits and _ . : - only.':'Choose a parent dataset and a replica name.';return;}
+            const source=getSource();let text='Will be created as: '+target;
+            if(source&&(inside(target,source)||inside(source,target)))text+=' — overlaps the source; choose another place.';
+            else if(target!==String(value||'')&&datasets().includes(target))text+=' — already exists on this server.';
+            preview.textContent=text;
         }
         function show(){
-            const remote=getMode()==='remote',isNew=choice.value===NEW;
-            choiceWrap.hidden=remote;inputWrap.hidden=!remote&&!isNew;
-            inputLabel.textContent=remote?'Destination dataset':'New dataset name';input.setAttribute('aria-label',inputLabel.textContent);
+            const remote=getMode()==='remote';
+            parentWrap.hidden=remote;nameWrap.hidden=remote;inputWrap.hidden=!remote;
+            describe();
         }
-        choice.addEventListener('change',()=>{
-            if(choice.value===NEW){choice.dataset.new='1';if(options().includes(input.value.trim()))input.value='';show();input.focus();}
-            else{choice.dataset.new='';input.value=choice.value;show();}
-        });
-        input.zfsmChoice=choice;
-        input.zfsmRefresh=()=>{rebuild();show();};
+        function sync(){if(getMode()!=='remote')input.value=compute();describe();}
+        parentChoice.addEventListener('change',sync);
+        nameInput.addEventListener('input',()=>{touched=true;sync();});
+        input.addEventListener('input',describe);
+        input.zfsmChoice=parentChoice;
+        input.zfsmRefresh=()=>{
+            rebuild();
+            if(getMode()==='remote'){started=true;}
+            else if(!started){started=true;if(!(input.value.trim()&&applyFull(input.value.trim()))){nameInput.value=base(getSource());}input.value=compute()||input.value;}
+            else{if(!touched)nameInput.value=base(getSource());if(!input.value.trim()||!parentChoice.value)applyFull(input.value.trim());input.value=compute();}
+            show();
+        };
         input.zfsmRefresh();
         return input;
     }
@@ -290,7 +317,7 @@ function zfsmCreateProtection(options) {
         function checkbox(host,key,label,initial){fields[key]=field(host,key,label,j[key]===undefined?initial:[true,1,'1'].includes(j[key]),'checkbox');}
         function draw(){fields={};e.grid.replaceChildren();e.review.replaceChildren();for(const [i,item]of [...steps.children].entries()){item.setAttribute('aria-current',i===step?'step':'false');item.classList.toggle('is-current',i===step);}e.grid.append(el('h3',['Source','Destination','Schedule','Review'][step]));e.buttons.replaceChildren();
             if(step===0){fields.name=field(e.grid,'name','Job name',j.name||'Replication');fields.source=datasetField(e.grid,'source','Source dataset',j.source||'','Choose source');notice(e.grid,'The backend revalidates the source GUID and snapshots before execution.');e.buttons.append(btn('Next',()=>{e.errors.replaceChildren();if(!datasets().includes(fields.source.value)){notice(e.errors,'Choose an available source dataset before selecting the destination.',true);return;}move(1);}));fields.source.focus();}
-            if(step===1){fields.target=destinationField(e.grid,j.target||'',()=>j.source,()=>fields.mode?fields.mode.value:(j.mode||'local'));fields.mode=field(e.grid,'mode','Destination mode',j.mode||'local','text',[['local','Local'],['remote','Remote SSH']]);const remote=details(e.grid,'Remote SSH identity');fields.host=field(remote,'host','Remote host',j.host||'');fields.user=field(remote,'user','SSH user',j.user||'root');fields.port=field(remote,'port','SSH port',j.port||'22','number');fields.port.max='65535';fields.port.min='1';fields.credential=field(remote,'credential','Credential reference',j.credential||'','text',[['','Choose existing reference'],...(data.credentials||[]).map(n=>[n,n])]);const update=()=>{fields.target.zfsmRefresh();remote.open=fields.mode.value==='remote';for(const n of ['host','user','port','credential'])fields[n].disabled=fields.mode.value!=='remote';};fields.mode.addEventListener('change',update);update();notice(e.grid,'Destination rollback is prohibited. Receiver identity, GUIDs and lineage must pass native inspection.');e.buttons.append(btn('Back',()=>move(0)),btn('Next',()=>{e.errors.replaceChildren();if(!fields.target.value.trim()){notice(e.errors,'Choose a destination dataset.',true);return;}if(fields.mode.value==='remote'&&(!fields.host.value||!fields.credential.value)){notice(e.errors,'Remote host and trusted credential reference are required.',true);return;}move(2);}));(fields.mode.value==='remote'?fields.target:fields.target.zfsmChoice).focus();}
+            if(step===1){fields.target=destinationField(e.grid,j.target||'',()=>j.source,()=>fields.mode?fields.mode.value:(j.mode||'local'));fields.mode=field(e.grid,'mode','Destination mode',j.mode||'local','text',[['local','Local'],['remote','Remote SSH']]);const remote=details(e.grid,'Remote SSH identity');fields.host=field(remote,'host','Remote host',j.host||'');fields.user=field(remote,'user','SSH user',j.user||'root');fields.port=field(remote,'port','SSH port',j.port||'22','number');fields.port.max='65535';fields.port.min='1';fields.credential=field(remote,'credential','Credential reference',j.credential||'','text',[['','Choose existing reference'],...(data.credentials||[]).map(n=>[n,n])]);const update=()=>{fields.target.zfsmRefresh();remote.open=fields.mode.value==='remote';for(const n of ['host','user','port','credential'])fields[n].disabled=fields.mode.value!=='remote';};fields.mode.addEventListener('change',update);update();notice(e.grid,'Destination rollback is prohibited. Receiver identity, GUIDs and lineage must pass native inspection.');e.buttons.append(btn('Back',()=>move(0)),btn('Next',()=>{e.errors.replaceChildren();if(!fields.target.value.trim()){notice(e.errors,'Choose a parent dataset and a valid replica name.',true);return;}if(fields.mode.value==='remote'&&(!fields.host.value||!fields.credential.value)){notice(e.errors,'Remote host and trusted credential reference are required.',true);return;}move(2);}));(fields.mode.value==='remote'?fields.target:fields.target.zfsmChoice).focus();}
             if(step===2){const advanced=details(e.grid,'Advanced safety & transfer');fields.schedule=scheduleEditor(e.grid,advanced,j.schedule||'0 * * * *');checkbox(e.grid,'enabled','Enabled',true);e.grid.append(advanced);fields.compression=field(advanced,'compression','Compression',j.compression||'none','text',(detection.syncoid?.compressions||['none']).map(name=>[name,name==='none'?'None':name]));fields.bandwidth=field(advanced,'bandwidth','Bandwidth limit (native units, e.g. 5m)',j.bandwidth||'');for(const [key,label,initial]of [['recursive','Recursive',false],['resume','Resume when supported',true],['no_sync_snap','Use existing snapshots only',false],['use_hold','Hold common snapshot',false],['bookmark','Create bookmark (requires existing snapshots)',false]])checkbox(advanced,key,label,initial);fields.exclusions=exclusionsField(field(advanced,'exclusions','Excluded source datasets',(j.exclusions||[]).join('\n'),'textarea'),()=>j.source);notice(e.grid,'Receiver stays unmounted. Backend verifies versions, SSH identity, GUIDs, lineage and resume capabilities. One owner schedules this job.');const review=btn(existing?'Review changes':'Review & create replication',async()=>{e.errors.replaceChildren();invalidate();const input=read(),revision=e.revision;review.disabled=true;try{const p=await request({cmd:'protectionreplicationpreview',data:input});if(dialog!==e.host||revision!==e.revision)return;Object.assign(j,input);step=3;draw();notice(e.review,'Review the source, destination and schedule, then '+(existing?'save your changes.':'create the replication job.'));const save=reviewedSave(e,p,'protectionreplicationsave',existing?'Save changes':'Create replication');save.classList.add('zfsm-primary');save.focus();}catch(error){if(dialog===e.host&&revision===e.revision){invalidate();notice(e.errors,error.message,true);}}finally{review.disabled=false;}});e.buttons.append(btn('Back',()=>move(1)),review);e.grid.querySelector('[name=schedule_mode]').focus();}
             if(step===3){const back=btn('Back',()=>move(2));e.buttons.append(back);back.focus();}
         }

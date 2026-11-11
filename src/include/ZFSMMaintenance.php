@@ -14,16 +14,21 @@ function zfsmMaintenanceEvaluate($diagnostic,$config,$lagAlerts=[]) {
         if($percent>=$critical){if($quality!=='unknown')$diagnostic['severity']='error';$diagnostic['reasons'][]='Pool capacity is at or above the critical threshold ('.$critical.'%).';}
         elseif($percent>=$warning){if(!in_array($quality,['error','unknown'],true))$diagnostic['severity']='warning';$diagnostic['reasons'][]='Pool capacity is at or above the warning threshold ('.$warning.'%).';}
     }
-    foreach($lagAlerts as $reason){if(!in_array($diagnostic['severity']??'unknown',['error','unknown'],true))$diagnostic['severity']='warning';$diagnostic['reasons'][]=$reason;}
+    foreach($lagAlerts as $alert){
+        $reason=is_array($alert)?$alert['text']:$alert;
+        if(!in_array($diagnostic['severity']??'unknown',['error','unknown'],true))$diagnostic['severity']='warning';$diagnostic['reasons'][]=$reason;
+        // Lets the screen link the warning to the exact definition instead of leaving a bare badge.
+        if(is_array($alert)&&isset($alert['type'],$alert['id']))$diagnostic['reason_links'][]=['reason'=>$reason,'type'=>$alert['type'],'id'=>$alert['id']];
+    }
     $diagnostic['reasons']=array_values(array_unique($diagnostic['reasons']??[]));return $diagnostic;
 }
-function zfsmProtectionLagAlerts($pool,$store,$jobs,$hours,$now=null) {
+function zfsmProtectionLagAlerts($pool,$store,$jobs,$hours,$now=null,$withLinks=false) {
     if($hours<=0)return [];$now=$now??time();$alerts=[];
     foreach($store['replications']??[] as $id=>$definition){if(empty($definition['enabled'])||explode('/',$definition['source']??'',2)[0]!==$pool)continue;$latest=null;
         foreach($jobs as $job)if(($job['definition_id']??null)===(string)$id&&($job['type']??'')==='replication'&&($job['schema']??null)===4){if($latest===null||strcmp($job['created']??'',$latest['created']??'')>0)$latest=$job;}
         if(!$latest)continue;$verification=zfsmProtectionCurrentVerification($latest['verification']??[],$now);
-        if(in_array($latest['verified_outcome']??'',['failed','blocked','unknown','interrupted','recovery_required'],true)){$reason=$latest['verification']['reason']??($latest['error']??'');$alerts[]='Replication '.($definition['name']??$id).' ('.$id.') requires inspection; the latest run is not verified complete'.(is_string($reason)&&$reason!==''?': '.substr(preg_replace('/\s+/',' ',$reason),0,300):'.');}
-        elseif($verification['lag_seconds']!==null&&$verification['lag_seconds']>$hours*3600)$alerts[]='Replication '.$id.' exceeds the configured verified checkpoint age ('.$hours.' hours).';
+        if(in_array($latest['verified_outcome']??'',['failed','blocked','unknown','interrupted','recovery_required'],true)){$reason=$latest['verification']['reason']??($latest['error']??'');$text='Replication '.($definition['name']??$id).' ('.$id.') requires inspection; the latest run is not verified complete'.(is_string($reason)&&$reason!==''?': '.substr(preg_replace('/\s+/',' ',$reason),0,300):'.');$alerts[]=$withLinks?['text'=>$text,'type'=>'replication','id'=>(string)$id]:$text;}
+        elseif($verification['lag_seconds']!==null&&$verification['lag_seconds']>$hours*3600){$text='Replication '.$id.' exceeds the configured verified checkpoint age ('.$hours.' hours).';$alerts[]=$withLinks?['text'=>$text,'type'=>'replication','id'=>(string)$id]:$text;}
     }return $alerts;
 }
 function zfsmReadMaintenanceHistory($directory,$pool) {
@@ -40,6 +45,6 @@ function zfsmRecordMaintenanceTransition($directory,$diagnostic,$severity,$reaso
 }
 function zfsmReadMaintenanceDiagnostics($pool,$config) {
     $diagnostic=zfsmReadPoolDiagnostics($pool);$alerts=[];
-    try{if(is_file(dirname($GLOBALS['plugin_config']).'/protection/config.json'))$alerts=zfsmProtectionLagAlerts($pool,zfsmProtectionReadStore(),zfsmJobPage(1,200)['jobs'],(int)($config['replication_lag_hours']??24));}catch(Throwable $error){$diagnostic['monitor_warning']='Protection alert evidence is unavailable.';}
+    try{if(is_file(dirname($GLOBALS['plugin_config']).'/protection/config.json'))$alerts=zfsmProtectionLagAlerts($pool,zfsmProtectionReadStore(),zfsmJobPage(1,200)['jobs'],(int)($config['replication_lag_hours']??24),null,true);}catch(Throwable $error){$diagnostic['monitor_warning']='Protection alert evidence is unavailable.';}
     $diagnostic=zfsmMaintenanceEvaluate($diagnostic,$config,$alerts);$diagnostic['maintenance_history']=zfsmReadMaintenanceHistory(dirname($GLOBALS['plugin_state']).'/monitor',$pool);return $diagnostic;
 }
