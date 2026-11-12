@@ -406,3 +406,19 @@ test('run inspection shows a destination hazard as a warning but still allows th
   assert.equal(verdict.querySelector('.zfsm-run-hazard').textContent,'⚠ '+review.inspection.hazards[0]);assert.ok([...dlg.querySelectorAll('button')].find(b=>b.textContent==='Run reviewed job'));
  }finally{t.app.stop();t.w.close();}
 });
+
+test('zfsmScheduleWords renders common replication crons in plain words and falls back for the rest',async()=>{
+ const t=await mount();try{
+  assert.equal(t.w.zfsmScheduleWords('0 6 * * *'),'Daily at 06:00');
+  assert.equal(t.w.zfsmScheduleWords('0 * * * *'),'Hourly at :00');
+  assert.equal(t.w.zfsmScheduleWords('*/15 * * * *'),'Every 15 minutes');
+  assert.equal(t.w.zfsmScheduleWords('30 4 * * 0'),'Weekly on Sunday at 04:30');
+  assert.equal(t.w.zfsmScheduleWords('7,37 1-23/2 * * 1-5'),'7,37 1-23/2 * * 1-5');
+ }finally{t.app.stop();t.w.close();}
+});
+test('replication table and inspector show the schedule in plain words instead of raw cron',async()=>{
+ const t=await mount();t.data.replications=[{...replicationDef,schedule:'0 6 * * *'}];
+ try{await t.app.render('replication');const row=t.root.querySelector('[data-replication-id=r1]');assert.match(row.textContent,/Daily at 06:00/);assert.doesNotMatch(row.textContent,/0 6 \* \* \*/);
+  row.click();const inspector=t.root.querySelector('[data-protection-inspector]');assert.equal(detailValue(inspector,'Schedule'),'Daily at 06:00');
+ }finally{t.app.stop();t.w.close();}
+});
