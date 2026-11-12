@@ -122,10 +122,20 @@ function zfsmProtectionWriteStore(array $data): void {
     zfsmJobAtomicWrite($file,$data);
     if(zfsmProtectionReadStore()!==$data)throw new RuntimeException('Configuration readback failed; inspect the retained backup.');
 }
-function zfsmProtectionConfigLock(callable $fn,bool $deferBusy=false) {
+// A deferred caller (the worker reserving a queued run) returns immediately on
+// contention so it can retry next pass. A user request briefly waits out a
+// short concurrent save instead of failing at once (short, like the operation
+// lock's own zfsmAcquireOperationLockWaiting).
+function zfsmProtectionConfigLock(callable $fn,bool $deferBusy=false,float $waitSeconds=2.0) {
     $file=zfsmProtectionDirectory().'/config.lock';if(is_link($file))throw new RuntimeException('Untrusted configuration lock.');
     $lock=@fopen($file,'c');if(!$lock)throw new RuntimeException('Protection configuration lock is unavailable.');
-    if(!flock($lock,LOCK_EX|LOCK_NB,$wouldBlock)){fclose($lock);if($deferBusy&&$wouldBlock===1)return null;throw new RuntimeException('Protection configuration is being changed.');}
+    $deadline=microtime(true)+$waitSeconds;
+    while(!flock($lock,LOCK_EX|LOCK_NB,$wouldBlock)){
+        if($wouldBlock!==1){fclose($lock);throw new RuntimeException('Protection configuration is being changed.');}
+        if($deferBusy){fclose($lock);return null;}
+        if(microtime(true)>=$deadline){fclose($lock);throw new RuntimeException('Protection configuration is being changed.');}
+        usleep(100000);
+    }
     try{return $fn();}finally{flock($lock,LOCK_UN);fclose($lock);}
 }
 function zfsmProtectionFingerprint(): string {

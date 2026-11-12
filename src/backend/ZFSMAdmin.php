@@ -111,12 +111,16 @@ try {
 		$GLOBALS['zfsm_job_request_audit']=$GLOBALS['zfsm_request_audit'];
         if(isset($GLOBALS['zfsm_request_job']))zfsmJobUpdate($GLOBALS['zfsm_request_job']['id'],['audit_id'=>$GLOBALS['zfsm_request_audit']]);
 	}
-	$controls=array('convertdirectory','cancelconversion','resumeconversion','restoresnapshotfiles','cancelrestore','archivesnapshotfiles');
+	// protectionrun only queues a durable job and protectioncancel only flags
+	// an existing one; both serialize on their own job/config locks already.
+	$controls=array('convertdirectory','cancelconversion','resumeconversion','restoresnapshotfiles','cancelrestore','archivesnapshotfiles','protectionrun','protectioncancel');
 	if (!in_array($command, array_merge($readonly,$controls), true)) {
 		zfsmAuditSetStage('acquiring_lock');
-		// Settings only change the config file, so a long ZFS job holding the
-		// operation lock must not block saving them; they serialize on their own lock.
-		$config_only = in_array($command,array('saveconfig','adddirectortlisting','removedirectorylisting'),true);
+		// These commands only change the config file, Director's protection store
+		// or cron (never a mutating ZFS/sanoid/syncoid call), so a long ZFS job
+		// holding the operation lock must not block them; they serialize on the
+		// same config lock saveconfig uses, so every writer of the .cfg agrees.
+		$config_only = in_array($command,array('saveconfig','adddirectortlisting','removedirectorylisting','protectionsettings','protectionpolicysave','protectionreplicationsave','protectioncontrol','protectionimport','protectionexternaltransfer'),true);
 		$mutation_lock = zfsmAcquireOperationLockWaiting($config_only?$GLOBALS['plugin_config_lock']:$GLOBALS['plugin_lock']);
         $GLOBALS['zfsm_operation_lock_handle']=$mutation_lock;
 	}

@@ -55,4 +55,48 @@ with (empty/'mutation.lock').open('a') as h:
  fcntl.flock(h,fcntl.LOCK_EX|fcntl.LOCK_NB)
  p=subprocess.run(['php',str(missing)],capture_output=True,text=True,timeout=10);assert p.returncode==0,(p.stdout,p.stderr)
  result=json.loads(p.stdout);assert 'operation lock is held' in result['message'];assert result['details']=={'stage':'acquiring_lock','error_code':'lock_busy'},result
-print(json.dumps({'status':'PASS','checks':['held operation flock does not block saveconfig (own settings lock) but still denies other mutations before any ZFS call','config OFF remains byte-identical','History records acquiring_lock/lock_busy and matched kernel owner PID/comm only','released owner produces no stale diagnostics','release during diagnostic inspection returns no owner','missing procfs preserves lock_busy refusal without invented owner','released same inode permits settings validation on retry'],'boundary':'Disposable native Linux; request settings deliberately incomplete, no activation or ZFS calls; production holder remains unknown'}))
+# REL-005: protectionsettings must also skip the operation lock.
+protection=pathlib.Path('/test/protection-settings-request.php');protection.write_text("<?php $docroot='/usr/local/emhttp';$_SERVER['REQUEST_METHOD']='POST';$var=['csrf_token'=>'fixture'];$_POST=['cmd'=>'protectionsettings','csrf_token'=>'fixture','enabled'=>'0'];require '/stand/src/backend/ZFSMAdmin.php';")
+with lock.open('a') as h:
+ fcntl.flock(h,fcntl.LOCK_EX|fcntl.LOCK_NB)
+ answer=call(protection);assert 'request' not in answer['failed'],answer
+ fcntl.flock(h,fcntl.LOCK_UN)
+# REL-005 race: saveconfig and protectionsettings write the same .cfg; they
+# must now serialize on one real kernel lock, so a write paused mid-flight
+# blocks the other side instead of letting it read stale state and clobber
+# the paused writer's change (lost update).
+cfg.write_text('[general]\nsanoid_integration="1"\nrefresh_interval="30"\nlazy_load="0"\ndestructive_mode="0"\nsnap_max_days_alert="30"\nsnap_pattern="Y-m-d-His"\n')
+import shutil
+shutil.copytree('/stand/src','/test/paused-src')
+settings_file=pathlib.Path('/test/paused-src/include/ZFSMSettings.php');settings_text=settings_file.read_text()
+pause_anchor="    $config['general']=array_merge($config['general']??[],$settings);"
+assert settings_text.count(pause_anchor)==1
+settings_file.write_text(settings_text.replace(pause_anchor,'echo "observed\\n"; fflush(STDOUT); fgets(STDIN);\n'+pause_anchor))
+# sanoid_integration='0' here: integration is not installed in this fixture,
+# so requesting '1' would fail validation before any write (unrelated to the
+# lock race under test). protectionsettings is the one that changes it.
+race_save=pathlib.Path('/test/race-save.php');race_save.write_text("<?php $docroot='/usr/local/emhttp';$_SERVER['REQUEST_METHOD']='POST';$var=['csrf_token'=>'fixture'];$_POST=['cmd'=>'saveconfig','csrf_token'=>'fixture','settings'=>['refresh_interval'=>'60','lazy_load'=>'0','sanoid_integration'=>'0','destructive_mode'=>'0','exclusion'=>'','directory_listing'=>'','snap_max_days_alert'=>'30','snap_pattern'=>'Y-m-d-His','snap_prefix'=>'']];require '/stand/src/backend/ZFSMAdmin.php';")
+symlink=root/'plugins/zfs.master.ui'
+symlink.unlink();symlink.symlink_to('/test/paused-src')
+paused=subprocess.Popen(['php',str(protection)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+try:
+ import select
+ assert select.select([paused.stdout],[],[],10)[0],'protectionsettings did not reach the read/merge boundary'
+ assert paused.stdout.readline()=='observed\n'
+ # The symlink swap only had to last long enough for PHP to load the patched
+ # file; restore the real source before starting the concurrent request.
+ symlink.unlink();symlink.symlink_to('/stand/src')
+ # While paused mid-write (lock still held), a real concurrent saveconfig
+ # request must block on the same lock rather than reading stale state.
+ blocked=subprocess.Popen(['php',str(race_save)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+ assert select.select([blocked.stdout],[],[],1)[0]==[],'saveconfig did not wait for the shared config lock'
+ paused.stdin.write('\n');paused.stdin.flush()
+ paused_rest=paused.stdout.read();paused_out,paused_err=paused_rest,paused.stderr.read();paused.wait(timeout=10);assert paused.returncode==0,(paused_out,paused_err)
+ paused_answer=json.loads(paused_rest);assert 'request' not in paused_answer['failed'],paused_answer
+ save_out,save_err=blocked.communicate(timeout=10);assert blocked.returncode==0,(save_out,save_err)
+ save_answer=json.loads(save_out);assert 'request' not in save_answer['failed'],save_answer
+finally:
+ if symlink.is_symlink() and os.readlink(symlink)!='/stand/src':symlink.unlink();symlink.symlink_to('/stand/src')
+ if paused.poll() is None:paused.kill();paused.wait()
+race_result=cfg.read_text();assert 'refresh_interval = "60"' in race_result,race_result;assert 'sanoid_integration = "0"' in race_result,race_result
+print(json.dumps({'status':'PASS','checks':['held operation flock does not block saveconfig (own settings lock) but still denies other mutations before any ZFS call','config OFF remains byte-identical','History records acquiring_lock/lock_busy and matched kernel owner PID/comm only','released owner produces no stale diagnostics','release during diagnostic inspection returns no owner','missing procfs preserves lock_busy refusal without invented owner','released same inode permits settings validation on retry','protectionsettings also bypasses a held operation lock','a paused protectionsettings write blocks a concurrent saveconfig on the shared config lock; both new values persist'],'boundary':'Disposable native Linux; request settings deliberately incomplete, no activation or ZFS calls; production holder remains unknown'}))
