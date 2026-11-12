@@ -7,6 +7,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import pathlib
 import re
 import shlex
@@ -76,6 +77,19 @@ def release_base_url(value):
     except ValueError as error:
         raise argparse.ArgumentTypeError(message) from error
     return value.rstrip('/')
+
+
+def changes_text(version, changelog_path):
+    # The PLG <CHANGES> text once broke a release because an apostrophe sat
+    # inside a Python f-string. Reading it from CHANGELOG.md as plain text
+    # keeps any character in the release notes from touching build-installer.py.
+    if not changelog_path.is_file():
+        raise SystemExit(f'Changelog not found: {changelog_path}')
+    text = changelog_path.read_text()
+    match = re.search(r'^### ' + re.escape(version) + r'\n(.*?)(?=\n### |\Z)', text, re.DOTALL | re.MULTILINE)
+    if not match:
+        raise SystemExit(f"Changelog has no '### {version}' section: {changelog_path}")
+    return f'### {version}\n' + match.group(1).rstrip('\n')
 
 
 def manual_bundle(output, archive, plugin_name, epoch, release_base=None):
@@ -153,7 +167,7 @@ Jobs, recovery и расписания сохраняются. Перед обн
     return bundle
 
 
-def build(output, release_base=None, plugin_url_base=None):
+def build(output, release_base=None, plugin_url_base=None, changelog=None):
     output.mkdir(parents=True, exist_ok=True)
     epoch = int(git('show', '-s', '--format=%ct', 'HEAD'))
     files = {}
@@ -184,7 +198,7 @@ def build(output, release_base=None, plugin_url_base=None):
     plugin_url = update_base + '/' + plugin_name if release_base else 'file:///boot/config/plugins/zfs.master.ui/' + plugin_name
     plugin = ET.Element('PLUGIN', name='zfs.master.ui', author='d1-m4ss', version=VERSION, min='7.3.3',
                         icon='database', launch='Main/ZFSDirector', pluginURL=plugin_url)
-    ET.SubElement(plugin, 'CHANGES').text = f'### {VERSION}\nCompact top area, so the work panes are taller. A pool warning now shows its reason with links to the replication job and the pool status. Replication destination is a parent dataset plus a replica name (it is created inside the parent, with the full path shown). Scheduled snapshot checks that did nothing are no longer written to Jobs or the audit log. The Clear button in Jobs is aligned.\n\nZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.'
+    ET.SubElement(plugin, 'CHANGES').text = changes_text(VERSION, changelog or pathlib.Path(os.environ.get('ZFSD_CHANGELOG', ROOT / 'CHANGELOG.md')))
     package = ET.SubElement(plugin, 'FILE', Name=f'/boot/config/plugins/zfs.master.ui/{archive.name}')
     ET.SubElement(package, 'URL' if release_base else 'LOCAL').text = release_base + '/' + archive.name if release_base else package.attrib['Name']
     ET.SubElement(package, 'MD5').text = hashlib.md5(archive.read_bytes()).hexdigest()
@@ -415,7 +429,9 @@ if __name__ == '__main__':
                         help='explicit HTTPS release asset directory; omit for local-only output')
     parser.add_argument('--plugin-url-base', type=release_base_url,
                         help='stable HTTPS directory serving the current PLG files for update checks; defaults to the release base')
+    parser.add_argument('--changelog', type=pathlib.Path, default=pathlib.Path(os.environ.get('ZFSD_CHANGELOG', ROOT / 'CHANGELOG.md')),
+                        help='file holding "### VERSION" release-notes sections (default: CHANGELOG.md, or $ZFSD_CHANGELOG)')
     args = parser.parse_args()
     if args.plugin_url_base and not args.release_base_url:
         parser.error('--plugin-url-base requires --release-base-url')
-    build(args.output, args.release_base_url, args.plugin_url_base)
+    build(args.output, args.release_base_url, args.plugin_url_base, args.changelog)

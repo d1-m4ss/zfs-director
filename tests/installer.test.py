@@ -543,6 +543,42 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((out / 'zfs.master.ui/jobs/stop').is_file())
 
+    def test_changelog_text_with_unsafe_characters_reaches_plg_changes_unescaped(self):
+        # An apostrophe in the release notes once broke the f-string that built
+        # <CHANGES>. CHANGELOG.md must carry any character without touching the script.
+        version = '2026.11.09.12'
+        section = ('### ' + version + '\n'
+                   'It\'s "quoted" <tag> & $HOME on the first line.\n'
+                   'A second line of the same paragraph.\n\n'
+                   'A second paragraph with a backtick `like this`, a backslash \\ and a trailing quote\'.')
+        with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
+            root = pathlib.Path(tmp)
+            changelog = root / 'CHANGELOG.md'
+            changelog.write_text(section + '\n')
+            output = root / 'build'
+            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output),
+                            '--changelog', str(changelog)], cwd=ROOT, check=True, capture_output=True)
+            plugin = ET.parse(output / 'zfs.master.ui.local.plg').getroot()
+            self.assertEqual(plugin.findtext('CHANGES'), section)
+            scripts = [f.findtext('INLINE') for f in plugin.findall('FILE') if f.find('INLINE') is not None]
+            self.assertTrue(scripts, 'Build must still produce installer/remove scripts')
+            for script in scripts:
+                result = subprocess.run(['bash', '-n'], input=script, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_missing_changelog_section_for_version_fails_the_build(self):
+        version = '2026.11.09.12'
+        with tempfile.TemporaryDirectory(dir=STAND_TMP) as tmp:
+            root = pathlib.Path(tmp)
+            changelog = root / 'CHANGELOG.md'
+            changelog.write_text('### 1999.01.01.1\nUnrelated older release notes.\n')
+            output = root / 'build'
+            result = subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output),
+                                     '--changelog', str(changelog)], cwd=ROOT, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(version, result.stderr)
+            self.assertEqual(list(output.glob('*.plg')), [], 'A missing changelog section must not produce a PLG')
+
 
 
 if __name__ == '__main__':
