@@ -13,6 +13,7 @@ from pathlib import Path
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import traceback
@@ -224,6 +225,191 @@ sys.exit(91)
         # Preserve no jobs, logs, or spawned processes outside disposable /test.
         shutil.rmtree(base)
 
+# REL-001 will split zfsm-worker.php's single dispatch loop into independent
+# lanes. Today zfsmPendingJobs() is processed strictly one job at a time, so a
+# synchronous protection replication (schema 4) blocks every queued scheduled
+# policy and restore/ZIP job behind it until syncoid returns. This case proves
+# that and is meant to FAIL until REL-001 lands; it only runs when explicitly
+# requested so the default suite stays green in the meantime.
+def lanes_case():
+    if os.environ.get('ZFSM_TEST_LANES')!='1':
+        print('SKIP worker lanes: queued policy/restore jobs wait behind a running replication job (see REL-001); set ZFSM_TEST_LANES=1 to reproduce',file=sys.stderr,flush=True)
+        return
+    print('RUN worker lanes under ZFSM_TEST_LANES=1: expected to FAIL until REL-001 splits the worker into lanes',file=sys.stderr,flush=True)
+    # Idempotent: run.py's own main() already does this before invoking this
+    # file as a subprocess, but this file is also runnable standalone, and the
+    # trusted-manifest chain below requires a non-world-writable ancestor.
+    os.chmod('/test',0o755)
+    base=Path(tempfile.mkdtemp(prefix='zfsm-lanes-',dir='/test'))
+    source=base/'src'
+    shutil.copytree(ROOT,source)
+    for folder in ['jobs','runtime','audit','bin','cron-fixture']:
+        (base/folder).mkdir(mode=0o700)
+    settings=source/'include/ZFSMBase.php'
+    adapter=r'''
+$plugin_state=getenv('ZFSM_TEST_HOME').'/jobs';
+$plugin_runtime=getenv('ZFSM_TEST_HOME').'/runtime';
+$plugin_audit=getenv('ZFSM_TEST_HOME').'/audit';
+$plugin_lock=getenv('ZFSM_TEST_HOME').'/mutation.lock';
+$plugin_worker_lock=getenv('ZFSM_TEST_HOME').'/worker.lock';
+$plugin_service_lock=getenv('ZFSM_TEST_HOME').'/service.lock';
+$plugin_config=getenv('ZFSM_TEST_HOME').'/settings.cfg';
+$GLOBALS['zfsm_protection_paths']=['manifest'=>getenv('ZFSM_TEST_HOME').'/native-plugin-fixture.plg','sanoid'=>[getenv('ZFSM_TEST_HOME').'/bin/sanoid'],'syncoid'=>[getenv('ZFSM_TEST_HOME').'/bin/syncoid'],'defaults'=>[getenv('ZFSM_TEST_HOME').'/sanoid.defaults.conf']];
+$GLOBALS['zfsm_protection_cron_file']=getenv('ZFSM_TEST_HOME').'/protection.cron';
+$GLOBALS['zfsm_protection_scan_roots']=[getenv('ZFSM_TEST_HOME').'/cron-fixture'];
+$GLOBALS['zfsm_protection_scan_patterns']=[];
+function parse_plugin_cfg($plugin,$all=false){return ['general'=>['destructive_mode'=>'1','refresh_interval'=>'0','sanoid_integration'=>'1']];}
+'''
+    settings.write_text(settings.read_text().replace('?>',adapter+'\n?>'))
+    worker=source/'scripts/zfsm-worker.php'
+    for path in [worker, source/'include/ZFSMJobs.php', source/'include/ZFSMProtectionJobs.php', source/'include/ZFSMRestore.php']:
+        assert path.read_bytes()==(ROOT/path.relative_to(source)).read_bytes(), 'Product lifecycle logic must remain byte-identical'
+    (base/'native-plugin-fixture.plg').write_text('<!DOCTYPE PLUGIN [<!ENTITY name "unRAID6-Sanoid"><!ENTITY version "2.3.0">]><PLUGIN name="&name;"/>')
+    (base/'sanoid.defaults.conf').write_text('')
+    # Fake syncoid/sanoid never call real zfs; this fake zfs only answers the
+    # exact inventory lookups zfsmSyncoidInventory()/zfsmSanoidInventory() make
+    # for our fixture datasets and fails closed on anything else.
+    fake_zfs=r'''#!/usr/bin/python3
+import sys
+args=sys.argv[1:]
+guids={'lanes/policy':'77001','lanes/replicate/source':'77002'}
+missing={'lanes/replicate/target'}
+if args[:1]==['list'] and '-o' in args:
+    dataset=args[-1]
+    if dataset in missing:
+        sys.stderr.write('cannot open: dataset does not exist\n')
+        sys.exit(1)
+    guid=guids.get(dataset)
+    if guid is None:
+        sys.stderr.write('lanes fake zfs: unexpected dataset '+str(dataset)+'\n')
+        sys.exit(2)
+    sys.stdout.write(dataset+'\tfilesystem\t'+guid+'\t1700000000\t1\n')
+    sys.exit(0)
+if args[:1] in (['receive'],['send']):
+    sys.exit(1)
+sys.stderr.write('lanes fake zfs: unexpected invocation '+repr(args)+'\n')
+sys.exit(3)
+'''
+    fake_sanoid=r'''#!/usr/bin/python3
+import sys
+args=sys.argv[1:]
+if '--version' in args:
+    sys.stdout.write('sanoid version 2.3.0\n');sys.exit(0)
+if '--help' in args:
+    sys.stdout.write('--configdir --readonly --take-snapshots --prune-snapshots --cache-dir --run-dir --force-update\n');sys.exit(0)
+sys.exit(0)
+'''
+    fake_syncoid=r'''#!/usr/bin/python3
+import sys,time
+args=sys.argv[1:]
+if '--version' in args:
+    sys.stdout.write('syncoid version 2.3.0\n');sys.exit(0)
+if '--help' in args:
+    sys.stdout.write('--no-rollback --recvoptions --sshoption --identifier --no-resume --compress --no-clone-handling\n');sys.exit(0)
+time.sleep(40)
+sys.exit(0)
+'''
+    for name,content in [('zfs',fake_zfs),('sanoid',fake_sanoid),('syncoid',fake_syncoid)]:
+        path=base/'bin'/name;path.write_text(content);path.chmod(0o700)
+    # Builds valid policy/replication definitions and queues their protection
+    # jobs with the real production helpers (zfsmSanoidPolicy/zfsmSyncoidJob/
+    # zfsmNewProtectionJob); only the restore job is assembled directly, the
+    # way this same file already does for its own fixture jobs above.
+    setup=base/'lanes-setup.php'
+    setup.write_text(r'''<?php
+require $argv[1].'/backend/ZFSMOperations.php';
+$action=$argv[2];
+if($action==='init'){
+    $policy=zfsmSanoidPolicy(['dataset'=>'lanes/policy','source_guid'=>'77001']);
+    $replication=zfsmSyncoidJob(['source'=>'lanes/replicate/source','target'=>'lanes/replicate/target','source_guid'=>'77002','mode'=>'local','resume'=>false,'compression'=>'none']);
+    $store=['version'=>1,'policies'=>[$policy['id']=>$policy],'replications'=>[$replication['id']=>$replication],'owned_snapshots'=>[]];
+    zfsmProtectionWriteStore($store);
+    echo json_encode(['policy_id'=>$policy['id'],'replication_id'=>$replication['id']]);
+    exit(0);
+}
+if($action==='queue-replication'||$action==='queue-policy'){
+    $type=$action==='queue-replication'?'replication':'policy';
+    $store=zfsmProtectionReadStore();
+    $definition=$store[$type==='policy'?'policies':'replications'][$argv[3]];
+    $job=zfsmNewProtectionJob($type,$definition);
+    zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);
+    echo $job['id'];
+    exit(0);
+}
+if($action==='queue-restore'){
+    $id=gmdate('Ymd-His').'-'.bin2hex(random_bytes(6));
+    $mount='/test/lanes-restore-mount';
+    $job=['schema'=>2,'type'=>'restore','id'=>$id,'state'=>'queued','stage'=>'planned',
+        'dataset'=>'lanes/restore','snapshot'=>'lanes/restore@keep','source'=>'lanes/restore@keep',
+        'owner_guid'=>'77003','snapshot_guid'=>'77004',
+        'owner_mountpoint'=>$mount,'target'=>$mount.'/restored','mode'=>'new',
+        'bytes'=>0,'files'=>0,'conflicts'=>0,'recovery'=>'',
+        'staging'=>$mount.'/.zfsm-restore-'.$id,'hold_tag'=>'zfsm_restore_'.$id,
+        'hold_owned'=>false,'cancel_requested'=>false,'ack_boot'=>zfsmBootId(),
+        'created'=>gmdate('c'),'updated'=>gmdate('c')];
+    $job=zfsmJobInitializeHistory($job);
+    zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);
+    echo $job['id'];
+    exit(0);
+}
+fwrite(STDERR,"unknown action\n");exit(1);
+''')
+    env=os.environ|{'ZFSM_TEST_HOME':str(base),'PATH':str(base/'bin')+':'+os.environ['PATH']}
+    def run_setup(*args):
+        p=subprocess.run(['php',str(setup),str(source)]+list(args),env=env,capture_output=True,timeout=10)
+        assert p.returncode==0,p.stdout.decode()+p.stderr.decode()
+        return p.stdout.decode().strip()
+    log=open(base/'service.log','wb')
+    service=None
+    try:
+        ids=json.loads(run_setup('init'))
+        # No start_new_session here: the --daemon branch calls posix_setsid()
+        # itself, which fails if Python already made this process a session
+        # leader. Let the daemon create its own new session, as --service does.
+        service=subprocess.Popen(['php',str(worker),'--daemon'],env=env,stdout=log,stderr=subprocess.STDOUT)
+        def daemon():
+            for info in processes(source):
+                if is_daemon(info) and info['state']!='Z':
+                    return info
+        wait_for(daemon,'Lanes worker daemon failed to start')
+        replication_id=run_setup('queue-replication',ids['replication_id'])
+        time.sleep(1)
+        policy_id=run_setup('queue-policy',ids['policy_id'])
+        restore_id=run_setup('queue-restore')
+        t_secondary=time.monotonic()
+        def secondary_terminal():
+            p=job_read(base/'jobs'/(policy_id+'.json'))
+            r=job_read(base/'jobs'/(restore_id+'.json'))
+            if p.get('state') in ('queued','running') or r.get('state') in ('queued','running'):
+                return None
+            return (p,r)
+        try:
+            policy,restore=wait_for(secondary_terminal,'Queued policy/restore jobs did not reach a terminal state within 15s while replication was still running (REL-001 worker lanes not yet implemented)',timeout=15)
+        except AssertionError as error:
+            replication=job_read(base/'jobs'/(replication_id+'.json'))
+            p=job_read(base/'jobs'/(policy_id+'.json'));r=job_read(base/'jobs'/(restore_id+'.json'))
+            raise AssertionError(str(error)+' -- observed: replication.state=%r policy.state=%r restore.state=%r'%(replication.get('state'),p.get('state'),r.get('state'))) from None
+        replication=job_read(base/'jobs'/(replication_id+'.json'))
+        assert replication.get('state')=='running','Replication job unexpectedly left running before the lane assertion window; test timing is unreliable: '+json.dumps(replication)
+        print('PASS worker lanes: policy %s / restore %s reached a terminal state in %.1fs while replication was still running'%(policy.get('state'),restore.get('state'),time.monotonic()-t_secondary),file=sys.stderr,flush=True)
+    finally:
+        try:(base/'runtime'/'stop').write_text('stop')
+        except OSError:pass
+        for info in processes(source):
+            if info['pgid']==info['pid']:
+                try:os.killpg(info['pid'],signal.SIGKILL)
+                except ProcessLookupError:pass
+        if service and service.poll() is None:
+            service.kill()
+        if service:
+            try:service.wait(timeout=4)
+            except subprocess.TimeoutExpired:pass
+        for info in processes(source):
+            try:os.kill(info['pid'],signal.SIGKILL)
+            except ProcessLookupError:pass
+        time.sleep(.05);reap();log.close()
+        shutil.rmtree(base,ignore_errors=True)
+
 if __name__=='__main__':
     failure=None
     try:main()
@@ -231,4 +417,10 @@ if __name__=='__main__':
         failure=str(error)
         RESULTS.append({'name':'actual worker lifecycle integration','status':'FAIL','error':failure,'traceback':traceback.format_exc(limit=6)})
     print(json.dumps({'scope':'native Linux PHP actual worker/service/daemon/monitor and journaling; copied Base host paths/config shim; external ZFS/rsync only fail-closed stubs; Python init subreaper','results':RESULTS,'failed':sum(r['status']=='FAIL' for r in RESULTS),'not_tested':['native ZFS/mount behavior','actual copy interruption (covered separately by helper tests)','held snapshot cleanup semantics','real Unraid host integration']}))
-    raise SystemExit(1 if failure else 0)
+    lanes_failure=None
+    try:
+        lanes_case()
+    except Exception as error:
+        lanes_failure=str(error)
+        print('FAIL worker lanes: '+lanes_failure,file=sys.stderr,flush=True)
+    raise SystemExit(1 if (failure or lanes_failure) else 0)
