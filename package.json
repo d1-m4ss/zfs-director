@@ -2,6 +2,7 @@
   "private": true,
   "scripts": {
     "test": "node --test --test-concurrency=1 --test-force-exit tests/*.test.mjs",
+    "test:all": "node tests/run-all.mjs",
     "test:gui": "node tests/gui/run.mjs",
     "test:download": "node tests/gui/download-save.mjs",
     "test:analysis": "node --test --test-force-exit tests/gui/source-probes.mjs",

@@ -7,12 +7,12 @@ Use Node 22.22.2+ within 22.x or 24.15+ within 24.x, Python 3 and the build tool
 ```sh
 npm ci
 npx playwright install chromium
-npm test
-npm run test:gui
-npm run test:integration
+npm run test:all
 python3 -B tests/installer.test.py
 npm run test:privacy
 ```
+
+`npm run test:all` runs the unit suite, both wired Chromium runners (`tests/gui/run.mjs`, `tests/integration/run.mjs`) and every standalone GUI/integration script under `tests/gui` and `tests/integration`, sequentially, from a single entry point (`tests/run-all.mjs`). It prints one `PASS`/`FAIL` line per step and a final summary; a small set of pre-existing failures in scripts that were never wired to a runner are listed as known failures in `tests/run-all.mjs` and do not fail the overall run. Use `node tests/run-all.mjs --only <substring>` to run a subset while debugging.
 
 GUI tests use the actual frontend with synthetic responses. PHP/WASM tests run the handlers with simulated external commands. These checks do not establish native ZFS semantics.
 
