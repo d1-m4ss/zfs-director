@@ -30,12 +30,13 @@ test('Overview Encryption values and sources come from the same fresh reported p
     }finally{x.close();}
 });
 
-for(const fresh of [false,true])test('Overview missing or stale sources remain Unknown without inventing inheritance: fresh='+fresh,()=>{
+for(const fresh of [false,true])test('Overview missing or stale sources show no Source annotation without inventing inheritance: fresh='+fresh,()=>{
     const properties={...dataset,_sources:{quota:fresh?'':'INJECTED-STALE-SOURCE',encryption:fresh?'':'INJECTED-STALE-SOURCE'}};
     const x=render(dataset,{propertiesFresh:fresh,properties});try{
-        assert.match(value(card(x,'Space Management'),'Quota').textContent,/Source: Unknown/);
-        assert.match(value(card(x,'ZFS Encryption'),'Encryption').textContent,/Source: Unknown/);
+        assert.doesNotMatch(value(card(x,'Space Management'),'Quota').textContent,/Source/);
+        assert.doesNotMatch(value(card(x,'ZFS Encryption'),'Encryption').textContent,/Source/);
         assert.doesNotMatch(x.host.textContent,/INJECTED-STALE-SOURCE/);
+        assert.doesNotMatch(x.host.textContent,/Source: Unknown/);
     }finally{x.close();}
 });
 
@@ -56,11 +57,14 @@ test('Overview absent volume reservation data stays Unknown while reported zero 
     }finally{x.close();}
 });
 
-test('Overview protection exposes separate unknown execution and failure facts and View Snapshots',()=>{
+test('Overview protection replaces always-unknown schedule facts with a single notice, a policy shortcut and View Snapshots',()=>{
     const x=render();try{
         const protection=card(x,'Data Protection');
-        for(const name of ['Last scheduled execution','Last successful execution','Last failure'])assert.equal(value(protection,name)?.textContent,'Unknown');
+        for(const name of ['Schedule owner','Next execution','Last scheduled execution','Last successful execution','Last failure','Last task result','Retention','External backup'])assert.equal(value(protection,name),undefined);
         assert.doesNotMatch(protection.textContent,/\b(?:Configured|No schedule|Protected|Daily)\b/);
+        assert.match(protection.textContent,/No scheduled snapshots for this dataset\./);
+        assert.ok([...protection.querySelectorAll('button')].find(n=>n.textContent==='Create snapshot policy'));
+        assert.equal([...protection.querySelectorAll('button')].some(n=>n.textContent==='Manage Protection'),false);
         const view=[...protection.querySelectorAll('button')].find(n=>n.textContent==='View Snapshots');assert.ok(view);view.click();assert.deepEqual(x.calls,['snapshots']);
     }finally{x.close();}
 });

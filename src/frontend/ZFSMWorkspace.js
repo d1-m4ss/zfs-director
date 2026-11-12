@@ -328,7 +328,7 @@ function zfsmCreateWorkspace(options) {
         if(item.kind==='directory'){host.append(node('p','Directory listing: '+item.name));return;}
         const error=snapshotError(item.node);if(error)host.append(node('p',error,'zfsm-error'));
         const fresh=inventoryFresh&&!error&&!selectionChanged,guid=String(item.node.guid||''),generation=viewGeneration,inventoryData=data,selectedPool=pool,surface=node('div');host.append(surface);
-        const render=(properties,metadataState,metadataError)=>{surface.replaceChildren();zfsmRenderDatasetOverview(surface,{node:item.node,pool:selectedPool,fresh,loaded:snapshotsLoaded(item.node),config,bytes,date,properties,propertiesFresh:metadataState==='loaded',metadataState,metadataError,onAction:action=>openAction(action,context(item)),onTab:chooseTab});};
+        const render=(properties,metadataState,metadataError)=>{surface.replaceChildren();zfsmRenderDatasetOverview(surface,{node:item.node,pool:selectedPool,fresh,loaded:snapshotsLoaded(item.node),config,bytes,date,properties,propertiesFresh:metadataState==='loaded',metadataState,metadataError,onAction:action=>openAction(action,context(item)),onTab:chooseTab,onProtection:()=>navigate('protection')});};
         render(null,fresh&&/^[1-9][0-9]*$/.test(guid)?'loading':'stale');
         if(!fresh||!/^[1-9][0-9]*$/.test(guid))return;
         const current=()=>!stopped&&surface.isConnected&&host.contains(surface)&&generation===viewGeneration&&section==='datasets'&&tab==='overview'&&pool===selectedPool&&selection===item.name&&inventoryFresh&&!selectionChanged&&data===inventoryData&&selected()?.node===item.node&&String(selected()?.node.guid||'')===guid;

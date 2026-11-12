@@ -75,6 +75,6 @@ for(const outcome of ['different GUID','backend error'])test('Overview keeps per
         assert.match(x.root.textContent,/Owner \/ GroupUnknown/);
         assert.match(x.root.textContent,/Unix permissionsUnknown/);
         assert.doesNotMatch(x.root.textContent,/nobody|Source: inherited from cache/);
-        assert.match(x.root.textContent,/Source: Unknown/);
+        assert.doesNotMatch(x.root.textContent,/Source: Unknown/);
     }finally{x.close();}
 });

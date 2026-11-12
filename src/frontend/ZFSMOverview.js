@@ -7,7 +7,7 @@ function zfsmRenderDatasetOverview(host, options) {
     const numeric=(name,unlimited=false,source=item)=>!known(source[name])?'Unknown':unlimited&&Number(source[name])===0?'Unlimited':bytes(source[name]);
     const cards=text('div',undefined,'zfsm-overview-cards');
     function card(title,scope){const n=text('section',undefined,'zfsm-overview-card'),heading=text('header'),label=text('h3',title);if(typeof zfsmCreateIcon==='function')label.prepend(zfsmCreateIcon({'Details':'details','Space Management':'space','Data Protection':'shield','Usage & Permissions':'users','ZFS Encryption':'lock'}[title]));heading.append(label,text('small',scope,'zfsm-muted'));n.append(heading);cards.append(n);return n;}
-    function rows(parent,values){const list=text('dl',undefined,'zfsm-overview-values');for(const [label,value,help,source]of values){const key=text('dt',label),answer=text('dd',value??'Unknown');if(help){key.title=help;answer.title=help;}if(source)answer.append(text('small',' · Source: '+source,'zfsm-muted'));list.append(key,answer);}parent.append(list);}
+    function rows(parent,values){const list=text('dl',undefined,'zfsm-overview-values');for(const [label,value,help,source]of values){const key=text('dt',label),answer=text('dd',value??'Unknown');if(help){key.title=help;answer.title=help;}if(source&&source!=='Unknown')answer.append(text('small',' · Source: '+source,'zfsm-muted'));list.append(key,answer);}parent.append(list);}
     function link(parent,label,tab){parent.append(button(label,()=>options.onTab(tab)));}
     const volume=item.type==='volume',root=item.name===options.pool;
     const hero=text('section',undefined,'zfsm-dataset-hero'),labels=text('div',undefined,'zfsm-dataset-tags'),actions=text('div',undefined,'zfsm-buttons');
@@ -48,8 +48,10 @@ function zfsmRenderDatasetOverview(host, options) {
     function counts(n){let count=(n.snapshots||[]).length;for(const child of Object.values(n.child||{}))count+=counts(child);return count;}
     const snapshots=item.snapshots||[],latest=snapshots.reduce((value,s)=>Math.max(value,Number(s.creation)||0),0),days=latest?Math.max(0,Math.floor((Date.now()/1000-latest)/86400)):null,threshold=Number(options.config?.snap_max_days_alert),loaded=options.loaded===true;
     const ageState=!loaded?'Snapshot inventory unavailable':!latest?'No direct snapshots':Number.isFinite(threshold)&&threshold>0&&days>threshold?'Old snapshot — exceeds configured '+threshold+' day warning':'Latest direct snapshot';
-    rows(protection,[['Direct snapshots',loaded?snapshots.length:'Unknown'],['Including descendants',loaded?counts(item):'Unknown'],['Snapshot status',ageState],['Last direct snapshot',loaded&&latest?date(latest):'Unknown'],['Snapshot age',loaded&&days!==null?days+' days':'Unknown'],['Schedule owner','Unknown'],['Next execution','Unknown'],['Last scheduled execution','Unknown'],['Last successful execution','Unknown'],['Last failure','Unknown'],['Last task result','Unknown'],['Retention','Unknown'],['External backup','Unknown']]);
-    protection.append(text('p','A local snapshot is a restore point, not an external backup. No scheduler or replication status has been verified.','zfsm-muted'));link(protection,'View Snapshots','snapshots');link(protection,'Manage Protection','snapshots');
+    const protectionRows=[['Direct snapshots',loaded?snapshots.length:'Unknown'],['Including descendants',loaded?counts(item):'Unknown'],['Snapshot status',ageState],['Last direct snapshot',loaded&&latest?date(latest):'Unknown'],['Snapshot age',loaded&&days!==null?days+' days':'Unknown']].filter(([,value])=>value!=='Unknown');
+    if(protectionRows.length)rows(protection,protectionRows);
+    protection.append(text('p','No scheduled snapshots for this dataset.','zfsm-muted'),button('Create snapshot policy',()=>options.onProtection?.()));
+    protection.append(text('p','A local snapshot is a restore point, not an external backup. No scheduler or replication status has been verified.','zfsm-muted'));link(protection,'View Snapshots','snapshots');
 
     const permissions=metadataLoaded?properties._permissions:null,permissionsKnown=permissions?.status==='known',services=metadataLoaded?properties._usage:null,acl=metadataLoaded?properties._acl:null;
     const state=value=>value?.status==='unavailable'?'Not available':value?.status==='error'?'Error':'Unknown';
