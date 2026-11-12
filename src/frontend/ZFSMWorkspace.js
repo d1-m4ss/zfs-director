@@ -411,20 +411,26 @@ function zfsmCreateWorkspace(options) {
             cleanupmutation:['M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7','Review a completed recovery journal and archive it before removing its empty container. Retained data stays protected.'],
             deletedirectory:['M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7','Use when you no longer need this directory and its contents.']
         };
-        function action(label,command,enabled=true){
+        function action(label,command,enabled=true,reason){
             const [drawing,help]=icons[command],control=button('',()=>openAction(command,ctx),{'aria-label':label,'aria-description':help,title:label+' — '+help,class:'zfsm-action-icon-button'});
             const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS(svg.namespaceURI,'path');
             svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');path.setAttribute('d',drawing);svg.append(path);control.append(svg,node('span',label));control.classList.add('zfsm-action-label-button');
             if(['destroydataset','deletedirectory','cleanupmutation','lockdataset'].includes(command))control.classList.add('zfsm-danger');
-            const issue=snapshotOperationIssue(command,ctx);control.disabled=!enabled||Boolean(issue);if(issue){control.title=label+' — '+issue;control.setAttribute('aria-description',issue);}bar.append(control);
+            const issue=snapshotOperationIssue(command,ctx),blocked=!enabled||Boolean(issue),message=issue||(!enabled?reason:'');
+            control.disabled=blocked;if(message){control.title=label+' — '+message;control.setAttribute('aria-description',message);}bar.append(control);
+            if(blocked&&message){
+                const note=node('p',message,'zfsm-muted zfsm-action-reason');
+                if(message==='Needs Destructive Mode')note.append(' — ',button('Open Settings',()=>navigate('settings')));
+                bar.append(note);
+            }
         }
         if(item.kind==='directory'){
-            if(/^\.zfsm-mutation-[a-f0-9]{48}$/.test(item.name.split('/').pop()))action('Clean completed recovery','cleanupmutation',danger);
+            if(/^\.zfsm-mutation-[a-f0-9]{48}$/.test(item.name.split('/').pop()))action('Clean completed recovery','cleanupmutation',danger,'Needs Destructive Mode');
             else if(item.name.split('/').some(part=>part.startsWith('.zfsm-')))bar.append(node('p','Protected service directory. Retained data requires recovery review.','zfsm-notice'));
-            else{action('Convert to dataset','convertdirectory',danger);action('Move / Rename','movedirectory',danger);action('Delete directory','deletedirectory',danger);}
+            else{action('Convert to dataset','convertdirectory',danger,'Needs Destructive Mode');action('Move / Rename','movedirectory',danger,'Needs Destructive Mode');action('Delete directory','deletedirectory',danger,'Needs Destructive Mode');}
         }
         else{
-            action('Take Snapshot','snapshotdataset');action('Rename dataset','renamedataset',item.name!==pool);
+            action('Take Snapshot','snapshotdataset');action('Rename dataset','renamedataset',item.name!==pool,'Not available for the pool root dataset.');
             action('Edit Dataset','editdatasetproperty');
             if(item.node.type==='filesystem')action('User / group quotas','setquota');
             if(item.node.type==='filesystem')action('POSIX ACL editor','editacl');
@@ -432,12 +438,13 @@ function zfsmCreateWorkspace(options) {
             if(item.node.origin&&item.node.origin!=='-')action('Promote clone','promotedataset');
             if(item.node.type!=='volume'&&item.node.encryption&&item.node.encryption!=='off'&&item.node.encryptionroot===item.name&&item.node.keystatus!=='none'){
                 const recovery=item.node.keystatus==='available'&&item.node._encryption_recovery;
-                action(recovery?'Restore saved mounts':item.node.keystatus==='unavailable'?'Unlock dataset':'Lock dataset',recovery||item.node.keystatus==='unavailable'?'unlockdataset':'lockdataset',Boolean(recovery)||item.node.keystatus==='unavailable'||danger);
+                action(recovery?'Restore saved mounts':item.node.keystatus==='unavailable'?'Unlock dataset':'Lock dataset',recovery||item.node.keystatus==='unavailable'?'unlockdataset':'lockdataset',Boolean(recovery)||item.node.keystatus==='unavailable'||danger,'Needs Destructive Mode');
             }
-            action('Destroy dataset','destroydataset',danger&&item.name!==pool);
+            const poolRoot=item.name===pool;
+            action('Destroy dataset','destroydataset',danger&&!poolRoot,poolRoot?'Not available for the pool root dataset.':'Needs Destructive Mode');
         }
         if(item.node.encryptionroot&&item.node.encryptionroot!=='none'&&item.node.encryptionroot!==item.name){bar.append(button('Open encryption root: '+item.node.encryptionroot,()=>{const row=flatten(pool,false).find(r=>r.name===item.node.encryptionroot);if(row)selectRow(row,'actions');}));}
-        host.append(bar);if(!inventoryFresh){const notice=node('div',undefined,'zfsm-notice');notice.append(node('p','Stale data — last successful refresh '+(lastSuccessfulRefresh||'unknown')+'. Refresh before making changes.'),button('Refresh inventory',()=>inventory.refresh()));host.append(notice);}if(!danger)host.append(node('p','Destructive Mode is off. Restricted operations are disabled.','zfsm-notice'));
+        host.append(bar);if(!inventoryFresh){const notice=node('div',undefined,'zfsm-notice');notice.append(node('p','Stale data — last successful refresh '+(lastSuccessfulRefresh||'unknown')+'. Refresh before making changes.'),button('Refresh inventory',()=>inventory.refresh()));host.append(notice);}
     }
     function openForm(host,action,ctx,reveal=false){
         const opened={host,action,context:ctx};activeForm=opened;
