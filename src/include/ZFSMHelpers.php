@@ -11,7 +11,38 @@ function zfsmOperationLockFailure($code,$owner=null) {
         'lock_open_failed'=>'Operation lock unavailable: cannot open its file. Check backend permissions and lock storage.',
         'lock_unavailable'=>'Operation lock unavailable: file identity or kernel locking could not be verified.'];
     $held=$code==='lock_busy'&&is_array($owner)?"\nHeld by: ".($owner['comm']??'process').' (PID '.$owner['pid'].')':'';
-    return new RuntimeException($messages[$code].$held);
+    $running=$code==='lock_busy'&&is_array($owner)?zfsmOperationLockRunningNow($owner):null;
+    return new RuntimeException($messages[$code].$held.($running!==null?"\n".$running:''));
+}
+// Best-effort description of the command/job currently holding the operation
+// lock, for a human-readable busy message. Never a source of truth for
+// locking itself; a mismatched or unreadable file is silently ignored.
+function zfsmOperationLockDescribe($label,$subject=null) {
+    try{
+        $dir=$GLOBALS['plugin_runtime']??null;if(!is_string($dir)||$dir==='')return;
+        if(!is_dir($dir)&&!@mkdir($dir,0700,true))return;
+        if(is_link($dir))return;
+        $file=$dir.'/lock-owner.json';if(is_link($file))return;
+        @file_put_contents($file,json_encode(['label'=>(string)$label,'subject'=>$subject!==null?(string)$subject:null,'pid'=>getmypid(),'started'=>time()],JSON_THROW_ON_ERROR),LOCK_EX);
+    }catch(Throwable$error){}
+}
+function zfsmOperationLockForget() {
+    $dir=$GLOBALS['plugin_runtime']??null;if(!is_string($dir)||$dir==='')return;
+    $file=$dir.'/lock-owner.json';if(is_file($file)&&!is_link($file))@unlink($file);
+}
+/** Only trusted when the file's PID matches the real kernel lock owner. */
+function zfsmOperationLockRunningNow($owner) {
+    try{
+        if(!is_array($owner)||!is_int($owner['pid']??null))return null;
+        $dir=$GLOBALS['plugin_runtime']??null;if(!is_string($dir)||$dir==='')return null;
+        $file=$dir.'/lock-owner.json';
+        if(is_link($file)||!is_file($file)||filesize($file)>4096)return null;
+        $data=json_decode(file_get_contents($file),true,4,JSON_THROW_ON_ERROR);
+        if(!is_array($data)||($data['pid']??null)!==$owner['pid']||!is_string($data['label']??null)||$data['label']===''||!is_int($data['started']??null))return null;
+        $minutes=max(0,(int)round((time()-$data['started'])/60));
+        $subject=is_string($data['subject']??null)&&$data['subject']!==''?' '.$data['subject']:'';
+        return 'Running now: '.$data['label'].$subject.' ('.$minutes.' min)';
+    }catch(Throwable$error){return null;}
 }
 // The worker takes the same lock briefly for each pending job. A user request
 // waits a few seconds for such a short hold instead of failing at once.

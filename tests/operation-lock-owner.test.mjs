@@ -27,3 +27,53 @@ test('kernel lock parser excludes unrelated inodes devices shared locks and wait
   assert.equal(r.errors,'',r.text);assert.equal(r.exitCode,0,r.text);assert.equal(r.text,'PASS');
  }finally{php.exit();}
 });
+
+// REL-004: the busy-lock message names the operation currently holding it.
+test('busy-lock failure names the running command/job only when its pid matches the real kernel lock owner',async()=>{
+ const php=await runtime();try{
+  const r=await php.run({code:String.raw`<?php require '/app/harness.php';
+  $GLOBALS['plugin_runtime']='/lock-owner-runtime';
+  (function(){
+   zfsmOperationLockDescribe('Rename dataset','tank/a');
+   $owner=['pid'=>getmypid(),'comm'=>'php'];
+   $message=zfsmOperationLockFailure('lock_busy',$owner)->getMessage();
+   same(true,str_contains($message,'Held by: php (PID '.getmypid().')'));
+   same(true,str_contains($message,'Running now: Rename dataset tank/a (0 min)'));
+   zfsmOperationLockForget();
+   $message=zfsmOperationLockFailure('lock_busy',$owner)->getMessage();
+   same(false,str_contains($message,'Running now:'));
+  })();
+  (function(){
+   zfsmOperationLockDescribe('Convert directory','tank/b');
+   $message=zfsmOperationLockFailure('lock_busy',['pid'=>getmypid()+1,'comm'=>'php'])->getMessage();
+   same(false,str_contains($message,'Running now:'));
+   zfsmOperationLockForget();
+  })();
+  (function(){
+   zfsmOperationLockDescribe('Delete dataset','tank/c');
+   file_put_contents($GLOBALS['plugin_runtime'].'/lock-owner.json',json_encode(['label'=>'Delete dataset','subject'=>'tank/c','pid'=>getmypid(),'started'=>time()-185]));
+   $message=zfsmOperationLockFailure('lock_busy',['pid'=>getmypid(),'comm'=>'php'])->getMessage();
+   same(true,str_contains($message,'Running now: Delete dataset tank/c (3 min)'));
+   zfsmOperationLockForget();
+  })();
+  (function(){
+   zfsmOperationLockDescribe('Pool scrub',null);
+   $message=zfsmOperationLockFailure('lock_busy',['pid'=>getmypid(),'comm'=>'php'])->getMessage();
+   same(true,str_contains($message,'Running now: Pool scrub (0 min)'));
+   zfsmOperationLockForget();
+  })();
+  (function(){
+   $file=$GLOBALS['plugin_runtime'].'/lock-owner.json';
+   file_put_contents($file,'not json');
+   same(null,zfsmOperationLockRunningNow(['pid'=>getmypid()]));
+   file_put_contents($file,str_repeat('a',5000));
+   same(null,zfsmOperationLockRunningNow(['pid'=>getmypid()]));
+   unlink($file);symlink('/etc/passwd',$file);
+   same(null,zfsmOperationLockRunningNow(['pid'=>getmypid()]));
+   unlink($file);
+   same(null,zfsmOperationLockRunningNow(['pid'=>getmypid()]));
+  })();
+  echo 'PASS';`});
+  assert.equal(r.errors,'',r.text);assert.equal(r.exitCode,0,r.text);assert.equal(r.text,'PASS');
+ }finally{php.exit();}
+});

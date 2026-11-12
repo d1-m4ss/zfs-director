@@ -123,6 +123,8 @@ try {
 		$config_only = in_array($command,array('saveconfig','adddirectortlisting','removedirectorylisting','protectionsettings','protectionpolicysave','protectionreplicationsave','protectioncontrol','protectionimport','protectionexternaltransfer'),true);
 		$mutation_lock = zfsmAcquireOperationLockWaiting($config_only?$GLOBALS['plugin_config_lock']:$GLOBALS['plugin_lock']);
         $GLOBALS['zfsm_operation_lock_handle']=$mutation_lock;
+        $subject=null;foreach(['zdataset','snapshot','directory','pool','newname','job_id']as$key)if(is_string($_POST[$key]??null)&&$_POST[$key]!==''){$subject=$_POST[$key];break;}
+        zfsmOperationLockDescribe(zfsmRequestJobCommands()[$command]??$command,$subject);
 	}
 	// Settings may have changed while audit storage was locked. Recheck policy
 	// under the mutation lock that serializes ZFS changes (settings use their own
@@ -396,7 +398,7 @@ try {
 	zfsmReturnAnswer(zfsmFailure('request', $error->getMessage()), 'Request', '', '');
 } finally {
     unset($GLOBALS['zfsm_operation_lock_handle']);
-	if (is_resource($mutation_lock)) { flock($mutation_lock, LOCK_UN); fclose($mutation_lock); }
+	if (is_resource($mutation_lock)) { zfsmOperationLockForget(); flock($mutation_lock, LOCK_UN); fclose($mutation_lock); }
 }
 
 ?>

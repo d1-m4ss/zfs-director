@@ -58,6 +58,8 @@ try {
             if($lock===null)break;
             try {
                 $GLOBALS['zfsm_operation_lock_handle']=$lock;
+                $label=($job['schema']??null)===6?(($job['kind']??null)==='dataset'?'Delete dataset':'Delete directory'):(($job['type']??'')==='archive'?'Prepare ZIP':(($job['type']??'')==='restore'?'Restore files':'Convert directory'));
+                zfsmOperationLockDescribe($label,is_string($job['source']??null)?$job['source']:null);
                 if(($job['schema']??null)===6){zfsmRunDeletionJob($job['id']);continue;}
                 // Recovery only releases our protection and records retained
                 // data. It must run even if destructive actions were disabled.
@@ -67,7 +69,7 @@ try {
                 if (($job['type']??'')==='restore') zfsmRunRestoreJob($job['id']);
                 else zfsmRunConversionJob($job['id']);
             } catch (Throwable $error) { error_log('ZFS Director worker: job requires inspection'); }
-            finally { unset($GLOBALS['zfsm_operation_lock_handle']); flock($lock,LOCK_UN); fclose($lock); }
+            finally { unset($GLOBALS['zfsm_operation_lock_handle']); zfsmOperationLockForget(); flock($lock,LOCK_UN); fclose($lock); }
         }
         usleep(500000);
     }
