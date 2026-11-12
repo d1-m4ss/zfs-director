@@ -579,7 +579,7 @@ function zfsmCreateWorkspace(options) {
             jobs=answer;jobsScope=scope;jobsError='';if(refreshInventory)inventory.refresh();
         }
         catch(error){if(scope!==JSON.stringify(jobRequestFields()))jobsPending=true;else jobsError='Job status unavailable. Retained results may be stale: '+error.message;}
-        finally{jobsBusy=false;if(!stopped){sectionButtons.get('jobs').querySelector('.zfsm-nav-label').textContent='Jobs'+(jobs.jobs.length?' · '+jobs.jobs.length:'');renderJobs();if(section==='overview')renderSection();if(activeForm&&['cancelconversion','resumeconversion','cancelrestore'].includes(activeForm.action))forms.render(activeForm.host,activeForm.action,activeForm.context);explorer?.updateJobs?.(jobs.jobs);if(jobsPending){jobsPending=false;loadJobs();}else jobsTimer=setTimeout(loadJobs,2500);}}
+        finally{jobsBusy=false;if(!stopped){const attention=(Number(jobs.counts?.active)||0)+(Number(jobs.counts?.needs_attention)||0);sectionButtons.get('jobs').querySelector('.zfsm-nav-label').textContent='Jobs'+(attention>0?' · '+attention:'');renderJobs();if(section==='overview')renderSection();if(activeForm&&['cancelconversion','resumeconversion','cancelrestore'].includes(activeForm.action))forms.render(activeForm.host,activeForm.action,activeForm.context);explorer?.updateJobs?.(jobs.jobs);if(jobsPending){jobsPending=false;loadJobs();}else jobsTimer=setTimeout(loadJobs,2500);}}
     }
     function renderJobs(){
         if(!jobsHost)return;
