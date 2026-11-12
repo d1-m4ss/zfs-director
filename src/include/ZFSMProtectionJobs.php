@@ -19,10 +19,56 @@ function zfsmProtectionFinish(string $id,array $outcome): array {
     return zfsmJobUpdate($id,['state'=>$states[$name],'stage'=>'finished','finished_at'=>gmdate('c'),'verified_outcome'=>$name,'verification'=>$outcome,'error'=>in_array($name,['completed','completed_with_warnings','up_to_date','skipped'],true)?null:($outcome['reason']??'Inspect this job before retrying.')]);
 }
 function zfsmProtectionRecoverJob(array $j): bool {
-    if($j['state']==='running'||!zfsmJobBootApproved($j)) {zfsmProtectionFinish($j['id'],['outcome'=>'interrupted','exit_code'=>null,'reason'=>'Worker or boot changed before verified completion. Partial data retained; inspect before retry.']);return false;}
+    if($j['state']==='running'||!zfsmJobBootApproved($j)) {zfsmProtectionPromoteJob($j['id']);zfsmProtectionFinish($j['id'],['outcome'=>'interrupted','exit_code'=>null,'reason'=>'Worker or boot changed before verified completion. Partial data retained; inspect before retry.']);return false;}
     return true;
 }
+// zfsmProtectionRuntimeJobDirectory/File (ZFSMJobs.php) decide where this ephemeral journal
+// lives before promotion; zfsmJobFile checks that directory once no durable copy exists yet.
+// Removes a stale tmpfs copy for a job id that already has a durable record: the crash window
+// between zfsmJobAtomicWrite($durable,...) and the unlinks below in zfsmProtectionPromoteJob,
+// or a terminal entry a busy zfsmProtectionDropIdleCheck/promote-on-failure left behind. Never
+// touches a symlink. Caller must already hold the exclusive job-history gate.
+function zfsmProtectionCleanupEphemeralLeftover(string $id): void {
+    $runtime=zfsmProtectionRuntimeJobFile($id);
+    if(!is_link($runtime)&&file_exists($runtime))@unlink($runtime);
+    $lock=$runtime.'.lock';if(!is_link($lock)&&file_exists($lock))@unlink($lock);
+}
+function zfsmProtectionPromoteJob(string $id): array {
+    // Moves a scheduled policy check's tmpfs journal into the durable plugin_state directory.
+    // No-op once durable (manual runs and replication jobs are durable from the start, and a
+    // scheduled check is promoted at most once) other than finishing the leftover cleanup a
+    // crash may have skipped. The exclusive history gate excludes every concurrent per-job
+    // update (cancel, worker progress) for the whole move, so nothing ever observes the job
+    // split across both directories, and the "already durable" branch below runs under the
+    // same gate so a stale runtime copy is never left behind by this crash window either.
+    $durable=zfsmJobDirectory($GLOBALS['plugin_state']).'/'.zfsmJobId($id).'.json';
+    $gate=zfsmJobHistoryGate(true);
+    try{
+        if(is_file($durable)){zfsmProtectionCleanupEphemeralLeftover($id);return zfsmReadJob($id);}
+        $runtime=zfsmProtectionRuntimeJobFile($id);
+        if(is_link($runtime)||!is_file($runtime))throw new RuntimeException('Ephemeral job journal is missing; cannot promote to durable storage.');
+        $job=json_decode(file_get_contents($runtime),true,32,JSON_THROW_ON_ERROR);
+        if(!is_array($job)||($job['id']??null)!==$id)throw new RuntimeException('Job journal identity mismatch during promotion.');
+        $GLOBALS['zfsm_job_history_gate_held']=true;
+        try{zfsmJobAtomicWrite($durable,$job);}finally{unset($GLOBALS['zfsm_job_history_gate_held']);}
+        zfsmProtectionCleanupEphemeralLeftover($id);
+        return $job;
+    }finally{flock($gate,LOCK_UN);fclose($gate);}
+}
 function zfsmProtectionCancel(string $id): array {
+    // A cancel request against a scheduled check that is still only in tmpfs promotes it first,
+    // so the cancellation below lands durably like any other cancelled job (REL-002) -- but only
+    // while it is genuinely still active. An idle check that already finished (or that
+    // zfsmProtectionDropIdleCheck/zfsmProtectionSweepRuntimeQueue just removed) must never be
+    // forced onto the boot flash merely because cancel raced its own completion; zfsmJobUpdate
+    // below already no-ops for a non-active state, and reports a plain "Job not found" (the
+    // same message every other job type already uses) rather than a promotion-specific error
+    // if the race removed it entirely before this read.
+    if(!is_file(zfsmJobDirectory($GLOBALS['plugin_state']).'/'.zfsmJobId($id).'.json')){
+        $runtime=zfsmProtectionRuntimeJobFile($id);
+        try{$live=is_file($runtime)?zfsmReadJob($id):null;}catch(Throwable$error){$live=null;}
+        if($live!==null&&($live['schema']??null)===4&&!zfsmJobProblem($live)&&in_array($live['state'],['queued','running'],true))zfsmProtectionPromoteJob($id);
+    }
     return zfsmJobUpdate($id,function($j){if(($j['schema']??null)!==4||zfsmJobProblem($j))throw new InvalidArgumentException('This is not a valid protection job.');if(!in_array($j['state'],['queued','running'],true))return [];return ['cancel_requested'=>true]+($j['state']==='queued'?['state'=>'cancelled','stage'=>'cancelled','verified_outcome'=>'skipped','finished_at'=>gmdate('c')]:[]);});
 }
 function zfsmProtectionSchedules(): array {
@@ -147,9 +193,14 @@ function zfsmQueueProtection(array $request,bool $interactive=true): array {
         $store=zfsmProtectionReadStore();$d=$store[$type==='policy'?'policies':'replications'][$id]??null;if(!$d||!$d['enabled'])throw new RuntimeException('Definition is missing or disabled.');
         foreach(zfsmPendingJobs()as$j)if(($j['schema']??null)===4&&$j['type']===$type&&$j['definition_id']===$id)return ['succeeded'=>[$j['id']=>'Already queued/running for this definition'],'failed'=>[],'job'=>$j];
         $job=zfsmNewProtectionJob($type,$d);$job['trigger']=$interactive?'manual':'schedule';
+        // Only a scheduled policy check can stay idle; it is queued in the tmpfs runtime
+        // directory and never touches the boot flash unless promoted (zfsmProtectionPromoteJob).
+        // Manual runs and replication jobs, and a preflight failure below, are durable from the
+        // start: a preflight failure is already a terminal, non-idle outcome (REL-002).
+        $ephemeral=$type==='policy'&&!$interactive;
         try{$backend=zfsmProtectionRequire($interactive);if(!$backend['enabled'])throw new RuntimeException('Sanoid / Syncoid integration is disabled; managed execution is blocked. Existing schedules are unchanged.');zfsmProtectionCheckDefinitionSchedules($type,$d,zfsmProtectionSchedules());}
         catch(Throwable$e){if($interactive)throw $e;zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);$job=zfsmProtectionFinish($job['id'],['outcome'=>'blocked','reason'=>$e->getMessage(),'exit_code'=>null]);zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'failed');return ['succeeded'=>[],'failed'=>[$job['id']=>$e->getMessage()],'job'=>$job];}
-        zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);if(!$interactive&&$type!=='policy')zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'queued');return ['succeeded'=>[$job['id']=>'Queued'],'failed'=>[],'job'=>$job];
+        zfsmJobAtomicWrite($ephemeral?zfsmProtectionRuntimeJobFile($job['id']):zfsmJobFile($job['id']),$job);if(!$interactive&&$type!=='policy')zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'queued');return ['succeeded'=>[$job['id']=>'Queued'],'failed'=>[],'job'=>$job];
     });
 }
 // Counts datasets that syncoid starts sending (or skips). Only the number is kept:
@@ -181,7 +232,11 @@ function zfsmProtectionIdleCheck(array $job,array $out): bool {
 function zfsmProtectionDropIdleCheck(string $id): bool {
     $gate=zfsmJobHistoryGate(true,true);if($gate===null)return false;
     try{
-        $file=zfsmJobFile($id);$paths=[$file,$file.'.lock',zfsmJobDirectory($GLOBALS['plugin_runtime']).'/'.zfsmJobId($id).'.json'];
+        $file=zfsmJobFile($id);
+        // Only an ephemeral (still tmpfs) scheduled check is ever dropped; a promoted journal
+        // stays in plugin_state like every other job, even if it later reads back as idle.
+        if($file===zfsmJobDirectory($GLOBALS['plugin_state']).'/'.zfsmJobId($id).'.json')return false;
+        $paths=[$file,$file.'.lock',zfsmJobDirectory($GLOBALS['plugin_runtime']).'/'.zfsmJobId($id).'.json'];
         foreach($paths as$path)if(is_link($path)||(file_exists($path)&&!is_file($path)))return false;
         $job=zfsmReadJob($id);
         if(!zfsmProtectionIdleCheck($job,$job['verification']??[])||$job['state']!=='completed'||!empty($job['cancel_requested']))return false;
@@ -189,10 +244,38 @@ function zfsmProtectionDropIdleCheck(string $id): bool {
         return true;
     }finally{flock($gate,LOCK_UN);fclose($gate);}
 }
+// A busy zfsmProtectionDropIdleCheck (its gate was contended) can leave a terminal idle entry
+// behind in the tmpfs queue (REL-002). Nothing else ever revisits it, so the worker sweeps it
+// periodically. Only a genuinely idle completion (same test zfsmProtectionDropIdleCheck itself
+// uses) is ever removed here: a non-idle terminal outcome (e.g. a promotion that failed to
+// reach the boot flash) is kept -- it must stay visible and inspectable, never silently
+// vanish, and zfsmJobPage lists it under needs_attention until it is promoted or recovered. A
+// corrupt/unreadable journal can only ever be an idle-check attempt that never reached the one
+// destructive step (promotion always precedes pruning), so it is removed too, but only once it
+// is old enough that it cannot still be a write in flight. Still-active (queued/running)
+// entries are always left alone. Best-effort: skips entirely if the exclusive gate is
+// contended rather than blocking the caller.
+function zfsmProtectionSweepRuntimeQueue(): void {
+    $gate=zfsmJobHistoryGate(true,true);if($gate===null)return;
+    try{
+        foreach(glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[] as$file){
+            if(is_link($file)||!is_file($file))continue;
+            $id=basename($file,'.json');
+            if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$id))continue;
+            if(is_file(zfsmJobDirectory($GLOBALS['plugin_state']).'/'.$id.'.json')){zfsmProtectionCleanupEphemeralLeftover($id);continue;}
+            try{$job=zfsmReadJob($id);}catch(Throwable$error){
+                $mtime=@filemtime($file);if($mtime!==false&&time()-$mtime>300){@unlink($file);@unlink($file.'.lock');}
+                continue;
+            }
+            if(in_array($job['state']??'',['queued','running'],true))continue;
+            if($job['state']==='completed'&&zfsmProtectionIdleCheck($job,$job['verification']??[])&&empty($job['cancel_requested'])){@unlink($file);@unlink($file.'.lock');}
+        }
+    }finally{flock($gate,LOCK_UN);fclose($gate);}
+}
 function zfsmRunProtectionJob(array $job): void {
     $job=zfsmReadJob($job['id']);if(zfsmJobProblem($job)||!in_array($job['state'],['queued','running'],true))return;
     $file=zfsmProtectionDirectory().'/execution.lock';if(is_link($file))throw new RuntimeException('Untrusted protection execution lock.');$lock=@fopen($file,'c');if(!$lock||!flock($lock,LOCK_EX|LOCK_NB)){if($lock)fclose($lock);return;}
-    $mutation=null;$audit=null;
+    $mutation=null;$audit=null;$out=null;
     // Known before anything can throw, so the compensating audit below always has its fields.
     $quiet=$job['type']==='policy'&&($job['trigger']??'')==='schedule';$auditFields=['job_id'=>$job['id'],'source'=>$job['source'],'target'=>$job['target']];
     try{if(!zfsmProtectionRecoverJob($job))return;
@@ -205,9 +288,23 @@ function zfsmRunProtectionJob(array $job): void {
         if($job===null)return;
         $GLOBALS['zfsm_operation_lock_handle']=$lock;if(!$quiet)$audit=zfsmAuditBegin('protectionexecute',$auditFields);
         if($job['type']==='replication'){flock($mutation,LOCK_UN);fclose($mutation);$mutation=null;}
-        $out=$job['type']==='policy'?zfsmSanoidExecute($job):zfsmSyncoidExecute($job);zfsmProtectionFinish($job['id'],$out);$auditResult=['status'=>in_array($out['outcome'],['completed','completed_with_warnings','up_to_date','skipped'],true)?'succeeded':'failed','reason'=>$out['reason']??'Verified protection outcome recorded.'];
+        $out=$job['type']==='policy'?zfsmSanoidExecute($job):zfsmSyncoidExecute($job);
+        // A scheduled check's outcome is only known now; promote before recording anything
+        // non-idle, so Finish below writes straight to the durable journal (REL-002). A cancel
+        // requested meanwhile also keeps the job visible even if sanoid still reports idle.
+        if($quiet&&(!zfsmProtectionIdleCheck($job,$out)||!empty(zfsmReadJob($job['id'])['cancel_requested'])))zfsmProtectionPromoteJob($job['id']);
+        zfsmProtectionFinish($job['id'],$out);$auditResult=['status'=>in_array($out['outcome'],['completed','completed_with_warnings','up_to_date','skipped'],true)?'succeeded':'failed','reason'=>$out['reason']??'Verified protection outcome recorded.'];
         if($quiet){if(zfsmProtectionIdleCheck($job,$out)){zfsmProtectionDropIdleCheck($job['id']);}else{$audit=zfsmAuditBegin('protectionexecute',$auditFields);zfsmAuditFinish($audit,$auditResult);}}else zfsmAuditFinish($audit,$auditResult);$audit=null;
-    }catch(Throwable$e){zfsmProtectionFinish($job['id'],['outcome'=>'recovery_required','reason'=>$e->getMessage(),'exit_code'=>null]);if($audit===null&&!empty($quiet)){$audit=zfsmAuditBegin('protectionexecute',$auditFields);}if($audit!==null)zfsmAuditFinish($audit,['status'=>'recovery_required','reason'=>'Protection execution requires inspection.']);}
+    }catch(Throwable$e){
+        // If the native execution itself already produced a verified outcome (e.g. the
+        // exception came from the promotion write to flash failing, after a real result),
+        // record that real outcome -- including any created/pruned snapshots -- instead of
+        // silently discarding it behind a generic "recovery_required". It still ends up in the
+        // tmpfs copy, not durable, but stays inspectable and protected from the idle sweep.
+        if($out!==null){try{zfsmProtectionFinish($job['id'],$out);}catch(Throwable$finishError){}}
+        else{try{zfsmProtectionPromoteJob($job['id']);}catch(Throwable$promoteError){}zfsmProtectionFinish($job['id'],['outcome'=>'recovery_required','reason'=>$e->getMessage(),'exit_code'=>null]);}
+        if($audit===null&&!empty($quiet)){$audit=zfsmAuditBegin('protectionexecute',$auditFields);}if($audit!==null)zfsmAuditFinish($audit,['status'=>'recovery_required','reason'=>'Protection execution requires inspection.']);
+    }
     finally{unset($GLOBALS['zfsm_operation_lock_handle']);if(is_resource($mutation)){flock($mutation,LOCK_UN);fclose($mutation);}flock($lock,LOCK_UN);fclose($lock);}
 }
 function zfsmProtectionMutationGuard(string $command,array $fields): void {

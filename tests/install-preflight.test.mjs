@@ -45,3 +45,34 @@ test('installation accepts inspected recovery and released file jobs but rejects
 test('accepted boot keeps unresolved recovery paused rather than resuming it',async()=>{
     const r=await preflight('1',{state:'queued'},'accepted-boot');assert.equal(r.exitCode,10);
 });
+test('a scheduled policy check still queued in the tmpfs runtime directory also blocks the update (REL-002)',async()=>{
+    const php=await runtime();
+    try {
+        php.mkdir('/state/jobs');
+        php.writeFile('/state/zfs.master.ui.cfg','[general]\nsanoid_integration=1\n');
+        // Durable plugin_state has no jobs at all; only the ephemeral runtime queue does.
+        php.mkdir('/var/tmp/state/jobs/protection-queue');
+        php.writeFile('/var/tmp/state/jobs/protection-queue/20261022-120000-aaaaaaaaaaaa.json',JSON.stringify({state:'queued',type:'policy',source:'cache/immich'}));
+        const source=(await readFile('src/scripts/zfsm-upgrade-preflight.php','utf8')).replace("if(PHP_SAPI!=='cli')exit(2);",'');
+        const result=await php.run({code:'<?php define("STDERR",fopen("php://stderr","w"));$argv=["preflight","/state","install"]; ?>'+source}).catch(error=>{if(error.response)return error.response;throw error;});
+        const text=result.errors+result.text;
+        assert.equal(result.exitCode,1,text);
+        assert.match(text,/Update paused: 1 job\(s\) still queued or running: policy cache\/immich \(queued\)/);
+    } finally {php.exit();}
+});
+test('preflight ignores a stale tmpfs leftover once its id already has a durable record (REL-002 crash window)',async()=>{
+    const php=await runtime();
+    try {
+        const id='20261022-120000-aaaaaaaaaaaa';
+        php.mkdir('/state/jobs');
+        php.writeFile('/state/zfs.master.ui.cfg','[general]\nsanoid_integration=1\n');
+        php.writeFile('/state/jobs/'+id+'.json',JSON.stringify({state:'completed',type:'policy'}));
+        // A promotion crash: the durable copy above exists, but the tmpfs leftover for the
+        // same id was never removed, and (worst case) still reads as running.
+        php.mkdir('/var/tmp/state/jobs/protection-queue');
+        php.writeFile('/var/tmp/state/jobs/protection-queue/'+id+'.json',JSON.stringify({state:'running',type:'policy',source:'cache/immich'}));
+        const source=(await readFile('src/scripts/zfsm-upgrade-preflight.php','utf8')).replace("if(PHP_SAPI!=='cli')exit(2);",'');
+        const result=await php.run({code:'<?php define("STDERR",fopen("php://stderr","w"));$argv=["preflight","/state","install"]; ?>'+source}).catch(error=>{if(error.response)return error.response;throw error;});
+        assert.equal(result.exitCode,0,result.errors+result.text);
+    } finally {php.exit();}
+});

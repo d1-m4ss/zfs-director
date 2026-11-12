@@ -12,9 +12,28 @@ function zfsmJobId($id) {
     if (!is_string($id) || !preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$id)) throw new InvalidArgumentException('Invalid job ID');
     return $id;
 }
-function zfsmJobFile($id) { return zfsmJobDirectory($GLOBALS['plugin_state']).'/'.zfsmJobId($id).'.json'; }
+// Where a scheduled policy check's journal lives before it is promoted to plugin_state
+// (REL-002). Defined here, next to zfsmJobFile, so every script that only needs job storage
+// (not the rest of the protection stack) can still resolve a job's location.
+function zfsmProtectionRuntimeJobDirectory(): string {
+    return zfsmJobDirectory(($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/protection-queue');
+}
+function zfsmProtectionRuntimeJobFile(string $id): string {
+    return zfsmProtectionRuntimeJobDirectory().'/'.zfsmJobId($id).'.json';
+}
+// Single place deciding where a job id currently lives. Every job type is durable from the
+// start except a scheduled policy check (REL-002), which is first queued in the tmpfs runtime
+// directory above and promoted here the moment a durable copy exists (zfsmProtectionPromoteJob,
+// ZFSMProtectionJobs.php). Once promoted, the durable copy always wins.
+function zfsmJobFile($id) {
+    $durable=zfsmJobDirectory($GLOBALS['plugin_state']).'/'.zfsmJobId($id).'.json';
+    if (is_file($durable)) return $durable;
+    $runtime=zfsmProtectionRuntimeJobFile($id);
+    if (!is_link($runtime) && is_file($runtime)) return $runtime;
+    return $durable;
+}
 function zfsmJobAtomicWrite($file,$data) {
-    $history_gate=isset($GLOBALS['plugin_state'],$data['id'])&&$file===rtrim($GLOBALS['plugin_state'],'/').'/'.$data['id'].'.json'?zfsmJobHistoryGate():null;
+    $history_gate=empty($GLOBALS['zfsm_job_history_gate_held'])&&isset($GLOBALS['plugin_state'],$data['id'])&&$file===rtrim($GLOBALS['plugin_state'],'/').'/'.$data['id'].'.json'?zfsmJobHistoryGate():null;
     try {
     zfsmJobDirectory(dirname($file));
     if (is_link($file)) throw new RuntimeException('Job storage cannot be a symlink');
@@ -101,10 +120,25 @@ function zfsmRequireSourceIdentity($job,$path) {
     if (($expected['ino']??null)!==$actual['ino']) throw new RuntimeException('Original directory was replaced; manual recovery required');
 }
 function zfsmPendingJobs() {
-    $jobs=[];
+    $jobs=[];$seen=[];
     foreach (glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[] as $file) {
+        $seen[basename($file,'.json')]=true;
         try { $job=zfsmReadJob(basename($file,'.json')); if (zfsmJobProblem($job)) continue; if (in_array($job['state']??'',['queued','running'],true) || ((in_array($job['type']??'',['restore','archive'],true)&&!empty($job['hold_owned']) || (function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job)))&&($job['cleanup_retry_after']??0)<=time())) $jobs[]=$job; }
         catch (Throwable $error) { /* Invalid journals remain visible for manual recovery. */ }
+    }
+    // A scheduled policy check (REL-002) starts in the tmpfs runtime queue; the worker, dedup
+    // checks, cancellation and definition edits must still see it while queued or running. A
+    // promotion completing between the two scans above must still be counted exactly once, from
+    // wherever zfsmReadJob now finds it (durable takes priority) -- never from neither scan: an
+    // id is only skipped here if the durable scan above already saw and processed it; any id
+    // the durable scan's glob() missed (because it was not yet promoted when that glob ran) is
+    // read fresh, which transparently picks up a promotion that finished in between.
+    foreach (glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[] as $file) {
+        $name=basename($file,'.json');
+        if (isset($seen[$name])) continue;
+        try { $job=zfsmReadJob($name); } catch (Throwable $error) { continue; }
+        if (zfsmJobProblem($job) || !in_array($job['state']??'',['queued','running'],true)) continue;
+        $jobs[]=$job;
     }
     usort($jobs,function($a,$b){return strcmp($a['id'],$b['id']);});
     return $jobs;
@@ -232,8 +266,9 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
     $directory=zfsmJobDirectory($GLOBALS['plugin_state']); $files=@scandir($directory);
     if ($files===false) throw new RuntimeException('Job storage is unavailable');
     $files=array_values(array_filter($files,function($file){return str_ends_with($file,'.json');})); rsort($files,SORT_STRING);
-    $groups=['active'=>[],'needs_attention'=>[],'completed'=>[]]; $worker_running=zfsmWorkerRunning();
+    $groups=['active'=>[],'needs_attention'=>[],'completed'=>[]]; $worker_running=zfsmWorkerRunning(); $seenIds=[];
     foreach ($files as $name) {
+        $seenIds[$name]=true;
         $file=$directory.'/'.$name;
         try {
             $job=zfsmReadJob(basename($name,'.json')); $problem=zfsmJobProblem($job);
@@ -250,6 +285,29 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
                 if (is_array($progress)) $job['progress']=zfsmRedactJobData($progress);
             }
         } catch (Throwable $error) { $job['diagnostics']['detail']='Live progress is unavailable; the durable job journal remains available.'; }
+        $groups[$job['group']][]=$job;
+    }
+    // A scheduled policy check in the tmpfs runtime queue (REL-002) must still be visible here,
+    // the same as a durable job: queued/running stays cancellable as before; a non-idle
+    // terminal outcome that has not reached the boot flash yet (e.g. a promotion that failed)
+    // must stay visible too, as needs_attention, never silently vanish; only a genuinely idle
+    // completion (the same test zfsmProtectionDropIdleCheck/the sweep use) is skipped, since it
+    // is expected to disappear on its own shortly. An id is only skipped here if the durable
+    // scan above already saw it; any id that scan's glob() missed (not yet promoted when that
+    // ran) is read fresh via zfsmReadJob, which transparently picks up a promotion that
+    // completed in between -- never counted from neither scan.
+    foreach (glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[] as $runtimeFile) {
+        $name=basename($runtimeFile);
+        if (isset($seenIds[$name])) continue;
+        try {
+            $job=zfsmReadJob(basename($name,'.json')); $problem=zfsmJobProblem($job);
+        } catch (Throwable $error) {
+            $job=['id'=>basename($name,'.json'),'schema'=>null,'type'=>'unknown','state'=>'recovery_required'];
+            $problem=['invalid_journal','Journal cannot be read safely: '.$error->getMessage().'. Inspect retained data manually.'];
+        }
+        if (!$problem && ($job['state']??'')==='completed' && zfsmProtectionIdleCheck($job,$job['verification']??[]) && empty($job['cancel_requested'])) continue;
+        $job=zfsmJobPresentation($job,$runtimeFile,$worker_running,$problem);
+        if (!$problem && !in_array($job['state'],['queued','running'],true)) $job['group']='needs_attention';
         $groups[$job['group']][]=$job;
     }
     if($options!==null){

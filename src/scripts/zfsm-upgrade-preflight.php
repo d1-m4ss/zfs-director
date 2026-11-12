@@ -15,9 +15,14 @@ try{
     }
     $jobs=$root.'/jobs';if(is_link($jobs))throw new RuntimeException('Jobs path requires inspection');
     $pendingJobs=[];
-    if(is_dir($jobs)){
-        $scan=opendir($jobs);$count=0;
-        try{while(($name=readdir($scan))!==false){if(++$count>4096)$requireRecovery('Jobs scan incomplete; restore stopped for inspection');if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\.json$/D',$name))continue;$file=$jobs.'/'.$name;
+    $scanJobs=function($directory,$skipIfDurable=null)use(&$pendingJobs,$requireRecovery){
+        if(!is_dir($directory))return;
+        $scan=opendir($directory);$count=0;
+        try{while(($name=readdir($scan))!==false){if(++$count>4096)$requireRecovery('Jobs scan incomplete; restore stopped for inspection');if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\.json$/D',$name))continue;
+            // A promotion can crash between writing the durable copy and removing this leftover
+            // (REL-002); once a durable record exists for this id, it alone is authoritative.
+            if($skipIfDurable!==null&&is_file($skipIfDurable.'/'.$name))continue;
+            $file=$directory.'/'.$name;
             if(is_link($file)||!is_file($file)||filesize($file)>131072)throw new RuntimeException('Job requires inspection before upgrade');$j=json_decode(file_get_contents($file),true,32);if(!is_array($j))$requireRecovery('Malformed job requires inspection');
             if(!is_array($j)||!is_string($j['state']??null))$requireRecovery('A job with an unreadable state requires inspection; background services stay paused.');
             if(in_array($j['state'],['queued','running'],true)){$label=trim(preg_replace('/[^\x20-\x7e]+/','',(string)($j['type']??'job').' '.(string)($j['source']??$j['label']??'')));$pendingJobs[]=substr($label===''?'job':$label,0,90).' ('.$j['state'].')';continue;}
@@ -26,7 +31,12 @@ try{
             if(in_array($j['type']??null,['restore','archive'],true)&&($j['hold_owned']??null)!==false)$requireRecovery('File job protection requires inspection; worker stays stopped');
             if(($j['type']??null)==='archive'&&($j['archive_removed']??null)!==true)$requireRecovery('Retained ZIP cleanup requires inspection; worker stays stopped');
         }}finally{closedir($scan);}
-    }
+    };
+    $scanJobs($jobs);
+    // A scheduled policy check (REL-002) is queued only in the tmpfs runtime directory while
+    // idle-capable; an update must refuse to proceed while one is in flight there too.
+    $runtimeJobs='/var/tmp/'.basename($root).'/jobs/protection-queue';if(is_link($runtimeJobs))throw new RuntimeException('Jobs path requires inspection');
+    $scanJobs($runtimeJobs,$jobs);
     if($pendingJobs){
         $shown=implode('; ',array_slice($pendingJobs,0,3)).(count($pendingJobs)>3?'; and '.(count($pendingJobs)-3).' more':'');
         $requireRecovery('Update paused: '.count($pendingJobs).' job(s) still queued or running: '.$shown.'. Nothing was changed and the installed version keeps running. Next: open Main > ZFS Director > Jobs, wait for these jobs to finish or cancel them, then run Plugins > Check for Updates again.');

@@ -49,7 +49,7 @@ try {
             // a crash, and a cooperative stop uses the same stop marker.
             $monitor=proc_open([PHP_BINARY,__DIR__.'/zfsm-monitor.php'],[0=>['file','/dev/null','r'],1=>['file',$runtime.'/monitor.log','a'],2=>['redirect',1]],$monitor_pipes,null,null,['bypass_shell'=>true]);
         }
-        if(time()>=$historyCheckAt){$historyCheckAt=time()+60;try{zfsmJobHistoryCleanup();}catch(Throwable$error){error_log('ZFS Director: job history maintenance unavailable');}}
+        if(time()>=$historyCheckAt){$historyCheckAt=time()+60;try{zfsmJobHistoryCleanup();}catch(Throwable$error){error_log('ZFS Director: job history maintenance unavailable');}try{zfsmProtectionSweepRuntimeQueue();}catch(Throwable$error){error_log('ZFS Director: protection queue maintenance unavailable');}}
         foreach (zfsmPendingJobs() as $job) {
             if (zfsmWorkerStopRequested()) break;
             if(($job['schema']??null)===7){try{zfsmObserveRequestJob($job['id']);}catch(Throwable$error){error_log('ZFS Director: request job requires inspection');}continue;}

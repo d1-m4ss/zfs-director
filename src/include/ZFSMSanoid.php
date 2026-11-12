@@ -161,7 +161,8 @@ function zfsmSanoidExecute(array $job): array {
     $result=zfsmSanoidInvoke($p,$scope,false,$d['sanoid']['path'],['--take-snapshots']);$after=zfsmSanoidInventory($p['dataset']);
     foreach($scope as$ds)if(($after['datasets'][$ds]??null)!==($before['datasets'][$ds]??null))throw new RuntimeException('Dataset GUID changed during policy execution.');
     $created=($result['code']??1)===0?zfsmSanoidCreated($result['output']??'',$before,$after,$p['id']):[];
-    zfsmProtectionConfigLock(function()use($created){$s=zfsmProtectionReadStore();$s['owned_snapshots']=array_replace($s['owned_snapshots'],$created);zfsmProtectionWriteStore($s);});
+    // A scheduled check that created nothing must not write the protection store at all (REL-002).
+    if($created)zfsmProtectionConfigLock(function()use($created){$s=zfsmProtectionReadStore();$s['owned_snapshots']=array_replace($s['owned_snapshots'],$created);zfsmProtectionWriteStore($s);});
     $out=['outcome'=>($result['code']??1)===0?($created?'completed':'up_to_date'):'failed','exit_code'=>$result['code']??1,'snapshots_created'=>array_keys($created),'retention'=>['candidates'=>[],'protected'=>[]],'reason'=>($result['code']??1)===0?'Native snapshot result read back.':'Native Sanoid snapshot execution failed.'];
     if(($result['code']??1)!==0)return $out;
     if($p['autosnap']&&!$created&&!array_filter($after['snapshots'],fn($s)=>in_array(explode('@',$s['name'],2)[0],$scope,true))){$out['outcome']='blocked';$out['reason']='Sanoid returned 0 but no snapshot exists in the effective policy scope.';}
@@ -172,6 +173,9 @@ function zfsmSanoidExecute(array $job): array {
     if(($plan['code']??1)!==0||!str_contains($plan['output']??'','INFO: pruning snapshots...')){$out['outcome']='blocked';$out['reason']='Native retention plan could not be verified; no snapshots were pruned.';return $out;}
     $store=zfsmProtectionReadStore();$references=zfsmSanoidReferences($p,$after['snapshots'],$store);
     $retention=zfsmSanoidRetentionPlan($plan['output'],$after['snapshots'],$store['owned_snapshots'],$references,$p['id']);$out['retention']=$retention;$out['snapshots_pruned']=[];
+    // Pruning is the only non-replayable step here: promote a scheduled check's journal to the
+    // boot flash now, before the first delete, so an interrupted prune stays recoverable (REL-002).
+    if($retention['candidates'])zfsmProtectionPromoteJob($job['id']);
     foreach($retention['candidates']as$c){$identity=zfsmRequireIdentity($c['name'],$c['guid']);$owner=explode('@',$c['name'],2)[0];zfsmRequireIdentity($owner,$c['dataset_guid']);$scopeReview=zfsmDestroyScope($c['name'],false);if(count($scopeReview['objects'])!==1||$scopeReview['objects'][0]['guid']!==$c['guid']||!$scopeReview['can_destroy'])throw new RuntimeException('Retention dependencies or GUID changed; snapshot retained.');$answer=deleteDatasetSnapshot($c['name'],0,$scopeReview);if($answer['failed'])throw new RuntimeException('Retention deletion did not complete; inspect the retained snapshot.');$out['snapshots_pruned'][]=$c['name'];}
     if($out['snapshots_pruned']&&$out['outcome']!=='blocked'){
         $out['outcome']=$retention['protected']?'completed_with_warnings':'completed';
