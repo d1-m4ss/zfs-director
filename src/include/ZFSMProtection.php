@@ -93,7 +93,14 @@ function zfsmProtectionSettings(array $request): array {
     if(!in_array($value,['0','1'],true))throw new InvalidArgumentException('Choose enabled or disabled.');
     if($value==='1')zfsmProtectionRequire(false);
     $current=loadConfig(parse_plugin_cfg($GLOBALS['plugin'],true));
-    $settings=['refresh_interval'=>(string)$current['refresh_interval'],'lazy_load'=>(string)$current['lazy_load'],'sanoid_integration'=>$value,'destructive_mode'=>(string)$current['destructive_mode'],'exclusion'=>$current['dataset_exclusion'],'directory_listing'=>implode("\n",$current['directory_listing']),'snap_max_days_alert'=>(string)$current['snap_max_days_alert'],'snap_pattern'=>$current['snap_pattern'],'snap_prefix'=>$current['snap_prefix']];
+    // Built from the shared schema so a field added there is never silently
+    // dropped from this request, unlike a hand-listed array.
+    $settings=[];
+    foreach(zfsmSettingsSchema() as $field=>$spec){
+        $runtime_value=$current[$spec['runtime_key']??$field]??$spec['default'];
+        $settings[$field]=$field==='directory_listing'?implode("\n",(array)$runtime_value):(string)$runtime_value;
+    }
+    $settings['sanoid_integration']=$value;
     return zfsmSaveSettings($settings);
 }
 function zfsmProtectionDirectory(): string {return zfsmJobDirectory(dirname($GLOBALS['plugin_config']).'/protection');}

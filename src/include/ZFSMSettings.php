@@ -1,14 +1,15 @@
 <?php
 function zfsmSettingsFields() {
-    return ['refresh_interval','lazy_load','sanoid_integration','destructive_mode','exclusion','directory_listing','snap_max_days_alert','snap_pattern','snap_prefix','space_warning_percent','space_critical_percent','replication_lag_hours'];
+    return array_keys(zfsmSettingsSchema());
 }
 
 function zfsmValidateSettings($settings) {
-    $errors=[]; $preview=''; $allowed=zfsmSettingsFields();
+    $errors=[]; $preview=''; $schema=zfsmSettingsSchema(); $allowed=array_keys($schema);
+    $optional=array_keys(array_filter($schema,fn($spec)=>!empty($spec['optional'])));
     if (!is_array($settings)) return ['valid'=>false,'errors'=>['settings'=>'Settings must be an object.'],'snapshot_preview'=>''];
     if (array_diff(array_keys($settings),$allowed)) $errors['settings']='Unknown settings field.';
-    foreach (array_diff($allowed,['space_warning_percent','space_critical_percent','replication_lag_hours']) as $key) if (!is_string($settings[$key]??null)) $errors[$key]='A text value is required.';
-    foreach(['space_warning_percent','space_critical_percent','replication_lag_hours'] as $key)if(isset($settings[$key])&&(!is_string($settings[$key])||!ctype_digit($settings[$key])||strlen($settings[$key])>4))$errors[$key]='Use a whole number.';
+    foreach (array_diff($allowed,$optional) as $key) if (!is_string($settings[$key]??null)) $errors[$key]='A text value is required.';
+    foreach($optional as $key)if(isset($settings[$key])&&(!is_string($settings[$key])||!ctype_digit($settings[$key])||strlen($settings[$key])>4))$errors[$key]='Use a whole number.';
     $warning=(int)($settings['space_warning_percent']??80);$critical=(int)($settings['space_critical_percent']??90);
     if($warning<1||$warning>99)$errors['space_warning_percent']='Use 1–99 percent.';
     if($critical<2||$critical>100||$critical<=$warning)$errors['space_critical_percent']='Critical percent must exceed warning and be at most 100.';

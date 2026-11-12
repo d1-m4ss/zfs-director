@@ -91,40 +91,47 @@ function zfsmAcquireOperationLock($file,$allowBusy=false) {
     }catch(Throwable$e){fclose($h);throw $e;}
 }
 
-function loadConfig($config) {	
+// Single source of truth for settings fields: default, type and (for the
+// couple of fields whose .cfg/runtime name differs from the settings field
+// name) the mapping between them. Used by loadConfig, zfsmSettingsFields,
+// zfsmValidateSettings (ZFSMSettings.php) and zfsmProtectionSettings
+// (ZFSMProtection.php) so a new field cannot be hand-listed in one place and
+// silently dropped in another.
+function zfsmSettingsSchema(): array {
+	return [
+		'refresh_interval'       => ['type' => 'int',    'default' => 30],
+		'lazy_load'              => ['type' => 'int',    'default' => 0],
+		'sanoid_integration'     => ['type' => 'bool',   'default' => 0],
+		'destructive_mode'       => ['type' => 'int',    'default' => 0],
+		'exclusion'              => ['type' => 'string', 'default' => '', 'runtime_key' => 'dataset_exclusion', 'legacy_key' => 'exclussion', 'blank_is_empty' => true],
+		'directory_listing'      => ['type' => 'list',   'default' => []],
+		'snap_max_days_alert'    => ['type' => 'int',    'default' => 30],
+		'snap_prefix'            => ['type' => 'string', 'default' => ''],
+		'snap_pattern'           => ['type' => 'string', 'default' => 'Y-m-d-His'],
+		'space_warning_percent'  => ['type' => 'int',    'default' => 80, 'optional' => true],
+		'space_critical_percent' => ['type' => 'int',    'default' => 90, 'optional' => true],
+		'replication_lag_hours'  => ['type' => 'int',    'default' => 24, 'optional' => true],
+	];
+}
+
+function loadConfig($config) {
 	$config = is_array($config) ? $config : [];
-	$zfsm_ret['refresh_interval'] = isset($config['general']['refresh_interval']) ? intval($config['general']['refresh_interval']) : 30;
-	$zfsm_ret['lazy_load'] = isset($config['general']['lazy_load']) ? intval($config['general']['lazy_load']) : "0";
-	$zfsm_ret['sanoid_integration'] = (string)($config['general']['sanoid_integration'] ?? '0') === '1' ? 1 : 0;
-
-	$zfsm_ret['destructive_mode'] = isset($config['general']['destructive_mode']) ? intval($config['general']['destructive_mode']) : 0;
-
-	if (isset($config['general']['exclussion']) && $config['general']['exclussion'] != '' && !isset($config['general']['exclusion'])):
-		$config['general']['exclusion'] = $config['general']['exclussion'];
-	endif;
-
-	if (!isset($config['general']['exclusion']) || $config['general']['exclusion'] == '' || $config['general']['exclusion'] == ' '):
-		$zfsm_ret['dataset_exclusion'] = '';
-	else:
-		$zfsm_ret['dataset_exclusion'] = $config['general']['exclusion'];
-	endif;
-		
-	$zfsm_ret['snap_max_days_alert'] = isset($config['general']['snap_max_days_alert']) ? intval($config['general']['snap_max_days_alert']) : 30;
-	foreach(['space_warning_percent'=>80,'space_critical_percent'=>90,'replication_lag_hours'=>24] as $key=>$default)$zfsm_ret[$key]=(int)($config['general'][$key]??$default);
-	$zfsm_ret['snap_prefix'] = isset($config['general']['snap_prefix']) ? $config['general']['snap_prefix'] : '';
-
-	if (!isset($config['general']['snap_pattern']) || $config['general']['snap_pattern'] == ''):
-		$zfsm_ret['snap_pattern'] = 'Y-m-d-His';
-	else:
-		$zfsm_ret['snap_pattern'] = $config['general']['snap_pattern'];
-	endif;
-
-	if (!isset($config['general']['directory_listing']) || $config['general']['directory_listing'] == ''):
-		$zfsm_ret['directory_listing'] = array();
-	else:
-		$zfsm_ret['directory_listing'] = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing']);
-	endif;
-	
+	$general = is_array($config['general'] ?? null) ? $config['general'] : [];
+	$zfsm_ret = [];
+	foreach (zfsmSettingsSchema() as $field => $spec) {
+		$key = $field;
+		if (isset($spec['legacy_key']) && !isset($general[$key]) && isset($general[$spec['legacy_key']]) && $general[$spec['legacy_key']] !== '') {
+			$general[$key] = $general[$spec['legacy_key']];
+		}
+		$raw = $general[$key] ?? null;
+		$runtime_key = $spec['runtime_key'] ?? $field;
+		switch ($spec['type']) {
+			case 'int': $zfsm_ret[$runtime_key] = isset($raw) ? intval($raw) : $spec['default']; break;
+			case 'bool': $zfsm_ret[$runtime_key] = (string)($raw ?? '0') === '1' ? 1 : 0; break;
+			case 'list': $zfsm_ret[$runtime_key] = (!isset($raw) || $raw === '') ? [] : preg_split('/\r\n|\r|\n/', $raw); break;
+			default: $zfsm_ret[$runtime_key] = (!isset($raw) || $raw === '' || (!empty($spec['blank_is_empty']) && $raw === ' ')) ? $spec['default'] : $raw;
+		}
+	}
 	return $zfsm_ret;
 }
 
