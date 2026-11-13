@@ -160,6 +160,12 @@ try {
 		case 'protectiondetect':
 			echo json_encode(zfsmProtectionDetection(),JSON_THROW_ON_ERROR);
 			break;
+		case 'protectioncredentiallist':
+			zfsmProtectionRequire();echo json_encode(['credentials'=>zfsmSyncoidCredentialList()],JSON_THROW_ON_ERROR);break;
+		case 'protectioncredentialsave':
+			zfsmProtectionRequire();zfsmReturnAnswer(zfsmSyncoidCredentialSave(['name'=>zfsmPostString('name'),'keyfile'=>zfsmPostString('keyfile'),'known_hosts'=>zfsmPostString('known_hosts')]));break;
+		case 'protectioncredentialremove':
+			zfsmProtectionRequire();zfsmReturnAnswer(zfsmSyncoidCredentialRemove(zfsmPostString('name')));break;
 		case 'protectionsettings':
 			zfsmReturnAnswer(zfsmProtectionSettings($_POST));
 			break;

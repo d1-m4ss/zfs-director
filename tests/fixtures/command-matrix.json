@@ -239,6 +239,24 @@
   "destructive": false,
   "observed": false
  },
+ "protectioncredentiallist": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectioncredentialremove": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "protectioncredentialsave": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
  "protectiondata": {
   "kind": "read",
   "lock": "none",

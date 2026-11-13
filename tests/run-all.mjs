@@ -20,7 +20,7 @@ const GUI_SCRIPTS = [
   'action-dialogs', 'alignment', 'clean-ui', 'dataset-checklist', 'dialogs-layout',
   'fixed-frame', 'icon-alignment', 'job-history-pagination', 'jobs-history', 'metadata',
   'overview-health', 'policy-workflows', 'pool-warning-links', 'protection-dataset-options',
-  'protection-destination', 'protection-status', 'protection', 'refresh-off-safety',
+  'protection-destination', 'protection-status', 'protection', 'refresh-off-safety', 'ssh-keys',
   'workspace-navigation',
 ];
 const INTEGRATION_SCRIPTS = [

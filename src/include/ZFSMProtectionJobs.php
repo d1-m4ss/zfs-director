@@ -352,7 +352,7 @@ function zfsmProtectionData(): array {
     $present=array_fill_keys(array_column($datasets,'name'),true);$snapshotDefaults=zfsmSanoidSnapshotDefaults();
     foreach($native['policies']as&$p){$p['last_job']=$last[$p['id']]??null;$p['dataset_present']=isset($present[$p['dataset']]);if(($p['owner']??'')!=='external')$p['snapshot_effective']=zfsmSanoidSnapshotEffective($p,$native['templates'],$snapshotDefaults);}unset($p);
     $replications=array_values($s['replications']);foreach($replications as&$r)$r['last_job']=$last[$r['id']]??null;unset($r);
-    $credentials=[];$file=zfsmProtectionDirectory().'/credentials.json';if(zfsmProtectionTrustedFile($file)&&filesize($file)<=65536){$refs=json_decode(file_get_contents($file),true,8,JSON_THROW_ON_ERROR);if(is_array($refs))foreach($refs as$id=>$entry)if(is_string($id)&&preg_match('/^[A-Za-z0-9_-]{1,64}$/D',$id))$credentials[]=$id;}
+    $credentials=[];$file=zfsmSyncoidCredentialFile();if(zfsmProtectionTrustedFile($file)&&filesize($file)<=65536){$refs=json_decode(file_get_contents($file),true,8,JSON_THROW_ON_ERROR);if(is_array($refs))foreach($refs as$id=>$entry)if(zfsmSyncoidCredentialNameValid($id))$credentials[]=$id;}
     return ['detection'=>$d,'datasets'=>$datasets,'policies'=>$native['policies'],'templates'=>$native['templates'],'replications'=>$replications,'jobs'=>$jobs,'scheduler'=>zfsmProtectionSchedules(),'issues'=>$native['issues'],'credentials'=>$credentials,'snapshot_naming'=>$native['snapshot_naming'],'snapshot_defaults'=>$snapshotDefaults];
 }
 function zfsmProtectionRunPreview(array $request,string $secret): array {

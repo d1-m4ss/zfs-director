@@ -202,3 +202,18 @@
   #zfsm-workspace .zfsm-run-table th:nth-child(2) { width:27%; }
 }
 
+/* UX-006: SSH keys for remote replication */
+#zfsm-workspace .zfsm-ssh-keys { margin:12px 0; }
+#zfsm-workspace .zfsm-ssh-list { list-style:none; margin:10px 0; padding:0; display:grid; gap:8px; }
+#zfsm-workspace .zfsm-ssh-key { border:1px solid var(--zfsm-border); border-radius:8px; padding:10px 12px; min-width:0; }
+#zfsm-workspace .zfsm-ssh-key-head,#zfsm-workspace .zfsm-ssh-key-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+#zfsm-workspace .zfsm-ssh-key-head strong { color:var(--zfsm-text); font-size:13px; overflow-wrap:anywhere; }
+#zfsm-workspace .zfsm-ssh-key .zfsm-status-ok { color:var(--zfsm-good); font-weight:600; font-size:12px; }
+#zfsm-workspace .zfsm-ssh-key .zfsm-status-bad { color:var(--zfsm-error); font-weight:600; font-size:12px; }
+#zfsm-workspace .zfsm-ssh-files { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:2px 10px; margin:8px 0; font-size:12px; }
+#zfsm-workspace .zfsm-ssh-files dt { color:var(--zfsm-muted); }
+#zfsm-workspace .zfsm-ssh-files dd { margin:0; color:var(--zfsm-text); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+#zfsm-workspace .zfsm-ssh-key .zfsm-error { margin:4px 0; font-size:12px; }
+#zfsm-workspace .zfsm-ssh-key-foot { font-size:12px; }
+#zfsm-workspace .zfsm-ssh-steps { margin:8px 0 12px; padding-left:20px; color:var(--zfsm-text); line-height:1.5; font-size:12px; }
+#zfsm-workspace .zfsm-ssh-steps li { overflow-wrap:anywhere; }

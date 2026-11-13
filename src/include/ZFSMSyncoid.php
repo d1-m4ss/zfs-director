@@ -15,13 +15,63 @@ function zfsmSyncoidJob(array $input): array {
     $j['exclusions']=$input['exclusions']??[];if(!is_array($j['exclusions'])||count($j['exclusions'])>200)throw new InvalidArgumentException('Invalid replication exclusions.');foreach($j['exclusions']as$e)if(!is_string($e)||!preg_match('/^[A-Za-z0-9_.:\/-]+$/D',$e)||!str_starts_with($e,$j['source'].'/'))throw new InvalidArgumentException('Replication exclusions must be descendants of the source.');
     if($j['exclusions']&&!$j['recursive'])throw new InvalidArgumentException('Exclusions require recursive replication.');zfsmProtectionCron($j['schedule']);return $j;
 }
-function zfsmSyncoidCredential(string $reference): array {
-    $file=zfsmProtectionDirectory().'/credentials.json';
-    if(!zfsmProtectionTrustedFile($file)||filesize($file)>65536)throw new RuntimeException('No trusted credential registry. Configure a root-owned credential reference first.');
-    $credentials=json_decode(file_get_contents($file),true,8,JSON_THROW_ON_ERROR);$entry=$credentials[$reference]??null;
-    foreach(['keyfile','known_hosts']as$key)if(!is_string($entry[$key]??null)||!preg_match('#^/[A-Za-z0-9_./-]+$#D',$entry[$key]))throw new RuntimeException('Credential paths must be absolute trusted paths without shell syntax or whitespace.');
+// UX-006: SSH key references for remote replication. Director stores only paths, never key
+// contents, in protection/credentials.json: {"name":{"keyfile":"/path","known_hosts":"/path"}}.
+function zfsmSyncoidCredentialFile(): string { return zfsmProtectionDirectory().'/credentials.json'; }
+function zfsmSyncoidCredentialNameValid($name): bool { return is_string($name)&&preg_match('/^[A-Za-z0-9_-]{1,64}$/D',$name)===1; }
+// A usable reference: both paths absolute without shell syntax, root-owned regular files in
+// root-owned directories, and a private key without group or other access.
+function zfsmSyncoidCredentialCheck($entry): array {
+    foreach(['keyfile','known_hosts']as$key)if(!is_string($entry[$key]??null)||!preg_match('#^/[A-Za-z0-9_./-]+$#D',$entry[$key])||preg_match('#(^|/)\.\.?(/|$)#',$entry[$key]))throw new RuntimeException('Credential paths must be absolute trusted paths without shell syntax or whitespace.');
     if(!is_array($entry)||!zfsmProtectionTrustedFile($entry['keyfile']??null)||!zfsmProtectionTrustedFile($entry['known_hosts']??null))throw new RuntimeException('Credential reference or trusted known_hosts is unavailable.');
-    if((fileperms($entry['keyfile'])&0077)!==0)throw new RuntimeException('Private SSH key permissions must exclude group and other access.');return $entry;
+    if((fileperms($entry['keyfile'])&0077)!==0)throw new RuntimeException('Private SSH key permissions must exclude group and other access.');return ['keyfile'=>$entry['keyfile'],'known_hosts'=>$entry['known_hosts']];
+}
+function zfsmSyncoidCredentialRead(): array {
+    $file=zfsmSyncoidCredentialFile();if(!file_exists($file)&&!is_link($file))return [];
+    if(!zfsmProtectionTrustedFile($file)||filesize($file)>65536)throw new RuntimeException('The SSH key list is not a trusted root-owned file. Inspect '.$file.'.');
+    $refs=json_decode(file_get_contents($file),true,8,JSON_THROW_ON_ERROR);
+    if(!is_array($refs)||($refs!==[]&&array_is_list($refs)))throw new RuntimeException('The SSH key list is not valid JSON of named references. Inspect '.$file.'.');
+    return $refs;
+}
+function zfsmSyncoidCredential(string $reference): array {
+    $file=zfsmSyncoidCredentialFile();
+    if(!zfsmProtectionTrustedFile($file)||filesize($file)>65536)throw new RuntimeException('No trusted credential registry. Configure a root-owned credential reference first.');
+    $credentials=json_decode(file_get_contents($file),true,8,JSON_THROW_ON_ERROR);return zfsmSyncoidCredentialCheck($credentials[$reference]??null);
+}
+// Unraid keeps / and /root in RAM; only the flash drive and the array survive a reboot.
+function zfsmSyncoidCredentialPersistent(string $path): bool { return str_starts_with($path,'/boot/')||str_starts_with($path,'/mnt/'); }
+function zfsmSyncoidCredentialList(): array {
+    $used=[];foreach(zfsmProtectionReadStore()['replications'] as $r)if(($r['credential']??'')!=='')$used[$r['credential']][]=$r['name'];
+    $list=[];
+    foreach(zfsmSyncoidCredentialRead() as $name=>$entry){
+        if(!zfsmSyncoidCredentialNameValid($name))continue;$problem=null;
+        try{zfsmSyncoidCredentialCheck($entry);if(filesize($entry['known_hosts'])===0)$problem='known_hosts is empty. Add the remote host key first.';}catch(Throwable$e){$problem=$e->getMessage();}
+        $paths=array_map(fn($k)=>is_string($entry[$k]??null)?$entry[$k]:'',['keyfile'=>'keyfile','known_hosts'=>'known_hosts']);
+        $list[]=['name'=>$name]+$paths+['usable'=>$problem===null,'problem'=>$problem,'used_by'=>$used[$name]??[],'persistent'=>zfsmSyncoidCredentialPersistent($paths['keyfile'])&&zfsmSyncoidCredentialPersistent($paths['known_hosts'])];
+    }
+    usort($list,fn($a,$b)=>strcmp($a['name'],$b['name']));return $list;
+}
+function zfsmSyncoidCredentialWrite(array $refs): void { ksort($refs,SORT_STRING);zfsmJobAtomicWrite(zfsmSyncoidCredentialFile(),$refs?:new stdClass); }
+function zfsmSyncoidCredentialSave(array $input): array {
+    $name=$input['name']??null;if(!zfsmSyncoidCredentialNameValid($name))throw new InvalidArgumentException('Name: use 1 to 64 letters, digits, - or _.');
+    $entry=zfsmSyncoidCredentialCheck(['keyfile'=>$input['keyfile']??null,'known_hosts'=>$input['known_hosts']??null]);
+    if($entry['keyfile']===$entry['known_hosts'])throw new InvalidArgumentException('The private key and known_hosts must be different files.');
+    if(filesize($entry['known_hosts'])===0)throw new RuntimeException('known_hosts is empty. Add the remote host key first.');
+    return zfsmProtectionConfigLock(function()use($name,$entry){
+        $refs=zfsmSyncoidCredentialRead();$existing=isset($refs[$name]);$refs[$name]=$entry;zfsmSyncoidCredentialWrite($refs);
+        $answer=['succeeded'=>[$name=>$existing?'SSH key reference updated':'SSH key reference added'],'failed'=>[]];
+        if(!zfsmSyncoidCredentialPersistent($entry['keyfile'])||!zfsmSyncoidCredentialPersistent($entry['known_hosts']))$answer['warning']='These files are in RAM on Unraid and are lost at reboot. Keep them under /boot or /mnt.';
+        return $answer;
+    });
+}
+function zfsmSyncoidCredentialRemove(string $name): array {
+    if(!zfsmSyncoidCredentialNameValid($name))throw new InvalidArgumentException('Choose a registered SSH key.');
+    return zfsmProtectionConfigLock(function()use($name){
+        $refs=zfsmSyncoidCredentialRead();if(!isset($refs[$name]))throw new InvalidArgumentException('SSH key reference not found.');
+        foreach(zfsmProtectionReadStore()['replications'] as $r)if(($r['credential']??'')===$name)throw new RuntimeException('Used by replication "'.$r['name'].'". Choose another key in that replication first.');
+        unset($refs[$name]);zfsmSyncoidCredentialWrite($refs);
+        return ['succeeded'=>[$name=>'SSH key reference removed; the key files were not touched'],'failed'=>[]];
+    });
 }
 function zfsmSyncoidSsh(array $j,array $zfsArgs): array {
     $c=zfsmSyncoidCredential($j['credential']);

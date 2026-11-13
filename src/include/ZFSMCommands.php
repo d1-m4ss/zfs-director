@@ -42,6 +42,7 @@ function zfsmCommandRegistry(): array {
         'snapshotfileinfo'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'snapshotfiles'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'validatesettings'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
+        'protectioncredentiallist'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         // Audited; only queue or flag a durable job, which serializes on its own job/config locks.
         'archivesnapshotfiles'=>['kind'=>'admin','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>'Prepare ZIP'],
         'cancelconversion'=>['kind'=>'admin','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>'Cancel conversion'],
@@ -61,6 +62,8 @@ function zfsmCommandRegistry(): array {
         'protectionsettings'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Change Data Protection settings'],
         'removedirectorylisting'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Remove directory listing'],
         'saveconfig'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Save settings'],
+        'protectioncredentialsave'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Save SSH key reference'],
+        'protectioncredentialremove'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Remove SSH key reference'],
         // Audited; change ZFS or files under the operation lock.
         'activityvisibility'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Organize activity history'],
         'cleanupmutation'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Clean completed recovery'],
