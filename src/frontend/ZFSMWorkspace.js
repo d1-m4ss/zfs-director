@@ -42,7 +42,7 @@ function zfsmCreateWorkspace(options) {
     function storageWrite(key,value){try{localStorage.setItem(key,JSON.stringify(value));}catch(_){/* Browser storage is optional. */}}
     const saved=storageRead(preferenceKey);
     if(saved&&typeof saved==='object'){
-        if(['tree','table'].includes(saved.layout))layout=saved.layout;
+        // One layout only: a saved 'table' choice from the former Compact view is ignored.
         if(['auto','light','dark','gray','azure'].includes(saved.theme))theme=saved.theme;
         if([10,25,50,100].includes(saved.jobsPageSize))jobsPageSize=saved.jobsPageSize;
         if(typeof saved.pool==='string')pool=saved.pool;
@@ -80,9 +80,9 @@ function zfsmCreateWorkspace(options) {
     const shell=node('div',undefined,'zfsm-shell'),sidebar=node('aside',undefined,'zfsm-sidebar'),workspace=node('div',undefined,'zfsm-main');
     const heading=node('div',undefined,'zfsm-brand'),brand=node('strong','ZFS Director');heading.append(zfsmCreateIcon('director'));const brandText=node('div');brandText.append(brand,node('small','for Unraid'));heading.append(brandText);sidebar.append(heading);
     const header=node('header',undefined,'zfsm-header'),breadcrumb=node('div',undefined,'zfsm-breadcrumb');breadcrumb.append(node('span','Storage'),node('span','›'));const screenTitle=node('strong','Datasets');breadcrumb.append(screenTitle);
-    const controls=node('div',undefined,'zfsm-controls'),layoutButtons=[],density=node('div',undefined,'zfsm-view-switch');density.setAttribute('aria-label','View mode');
+    const controls=node('div',undefined,'zfsm-controls'),layoutButtons=[];
     const protectionSection=()=>['protection','replication','protection-settings'].includes(section);
-    for(const [value,label] of [['tree','Workspace'],['table','Compact']]){const item=button(label,()=>{layout=value;applyTheme();savePreferences();if(protectionSection()||section==='settings'){protection?.refresh();return;}if(section==='datasets')renderBrowser();},{'data-layout-choice':value,title:'Show '+label+' view'});layoutButtons.push(item);density.append(item);}controls.append(density);
+
     const themeSelect=node('select');themeSelect.setAttribute('aria-label','Theme');for(const [value,label] of [['auto','Unraid (auto)'],['dark','Black'],['gray','Gray'],['light','White'],['azure','Azure']]){const item=node('option',label);item.value=value;themeSelect.append(item);}themeSelect.addEventListener('change',()=>{theme=themeSelect.value;applyTheme();savePreferences();});controls.append(themeSelect);
     const refreshButton=button('',()=>protectionSection()&&protection?protection.refresh():section==='jobs'?loadJobs():section==='settings'?protection?.refresh():inventory.refresh(),{'aria-label':'Refresh',title:'Refresh',class:'zfsm-refresh-button'}),refreshIcon=zfsmCreateIcon('refresh');refreshIcon.classList.add('zfsm-refresh-icon');refreshButton.append(refreshIcon);controls.append(refreshButton);header.append(breadcrumb,controls);
     const nav=node('nav',undefined,'zfsm-global-nav');nav.setAttribute('aria-label','Plugin sections');const sectionButtons=new Map();
