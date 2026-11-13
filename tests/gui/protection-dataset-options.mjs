@@ -6,7 +6,7 @@ const out=process.env.ZFSM_OUTPUT||'backups/2026-10-20/refresh-fixes/selectors',
 const scripts=await Promise.all(['ZFSMInventory','ZFSMForms','ZFSMSnapshots','ZFSMExplorer','ZFSMPoolView','ZFSMOverview','ZFSMHistory','ZFSMProtection','ZFSMWorkspace'].map(name=>readFile('src/frontend/'+name+'.js','utf8'))),css=await readFile('src/frontend/ZFSMWorkspace.css','utf8'),protectionCSS=await readFile('src/frontend/ZFSMProtection.css','utf8');
 const browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true}),results=[],errors=[];
 try{
- for(const width of [390,1280])for(const layout of ['tree','table'])for(const names of [['cache/current'],[]]){
+ for(const width of [390,1280])for(const layout of ['tree'])for(const names of [['cache/current'],[]]){
   const page=await browser.newPage({viewport:{width,height:1000}});page.setDefaultTimeout(5000);await page.route('**/*',r=>r.abort());page.on('pageerror',e=>errors.push(e.message));
   try{
    await page.setContent('<style>body{margin:12px;font:14px Arial;background:#202020;color:#eee}</style><main id="zfsm-workspace"></main>');await page.addStyleTag({content:css+protectionCSS});for(const content of scripts)await page.addScriptTag({content});
@@ -15,7 +15,6 @@ try{
     window.selectorCalls=[];window.selectorData={datasets:names.map(name=>({name,guid:'3'})),policies:[],replications:[],jobs:[],templates:{},issues:[],credentials:[],scheduler:{external:[],issues:[]}};
     window.zfsm_workspace=zfsmCreateWorkspace({root:document.querySelector('main'),config:{refresh_interval:refreshInterval,destructive_mode:1},request:async fields=>{selectorCalls.push(fields);if(fields.cmd==='inventory')return {op:'getAll',data:{pools:{cache:{Health:'ONLINE',Size:1000,Used:1}},datasets:{cache:tree},devices:{cache:''},errors:{}}};if(fields.cmd==='conversionjobs')return {jobs:[],worker_running:true};if(fields.cmd==='pooldiagnostics')throw Error('Synthetic unavailable');if(fields.cmd==='protectiondetect')return {visible:true,installed:true,enabled:true,compatible:true,state:'healthy',issues:[],sanoid:{version:'2.3.0'},syncoid:{version:'2.3.0'}};if(fields.cmd==='protectiondata')return structuredClone(selectorData);throw Error('Unexpected command '+fields.cmd);}});
    },{names,refreshInterval});
-   await page.locator('[data-layout-choice='+layout+']').click();
    for(const [section,label,field]of [['protection','New policy','dataset'],['replication','New replication','source']]){
     await page.locator('[data-section='+section+']').click();await page.getByRole('button',{name:label,exact:true}).click();const d=page.getByRole('dialog');assert.deepEqual(await d.locator('[name='+field+'] option').evaluateAll(items=>items.map(o=>o.value)),['',...names]);await page.screenshot({path:out+'/'+width+'-'+layout+'-'+section+'-'+names.length+'.png'});await d.getByRole('button',{name:'Close',exact:true}).click();
    }

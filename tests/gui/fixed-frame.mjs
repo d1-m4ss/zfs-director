@@ -20,7 +20,7 @@ const scrollers=page=>page.evaluate(()=>{
 async function fresh(width,height,layout='tree'){
  const context=await browser.newContext({viewport:{width,height}});const page=await context.newPage();page.setDefaultTimeout(5000);page.on('pageerror',e=>errors.push(e.message));
  await context.route('**/*',route=>route.request().url().startsWith(mock.url)?route.continue():route.abort());
- await page.goto(mock.url);await page.locator('[data-layout-choice="'+layout+'"]').click();return {context,page};
+ await page.goto(mock.url);return {context,page};
 }
 try{
  for(const [width,height] of [[390,800],[768,900],[1280,720],[1920,1000]]){

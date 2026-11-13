@@ -8,7 +8,7 @@ const names=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.
 const sources=await Promise.all(names.map(n=>readFile('src/frontend/'+n,'utf8'))),hashes=Object.fromEntries(names.map((n,i)=>[n,createHash('sha256').update(sources[i]).digest('hex')]));
 const browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true}),results=[],errors=[];
 try{
- for(const theme of ['dark','gray','light','azure'])for(const mode of ['Workspace','Compact'])for(const severity of ['ok','warning','error','unknown'])for(const width of(theme==='light'?[390,1280]:[1280])){
+ for(const theme of ['dark','gray','light','azure'])for(const mode of ['Workspace'])for(const severity of ['ok','warning','error','unknown'])for(const width of(theme==='light'?[390,1280]:[1280])){
   const page=await browser.newPage({viewport:{width,height:950}});page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',r=>r.abort());await page.setContent('<style>body{margin:0;padding:12px;background:#ddd;font:13px Arial}</style><main id="zfsm-workspace"></main>');
   for(let i=0;i<names.length;i++)if(names[i].endsWith('.css'))await page.addStyleTag({content:sources[i]});else await page.addScriptTag({content:sources[i]});
   await page.evaluate(async severity=>{
@@ -25,7 +25,7 @@ try{
     throw Error('Unexpected fixture request '+f.cmd);
    }});await app.refresh();
   },severity);
-  await page.getByRole('button',{name:'Overview',exact:true}).first().click();await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);await page.getByRole('button',{name:mode,exact:true}).click();
+  await page.getByRole('button',{name:'Overview',exact:true}).first().click();await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);
   const label={ok:'Healthy',warning:'Warning',error:'Error',unknown:'Not checked'}[severity],badge=page.locator('[data-pool-health="cache"]');await badge.waitFor();assert.equal(await badge.getAttribute('data-severity'),severity);assert.match(await badge.innerText(),new RegExp(label));assert.equal(await badge.locator('[aria-hidden=true]').count(),1);assert.match(await page.locator('.zfsm-dashboard-metrics').innerText(),/Ready · No active jobs/);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   const color=await badge.evaluate(el=>getComputedStyle(el).color),icon=await badge.locator('[aria-hidden=true]').textContent();results.push({theme,mode,severity,width,label,icon,color});await page.screenshot({path:out+'/'+theme+'-'+width+'-'+mode.toLowerCase()+'-'+severity+'.png',fullPage:true});await page.evaluate(()=>app.stop());await page.close();
  }

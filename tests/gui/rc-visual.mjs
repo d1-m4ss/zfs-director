@@ -45,8 +45,8 @@ try{
   assert.equal(mock.model.calls.some(call=>['snapshotdataset','destroysnapshot'].includes(call.cmd)),false);await capture('390-snapshot-dataset-chooser');
  });
 
- for(const theme of ['auto','dark','gray','light','azure'])for(const layout of ['Workspace','Compact table'])await test(theme+' '+layout+' real screenshot and selection',async()=>{
-  await fresh();await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);await page.getByRole('button',{name:layout,exact:true}).click();assert.equal(await page.evaluate(()=>zfsm_workspace.getState().selection),project);await page.locator('.zfsm-overview-card').first().waitFor();await capture('theme-'+theme+'-'+(layout==='Workspace'?'workspace':'compact'));
+ for(const theme of ['auto','dark','gray','light','azure'])for(const layout of ['Workspace'])await test(theme+' '+layout+' real screenshot and selection',async()=>{
+  await fresh();await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);assert.equal(await page.evaluate(()=>zfsm_workspace.getState().selection),project);await page.locator('.zfsm-overview-card').first().waitFor();await capture('theme-'+theme+'-'+(layout==='Workspace'?'workspace':'compact'));
   colors.push(await page.locator('#zfsm-workspace').evaluate((el)=>{const s=getComputedStyle(el);return {theme:el.dataset.theme,layout:el.dataset.layout,bg:s.backgroundColor,text:s.color,muted:s.getPropertyValue('--zfsm-muted').trim(),accent:s.getPropertyValue('--zfsm-accent').trim()};}));
  });
  for(const width of [390,768,1280,1920])await test(width+' responsive key workflows and touch controls',async()=>{

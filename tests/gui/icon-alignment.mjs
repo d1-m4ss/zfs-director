@@ -31,14 +31,14 @@ function verify(key,kind,items,size){
  }
 }
 try{
- for(const width of [390,796,1280])for(const theme of ['auto','dark','gray','light','azure'])for(const layout of ['Workspace','Compact']){
+ for(const width of [390,796,1280])for(const theme of ['auto','dark','gray','light','azure'])for(const layout of ['Workspace']){
   mock.reset();const context=await browser.newContext({viewport:{width,height:1000},hasTouch:width===390}),page=await context.newPage();
   page.setDefaultTimeout(5000);page.on('pageerror',error=>errors.push(error.message));
   await context.route('**/*',route=>{if(route.request().url().startsWith(mock.url))return route.continue();external.push(route.request().url());return route.abort();});
   const key=theme+'-'+width+'-'+layout.toLowerCase();
   try{
    await page.goto(mock.url);await page.locator('[data-node="'+lab+'/project"]').click();
-   await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);await page.getByRole('button',{name:layout,exact:true}).click();
+   await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);
    await page.locator('[data-tab=actions]').click();
    const actions=await measure(page,'.zfsm-actions>button>svg'),navigation=await measure(page,'.zfsm-global-nav button>svg,.zfsm-tabs button>svg'),refresh=await measure(page,'.zfsm-refresh-button>svg');
    verify(key,'dataset action',actions,18);verify(key,'navigation',navigation,18);

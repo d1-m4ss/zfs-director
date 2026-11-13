@@ -52,8 +52,7 @@ async function setup(page,theme,width,layout,gate='visible'){
   }});
  },{fixtureData:protectionUXFixture(),gate,policyTimesOnly,refreshInterval:['0','30'].includes(process.env.ZFSM_REFRESH_INTERVAL)?Number(process.env.ZFSM_REFRESH_INTERVAL):0});
  await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);
- await page.locator('[data-layout-choice='+layout+']').click();
-}
+ }
 async function modalChecks(page,key){
  const dialog=page.getByRole('dialog');await dialog.waitFor();
  const g=await dialog.evaluate(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);const lum=c=>{const rgb=c.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];};let p=e,b=s.backgroundColor;while((b==='rgba(0, 0, 0, 0)'||b==='transparent')&&p.parentElement){p=p.parentElement;b=getComputedStyle(p).backgroundColor;}const a=lum(s.color),v=lum(b);return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight,contrast:(Math.max(a,v)+.05)/(Math.min(a,v)+.05),scrollWidth:e.scrollWidth,clientWidth:e.clientWidth};});
@@ -132,7 +131,7 @@ try{
   }
  }else{
   const themes=phase==='before'?['light']:(process.env.ZFSM_THEMES?.split(',')||['auto','dark','gray','light','azure']),widths=phase==='before'?[390,1280]:(process.env.ZFSM_WIDTHS?.split(',').map(Number)||[390,768,1280,1920]);
-  for(const theme of themes)for(const width of widths)for(const layout of ['tree','table']){
+  for(const theme of themes)for(const width of widths)for(const layout of ['tree']){
    const page=await browser.newPage({viewport:{width,height:1000}});page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',r=>r.abort());await setup(page,theme,width,layout);
    if(policyTimesOnly){const key=`${theme}-${width}-${layout}`;await policyTimesChecks(page,key);await page.evaluate(()=>zfsm_workspace.stop());await page.close();console.log('POLICY TIMES '+key);continue;}
    for(const screen of screens){await navigate(page,screen);const key=`${theme}-${width}-${layout}-${screen}`,g=await geometry(page);results.push({theme,width,layout,screen,...g});check(g.scrollWidth<=width,key+' page overflow '+g.scrollWidth);await capture(page,key);

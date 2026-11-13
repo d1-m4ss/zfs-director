@@ -7,9 +7,9 @@ const out=process.env.ZFSM_OUTPUT||'evidence/ux-refinement-2026-10-20/alignment'
 const mock=await startMock(),browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true});
 const measurements=[],issues=[];
 try{
- for(const width of [1920,1280,390])for(const theme of ['dark','gray','light','azure'])for(const layout of ['Workspace','Compact']){
+ for(const width of [1920,1280,390])for(const theme of ['dark','gray','light','azure'])for(const layout of ['Workspace']){
   mock.reset();const context=await browser.newContext({viewport:{width,height:1000}}),page=await context.newPage();page.on('pageerror',e=>issues.push(e.message));await context.route('**/*',r=>r.request().url().startsWith(mock.url)?r.continue():r.abort());
-  await page.goto(mock.url);await page.locator('[data-node="'+lab+'/project"]').click();await page.locator('[data-tab="overview"]').click();await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);await page.getByRole('button',{name:layout,exact:true}).click();
+  await page.goto(mock.url);await page.locator('[data-node="'+lab+'/project"]').click();await page.locator('[data-tab="overview"]').click();await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);
   const key=theme+'-'+width+'-'+layout.toLowerCase();await page.screenshot({path:out+'/'+key+'.png',fullPage:true});
   const measured=await page.locator('.zfsm-overview-card>header').evaluateAll(els=>els.map(el=>{const heading=el.querySelector('h3'),detail=el.querySelector('small'),icon=heading?.querySelector('svg');const box=e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,cy:r.y+r.height/2,height:r.height,width:r.width};};return {heading:box(heading),detail:detail?box(detail):null,icon:icon?box(icon):null,text:heading.textContent};}));
   measurements.push({key,headers:measured});

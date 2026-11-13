@@ -635,6 +635,8 @@
             control.setCustomValidity(message); errors[name].textContent = message;
             control.setAttribute('aria-invalid', message ? 'true' : 'false');
           }
+          // A problem in a collapsed Advanced field must never stay hidden.
+          if (Object.keys(answer.errors).some(name => advancedGrid.contains(state.fields[name] || null))) advanced.open = true;
           preview.textContent = 'Snapshot name preview: ' + (answer.snapshot_preview || 'Correct the naming fields to generate a valid name.');
           state.validationBusy=false;enable(state);
         } catch (error) {

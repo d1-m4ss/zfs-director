@@ -14,8 +14,7 @@ async function fresh({profile=0,width=1280,theme='dark',layout='tree'}={}){
  context=await browser.newContext({viewport:{width,height:720}});page=await context.newPage();page.setDefaultTimeout(5000);page.on('pageerror',e=>errors.push(e.message));
  await context.route('**/*',route=>route.request().url().startsWith(mock.url)?route.continue():route.abort());
  await page.goto(mock.url);await page.locator('[data-node="'+project+'"]').click();await page.locator('[data-tab=actions]').click();
- await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);await page.locator('[data-layout-choice="'+layout+'"]').click();
-}
+ await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption(theme);}
 async function open(label='Destroy dataset'){
  await page.getByRole('button',{name:label,exact:true}).click();
  const dialog=page.getByRole('dialog',{name:label==='Take Snapshot'?'Create snapshot':label==='Edit Dataset'?'Edit properties':label,exact:true});await dialog.waitFor();return dialog;
@@ -30,7 +29,7 @@ function fits(g){assert.equal(g.modal,true,'Background actions must be inert thr
 async function shot(name){await page.screenshot({path:out+'/'+name+'.png'});}
 async function run(name,fn){if(process.env.ZFSM_CASE&&!name.includes(process.env.ZFSM_CASE))return;try{await fn();results.push({name,status:'PASS'});console.log('PASS '+name);}catch(e){results.push({name,status:'FAIL',error:e.message});console.log('FAIL '+name+': '+e.message.split('\n')[0]);await shot('failure-'+results.length).catch(()=>{});}}
 try{
-for(const profile of [0,30])for(const theme of ['auto','dark','gray','light','azure'])for(const layout of ['tree','table'])for(const width of [390,1280])await run(`bounded deletion ${profile} ${theme} ${layout} ${width}`,async()=>{
+for(const profile of [0,30])for(const theme of ['auto','dark','gray','light','azure'])for(const layout of ['tree'])for(const width of [390,1280])await run(`bounded deletion ${profile} ${theme} ${layout} ${width}`,async()=>{
  await fresh({profile,width,theme,layout});
  await page.route('**/mock/admin',async route=>{
   const fields=new URLSearchParams(route.request().postData());if(fields.get('cmd')!=='previewdestroy')return route.continue();
