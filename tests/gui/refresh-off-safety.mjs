@@ -38,7 +38,7 @@ try{
   return {inventory_reads:2,cached_rows_before_retry:cachedRows,guard_before_retry:'blocked',guard_after_retry:'enabled',mutations:0};
  });
  await record('idle for three virtual minutes follows the requested refresh profile',async()=>{
-  await fresh();await page.clock.install();await page.goto(mock.url);await select();await settled();await page.waitForFunction(()=>document.querySelector('[data-section=jobs]')?.textContent.includes('3'));
+  await fresh();await page.clock.install();await page.goto(mock.url);await select();await settled();for(let i=0;i<50&&!commands.includes('conversionjobs');i++)await page.waitForTimeout(100);assert.ok(commands.includes('conversionjobs'),'Jobs must load before the idle period');
   const poll=page.waitForResponse(response=>response.url()===mock.url+'/mock/admin'&&new URLSearchParams(response.request().postData()).get('cmd')==='conversionjobs'),inventory=refreshInterval===0?null:page.waitForResponse(response=>response.url()===mock.url+'/mock/admin'&&new URLSearchParams(response.request().postData()).get('cmd')==='inventory');await page.clock.fastForward(180000);await poll;if(inventory){await inventory;await settled();}
   const reads=commands.filter(cmd=>cmd==='inventory').length;if(refreshInterval===0)assert.equal(reads,1);else assert.ok(reads>=2,'Enabled periodic refresh must read inventory');assert.ok(commands.filter(cmd=>cmd==='conversionjobs').length>=2);assert.equal(mock.model.config.refresh_interval,refreshInterval);
   return {inventory_reads:reads,jobs_reads:commands.filter(cmd=>cmd==='conversionjobs').length,virtual_seconds:180};
