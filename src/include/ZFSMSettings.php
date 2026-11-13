@@ -3,7 +3,20 @@ function zfsmSettingsFields() {
     return array_keys(zfsmSettingsSchema());
 }
 
+// UX-004: General settings no longer send sanoid_integration; the one switch for it lives in
+// Settings > Sanoid / Syncoid Integration (protectionsettings). An older client may still send
+// it, so it is accepted; when absent, the stored value is kept as it is.
+function zfsmSettingsKeepIntegration($settings) {
+    if (!is_array($settings) || array_key_exists('sanoid_integration',$settings)) return $settings;
+    // Same source zfsmSaveSettings merges into: the stored .cfg, else Unraid's defaults.
+    $file=$GLOBALS['plugin_config']??null;$stored=is_string($file)&&is_file($file)?@parse_ini_file($file,true,INI_SCANNER_NORMAL):null;
+    $config=is_array($stored)?$stored:(function_exists('parse_plugin_cfg')?parse_plugin_cfg($GLOBALS['plugin'],true):[]);
+    $current=loadConfig(is_array($config)?$config:[])['sanoid_integration']??'0';
+    $settings['sanoid_integration']=(string)$current==='1'?'1':'0';
+    return $settings;
+}
 function zfsmValidateSettings($settings) {
+    $settings=zfsmSettingsKeepIntegration($settings);
     $errors=[]; $preview=''; $schema=zfsmSettingsSchema(); $allowed=array_keys($schema);
     $optional=array_keys(array_filter($schema,fn($spec)=>!empty($spec['optional'])));
     if (!is_array($settings)) return ['valid'=>false,'errors'=>['settings'=>'Settings must be an object.'],'snapshot_preview'=>''];
@@ -39,7 +52,8 @@ function zfsmValidateSettings($settings) {
 function zfsmSaveSettings($settings) {
     $validation=zfsmValidateSettings($settings);
     if (!$validation['valid']) return array_merge(zfsmFailure('settings','Invalid settings. Correct the indicated fields.'),['field_errors'=>$validation['errors'],'snapshot_preview'=>$validation['snapshot_preview']]);
-    if($settings['sanoid_integration']==='1') {
+    // Without the field the stored integration value is not touched (UX-004).
+    if(($settings['sanoid_integration']??null)==='1') {
         try{zfsmProtectionRequire(false);}catch(Throwable $error){return zfsmFailure('sanoid_integration',$error->getMessage());}
     }
     $file=$GLOBALS['plugin_config'];

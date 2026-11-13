@@ -110,3 +110,31 @@ test('saving settings preserves literal environment expressions in unknown INI v
         assert.equal(Object.keys(output.answer.failed).length, 0);
     } finally { php.exit(); }
 });
+
+// UX-004: General settings no longer send sanoid_integration. Saving them keeps the stored
+// value; an older client that still sends the field keeps working.
+test('saving General settings without the integration field keeps the stored integration value', async () => {
+    const php = await runtime();
+    try {
+        const {sanoid_integration, ...general} = settings;
+        const encoded = Buffer.from(JSON.stringify(general)).toString('base64');
+        const result = await php.run({code:`<?php require '/app/harness.php';
+            $GLOBALS['plugin_config']='/acceptance-integration.cfg';
+            file_put_contents($GLOBALS['plugin_config'],"[general]\\nsanoid_integration=\\"1\\"\\n");
+            $settings=json_decode(base64_decode('${encoded}'),true);
+            $validation=zfsmValidateSettings($settings);
+            $answer=zfsmSaveSettings($settings);
+            $stored=parse_ini_file($GLOBALS['plugin_config'],true,INI_SCANNER_NORMAL);
+            $old=zfsmSaveSettings($settings+['sanoid_integration'=>'0']);
+            $after=parse_ini_file($GLOBALS['plugin_config'],true,INI_SCANNER_NORMAL);
+            echo json_encode(['valid'=>$validation['valid'],'failed'=>$answer['failed'],'stored'=>$stored['general']['sanoid_integration']??null,'old_client_failed'=>$old['failed'],'after_old_client'=>$after['general']['sanoid_integration']??null],JSON_THROW_ON_ERROR);
+        `});
+        assert.equal(result.exitCode, 0, result.errors);
+        const output = JSON.parse(result.text);
+        assert.equal(output.valid, true, 'a General form without the field is valid');
+        assert.deepEqual(output.failed, [], 'it saves without asking Sanoid / Syncoid');
+        assert.equal(output.stored, '1', 'the stored integration value is kept');
+        assert.deepEqual(output.old_client_failed, []);
+        assert.equal(output.after_old_client, '0', 'an older client that sends the field still changes it');
+    } finally { php.exit(); }
+});

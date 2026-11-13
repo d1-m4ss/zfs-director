@@ -50,8 +50,8 @@ test('Overview reports actual worker state and refreshes it without relying on p
 test('available worker never claims idle when global activity counts are missing or invalid',async()=>{
  for(const counts of [undefined,{active:'0'},{active:-1}]){const t=await mount({worker_running:true,counts});try{t.root.querySelector('[data-section=overview]').click();await settle();assert.match(t.root.querySelector('.zfsm-dashboard-metrics').textContent,/Ready · Activity unavailable/);assert.doesNotMatch(t.root.querySelector('.zfsm-dashboard-metrics').textContent,/No active jobs/);}finally{t.close();}}
 });
-test('Settings general form uses detected integration state instead of stale initial config',async()=>{
- const t=await mount();try{t.root.querySelector('[data-section=settings]').click();await settle();const general=t.root.querySelector('.zfsm-general-settings');general.open=true;general.dispatchEvent(new t.w.Event('toggle'));await settle();assert.equal(general.querySelector('[name=sanoid_integration]').value,'1');}finally{t.close();}
+test('General settings have no second Sanoid / Syncoid switch (UX-004)',async()=>{
+ const t=await mount();try{t.root.querySelector('[data-section=settings]').click();await settle();const general=t.root.querySelector('.zfsm-general-settings');general.open=true;general.dispatchEvent(new t.w.Event('toggle'));await settle();assert.ok(general.querySelector('[name=destructive_mode]'),'the General form is rendered');assert.equal(general.querySelector('[name=sanoid_integration]'),null,'the integration switch lives only in Sanoid / Syncoid Integration');assert.ok(t.root.querySelectorAll('[name=integration_enabled]').length<=1);}finally{t.close();}
 });
 
 function poolDiagnostic(severity='ok',stale=false){return {pool:'cache',health:'ONLINE',severity,stale,reasons:severity==='warning'?['Capacity threshold reached']:[],command_errors:[],status:{text:'verified fixture',state:'ONLINE',rows:[{name:'cache',state:'ONLINE',read:'0',write:'0',cksum:'0'}]},information:{text:'verified fixture',columns:['NAME','SIZE','ALLOC','FREE','CKPOINT','EXPANDSZ','FRAG','CAP','DEDUP','HEALTH','ALTROOT'],rows:[{name:'cache',health:'ONLINE'}]}};}
