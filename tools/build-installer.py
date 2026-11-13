@@ -18,7 +18,9 @@ import zipfile
 from urllib.parse import urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-VERSION = '2026.11.13.3'
+VERSION = (ROOT / 'VERSION').read_text().strip()
+if not re.fullmatch(r'[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+', VERSION):
+    raise SystemExit('VERSION is not a release version')
 STOP_MARKER = r'''use strict;
 use warnings;
 use Fcntl qw(:DEFAULT :mode);

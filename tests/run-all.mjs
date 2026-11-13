@@ -48,6 +48,8 @@ steps.push({name: 'unit-tests', build: async () => {
     .map(f => 'tests/' + f);
   return [process.execPath, ['--test', '--test-concurrency=1', '--test-force-exit', ...files]];
 }});
+steps.push({name: 'installer', build: async () => ['python3', ['tests/installer.test.py']]});
+steps.push({name: 'release-script', build: async () => ['python3', ['tests/release-script.test.py']]});
 steps.push({name: 'gui:run', build: async () => [process.execPath, ['tests/gui/run.mjs']]});
 steps.push({name: 'integration:run', build: async () => [process.execPath, ['tests/integration/run.mjs']]});
 for (const script of GUI_SCRIPTS) steps.push({name: 'gui:' + script, build: async () => [process.execPath, ['tests/gui/' + script + '.mjs']]});
