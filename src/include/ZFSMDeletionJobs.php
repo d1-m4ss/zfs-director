@@ -30,7 +30,12 @@ function zfsmDirectoryDeletionPreview($directory,$force) {
     $services=zfsmDependencyMutationBlockers('deletedirectory',['directory'=>$path]);
     // Probe the operation lock for a few seconds and release it at once.
     $holder=null;try{$lock=zfsmAcquireOperationLockWaiting($GLOBALS['plugin_lock'],3.0);flock($lock,LOCK_UN);fclose($lock);}
-    catch(Throwable$error){if(preg_match('/^Held by: (.+)$/m',$error->getMessage(),$found))$holder=$found[1];$blockers[]=['kind'=>'lock','title'=>'Can\'t delete now: another Director operation is running'.($holder?' ('.$holder.')':''),'fix'=>'Wait for it in Jobs, then press Check again.'];}
+    catch(Throwable$error){
+        // A busy lock means another operation; any other lock failure means the lock
+        // itself is broken, and waiting in Jobs would never help.
+        if(str_starts_with($error->getMessage(),'Another operation is running')){if(preg_match('/^Held by: (.+)$/m',$error->getMessage(),$found))$holder=$found[1];$blockers[]=['kind'=>'lock','title'=>'Can\'t delete now: another Director operation is running'.($holder?' ('.$holder.')':''),'fix'=>'Wait for it in Jobs, then press Check again.'];}
+        else $blockers[]=['kind'=>'lock','title'=>'Can\'t delete now: '.strtok($error->getMessage(),"\n"),'fix'=>'The operation lock file is broken or inaccessible. Check /var/lock and the plugin installation, then press Check again.'];
+    }
     return ['target'=>$path,'dataset'=>$resolved['dataset'],'recursive'=>$recursive,'blockers'=>$blockers,'service_blockers'=>$services,'note'=>$blockers||$services?'':$note,'can_delete'=>!$blockers&&!$services];
 }
 function zfsmRecordRejectedDeletion($kind,$source,$failed,$audit_id) {
