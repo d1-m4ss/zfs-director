@@ -10,7 +10,7 @@
 
 **[Скачать установочный ZIP для Unraid](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.12/ZFS-Director-2026.11.09.12-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.12/SHA256SUMS) · [Установка и rollback](docs/INSTALLATION.md)
 
-**Версия 2026.10.22.1** проверена на физическом сервере Unraid 7.3.3 с OpenZFS 2.4.4 и в изолированной VM. Установка, обновления, ZFS-операции и GUI описаны в [результатах проверки](docs/TESTING.md#rc1-verification-2026-10-22).
+Каждый релиз проходит автоматические тесты (`npm run test:all`: unit- и PHP-тесты, GUI-проверки в Chromium и интеграционные). Установка, обновления, ZFS-операции и GUI проверены на физическом сервере Unraid 7.3.3 с OpenZFS 2.4.4 для RC1 (2026-10-22). Что покрыто, а что нет, описано в [результатах проверки](docs/TESTING.md).
 
 <table>
 <tr><th>Snapshot File Manager</th><th>Sanoid snapshot policies</th><th>Syncoid Replication Wizard</th></tr>

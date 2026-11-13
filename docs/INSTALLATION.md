@@ -56,4 +56,4 @@ Settings, Jobs, audit and recovery data remain on the flash drive for a later re
 
 ## Compatibility and testing
 
-Installation, upgrade and normal reboot were evaluated in an isolated Unraid VM. An upgrade and temporary-dataset smoke test were also verified on a running Unraid host, preserving existing state and schedules without rebooting it. Power-loss recovery and native reboot with pending recovery require separate validation. See [Testing](https://github.com/d1-m4ss/zfs-director/blob/2026.10.22.1/docs/TESTING.md#rc1-verification-2026-10-22) and [the developer guide](https://github.com/d1-m4ss/zfs-director/blob/2026.10.22.1/docs/DEVELOPMENT.md).
+Installation, upgrade and normal reboot were evaluated in an isolated Unraid VM. An upgrade and temporary-dataset smoke test were also verified on a running Unraid host, preserving existing state and schedules without rebooting it. Power-loss recovery and native reboot with pending recovery require separate validation. See [Testing](TESTING.md) and [the developer guide](DEVELOPMENT.md).

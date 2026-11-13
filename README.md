@@ -10,7 +10,7 @@ Manage ZFS in Unraid, browse snapshots in a **Snapshot File Manager**, automate 
 
 **[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.12/ZFS-Director-2026.11.09.12-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.09.12/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
 
-**Version 2026.10.22.1** was tested on a physical Unraid 7.3.3 server with OpenZFS 2.4.4 and in an isolated VM. See the [verification results](docs/TESTING.md#rc1-verification-2026-10-22) for installation, upgrades, ZFS operations and GUI checks.
+Every release passes the automated suite (`npm run test:all`: unit and PHP tests, Chromium GUI and integration checks). Installation, upgrades, ZFS operations and the GUI were verified on a physical Unraid 7.3.3 server with OpenZFS 2.4.4 for RC1 (2026-10-22). See [testing](docs/TESTING.md) for what is and is not covered.
 
 <table>
 <tr><th>Snapshot File Manager</th><th>Sanoid snapshot policies</th><th>Syncoid Replication Wizard</th></tr>
