@@ -46,3 +46,20 @@ test('a remote replication only owns its local source',async t=>{
  assert.equal(out.source,out.id);
  assert.equal(out.remote_name,null,'a remote target name does not lock a local dataset');
 });
+test('PERF-001: the worker queue scan rereads only changed journals',async t=>{
+ const out=await run(t,`$GLOBALS['zfsm_job_read_cache']=true;
+ $a=running('cache/__mock__/project','cache/__mock__/backup');$b=running('cache/__mock__/other','cache/__mock__/backup2');
+ $reads=fn()=>$GLOBALS['zfsm_job_cache_reads']??0;
+ zfsmPendingJobs();$first=$reads();zfsmPendingJobs();$idle=$reads()-$first;
+ $job=zfsmReadJob($a);$job['state']='queued';zfsmJobAtomicWrite(zfsmJobFile($a),$job);
+ $before=$reads();$pending=zfsmPendingJobs();$changed=$reads()-$before;
+ $states=[];foreach($pending as$j)$states[$j['id']]=$j['state'];
+ unset($GLOBALS['zfsm_job_read_cache']);$before=$reads();zfsmPendingJobs();$uncached=$reads()-$before;
+ echo json_encode(['first'=>$first,'idle'=>$idle,'changed'=>$changed,'a'=>$states[$a]??null,'b'=>$states[$b]??null,'uncached_counter'=>$uncached]);`);
+ assert.equal(out.first,2,'the first scan reads every journal');
+ assert.equal(out.idle,0,'an idle scan reads no journal');
+ assert.equal(out.changed,1,'only the rewritten journal is read again');
+ assert.equal(out.a,'queued','the rewritten state is seen in the same scan');
+ assert.equal(out.b,'running');
+ assert.equal(out.uncached_counter,0,'request handlers bypass the cache');
+});

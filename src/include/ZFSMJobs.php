@@ -60,6 +60,28 @@ function zfsmReadJob($id) {
     if (!is_array($job)||($job['id']??null)!==$id) throw new RuntimeException('Job journal identity mismatch');
     return $job;
 }
+// PERF-001: the worker polls the queue every 0.5 s. Journals are only ever replaced by
+// zfsmJobAtomicWrite (a rename, so a new inode), so an unchanged inode, size, mtime and ctime
+// means unchanged content. Only the long-running worker enables this cache
+// ($GLOBALS['zfsm_job_read_cache']); request handlers always read the file.
+function zfsmReadJobForQueue(string $file) {
+    $id=basename($file,'.json');
+    if (empty($GLOBALS['zfsm_job_read_cache'])) return zfsmReadJob($id);
+    clearstatcache(true,$file);$stat=@lstat($file);
+    if (!$stat || ($stat['mode']&0170000)!==0100000) { unset($GLOBALS['zfsm_job_cache'][$file]); return zfsmReadJob($id); }
+    $key=$stat['dev'].':'.$stat['ino'].':'.$stat['size'].':'.$stat['mtime'].':'.$stat['ctime'];
+    $cached=$GLOBALS['zfsm_job_cache'][$file]??null;
+    if (is_array($cached) && $cached['key']===$key) { $GLOBALS['zfsm_job_cache_hits']=($GLOBALS['zfsm_job_cache_hits']??0)+1; return $cached['job']; }
+    $job=zfsmReadJob($id);
+    // zfsmReadJob may resolve a different file (durable copy wins over tmpfs); cache only a
+    // read of this exact path.
+    if (zfsmJobFile($id)===$file) {
+        if (count($GLOBALS['zfsm_job_cache']??[])>=4096) $GLOBALS['zfsm_job_cache']=[];
+        $GLOBALS['zfsm_job_cache'][$file]=['key'=>$key,'job'=>$job];
+    }
+    $GLOBALS['zfsm_job_cache_reads']=($GLOBALS['zfsm_job_cache_reads']??0)+1;
+    return $job;
+}
 function zfsmJobStageHistory($job) {
     $events=[];
     foreach (is_array($job['stage_history']??null)?$job['stage_history']:[] as $event) {
@@ -124,7 +146,7 @@ function zfsmPendingJobs(?string $lane=null) {
     $jobs=[];$seen=[];
     foreach (glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[] as $file) {
         $seen[basename($file,'.json')]=true;
-        try { $job=zfsmReadJob(basename($file,'.json')); if (zfsmJobProblem($job)) continue; if (in_array($job['state']??'',['queued','running'],true) || ((in_array($job['type']??'',['restore','archive'],true)&&!empty($job['hold_owned']) || (function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job)))&&($job['cleanup_retry_after']??0)<=time())) $jobs[]=$job; }
+        try { $job=zfsmReadJobForQueue($file); if (zfsmJobProblem($job)) continue; if (in_array($job['state']??'',['queued','running'],true) || ((in_array($job['type']??'',['restore','archive'],true)&&!empty($job['hold_owned']) || (function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job)))&&($job['cleanup_retry_after']??0)<=time())) $jobs[]=$job; }
         catch (Throwable $error) { /* Invalid journals remain visible for manual recovery. */ }
     }
     // A scheduled policy check (REL-002) starts in the tmpfs runtime queue; the worker, dedup
@@ -137,7 +159,7 @@ function zfsmPendingJobs(?string $lane=null) {
     foreach (glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[] as $file) {
         $name=basename($file,'.json');
         if (isset($seen[$name])) continue;
-        try { $job=zfsmReadJob($name); } catch (Throwable $error) { continue; }
+        try { $job=zfsmReadJobForQueue($file); } catch (Throwable $error) { continue; }
         if (zfsmJobProblem($job) || !in_array($job['state']??'',['queued','running'],true)) continue;
         $jobs[]=$job;
     }

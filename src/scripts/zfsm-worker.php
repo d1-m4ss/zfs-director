@@ -62,7 +62,7 @@ $lane_lock=zfsmWorkerLaneLock($lane);
 if (is_link($lane_lock)) exit(1);
 $worker_lock=@fopen($lane_lock,'c');
 if (!$worker_lock || !flock($worker_lock,LOCK_EX|LOCK_NB)) exit(0);
-$monitor=null;$historyCheckAt=0;
+$monitor=null;$historyCheckAt=0;$GLOBALS['zfsm_job_read_cache']=true;
 try {
     while (!zfsmWorkerStopRequested()) {
         if ($lane==='files' && (!is_resource($monitor) || !proc_get_status($monitor)['running'])) {
