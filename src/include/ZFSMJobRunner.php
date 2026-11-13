@@ -107,7 +107,7 @@ function zfsmRunConversionJob($id) {
         zfsmJobTargetState($job);
         $job=zfsmJobUpdate($id,['stage'=>'complete_source_retained','state'=>'completed','finished_at'=>gmdate('c'),'error'=>null]);
         zfsmWriteJobProgress($id,['stage'=>'completed','percent'=>100,'bytes'=>$progress['bytes']]);
-        zfsmAuditFinish($audit_id,['status'=>'succeeded']); refreshData();
+        zfsmAuditFinish($audit_id,['status'=>'succeeded']);
         return $job;
     } catch (Throwable $error) {
         $cancelled=$error->getMessage()==='cancel_requested';

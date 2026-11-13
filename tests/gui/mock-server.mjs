@@ -43,7 +43,7 @@ export function createModel() {
     function insert(name,extra={}){const parent=find(name.slice(0,name.lastIndexOf('/')));if(!parent)throw Error('Missing parent');if(find(name))throw Error('Dataset already exists');return parent.child[name]=node(name,extra);}
     function remove(name){const parent=find(name.slice(0,name.lastIndexOf('/')));if(!parent?.child[name])throw Error('Unknown dataset');delete parent.child[name];}
     function queue(type,fields={}){const job={id:'20261016-1000'+String(sequence++).padStart(2,'0')+'-444444444444',schema:1,type,state:'queued',stage:'queued',created:now(),updated:now(),progress:{percent:0,bytes:0},...fields};jobs.unshift(job);return job;}
-    function inventory(){const copy=structuredClone(data);const count=all().reduce((n,item)=>n+(item.snapshots||[]).length,0);copy.pools.cache.Snapshots=count;copy.datasets.cache.total_snapshots=count;return {op:'getAll',data:copy,config:structuredClone(config),publishing_paused:false};}
+    function inventory(){const copy=structuredClone(data);const count=all().reduce((n,item)=>n+(item.snapshots||[]).length,0);copy.pools.cache.Snapshots=count;copy.datasets.cache.total_snapshots=count;return {op:'getAll',data:copy,config:structuredClone(config)};}
     function endpoint(fields) {
         const {cmd}=fields;const target=fields.zdataset||fields.snapshot||fields.directory||fields.job_id||fields.pool||'settings';
         if(model.failedCommand===cmd)throw Error('Simulated '+cmd+' failure');

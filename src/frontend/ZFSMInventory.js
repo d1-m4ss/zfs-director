@@ -91,7 +91,6 @@ function createZFSMInventoryController(options) {
                 options.render(data, true);
                 const errors = Object.values(data.errors || {});
                 let message = 'Last refresh at ' + zfsmFormatDateTime(new Date());
-                if (answer.publishing_paused) message += ' — Unraid push updates paused; inventory loaded directly.';
                 if (errors.length) message += ' — Query errors: ' + errors.join('; ');
                 options.status(message, errors.length > 0);
                 finish();

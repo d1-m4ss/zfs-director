@@ -155,12 +155,12 @@ function zfsmRunDeletionJob($id) {
         $job=zfsmJobUpdate($id,['state'=>$state,'stage'=>$failure===null?'completed':'verifying','finished_at'=>gmdate('c'),'result'=>$result,'recovery'=>$result['recovery']??null,'error'=>$failure,'exit_code'=>$result['exit_code']??null]);
         if ($failure===null) zfsmWriteJobProgress($id,['stage'=>'completed','percent'=>100]);
         zfsmAuditFinish($audit,['status'=>$failure===null?'succeeded':'failed','reason'=>$failure===null?null:'command_failed','details'=>['stage'=>$job['stage'],'exit_code'=>$job['exit_code']]]);$audit=null;
-        refreshData();return $job;
+        return $job;
     } catch(Throwable $error) {
         if (!isset($job)||($job['schema']??null)!==6||zfsmJobProblem($job)) throw $error;
         [$code,$safe]=zfsmDeletionError($error->getMessage());
         $job=zfsmJobUpdate($id,['state'=>$attempted?'recovery_required':'failed','stage'=>$attempted?'interrupted':'preflight_failed','finished_at'=>gmdate('c'),'error_code'=>$attempted?'outcome_uncertain':$code,'error'=>$attempted?'Deletion was interrupted; some objects may already be removed. Inspect the target, Jobs and retained recovery journals. No automatic retry was performed.':$safe,'result'=>['attempted'=>$attempted,'state_verified'=>false,'summary'=>$attempted?'Deletion outcome is uncertain; manual inspection is required.':'No deletion was attempted.']]);
         if($audit!==null)try{zfsmAuditFinish($audit,['status'=>'failed','reason'=>'command_failed','details'=>['stage'=>$job['stage']]]);}catch(Throwable$ignored){}
-        if($attempted)refreshData();return $job;
+        return $job;
     } finally {unset($GLOBALS['zfsm_directory_reviewed']);if(is_resource($owned)){unset($GLOBALS['zfsm_operation_lock_handle']);flock($owned,LOCK_UN);fclose($owned);}}
 }

@@ -138,31 +138,8 @@ function loadConfig($config) {
 	return $zfsm_ret;
 }
 
-function zfsnotify( $subject, $description, $message, $type="normal") {	
-	$notify = ($GLOBALS["docroot"] ?? '/usr/local/emhttp').'/plugins/dynamix/scripts/notify';
-	runProcess($notify, array('-e', 'ZFS Director', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
-}
 
-function fromBytesToString($bytes) {
-	$units = array('B', 'KiB', 'MiB', 'GiB', 'TiB'); 
-
-	$bytes = is_numeric($bytes) ? max((float)$bytes, 0) : 0;
-   	$pow = floor(($bytes ? log($bytes) : 0) / log(1024)); 
-   	$pow = min($pow, count($units) - 1); 
-
-   	$bytes /= pow(1024, $pow);
-
-   return round($bytes, 2) . ' ' . $units[$pow]; 
-}
 	  
-function implodeWithKeys($glue, $array, $symbol = ': ') {
-	return implode( $glue, array_map( function($k, $v) use($symbol) {
-			return $k . $symbol . $v;
-		},
-		array_keys($array),
-		array_values($array))
-	);
-}
 	
 /** Feed pipes without blocking on a child that writes before reading stdin. */
 function zfsmProcessInput($process, $pipes, $input, $deadline = null, $limits = [1=>67108864, 2=>65536]) {
@@ -329,19 +306,5 @@ function sortDatasetArray($datasetArray) {
 	return $datasetArray;
 }
 
-function generatePoolDatasetOptions($dataset_array) {
-	if (!isset($dataset_array['child']) || !is_array($dataset_array['child']) || count($dataset_array['child']) <= 0):
-		return;
-	endif;
-	
-	foreach ($dataset_array['child'] as $zdataset):
-		$option = ltrim(stristr($zdataset['name'], '/'), '/')."/";
-		echo '<option value="'.htmlspecialchars($option, ENT_QUOTES, 'UTF-8').'">';
-
-		if (count($zdataset['child']) > 0):
-			generatePoolDatasetOptions($zdataset);
-		endif;
-	endforeach;
-}
 
 ?>

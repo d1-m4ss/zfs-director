@@ -4,7 +4,6 @@
 	$docroot = $docroot ?: '/usr/local/emhttp';
 	$plugin_config = "/boot/config/plugins/".$plugin."/".$plugin.".cfg";
 	$plugin_include = $docroot."/plugins/".$plugin."/include/";
-	$plugin_session_file = "/tmp/".$plugin."-session.data";
 	$plugin_lock = '/var/lock/'.$plugin.'.lock';
 	$plugin_config_lock = '/var/lock/'.$plugin.'.config.lock';
 	$plugin_state = '/boot/config/plugins/'.$plugin.'/jobs';
@@ -14,6 +13,4 @@
 	$plugin_audit = '/boot/config/plugins/'.$plugin.'/audit';
 		
 	$urlzmadmin = "/plugins/".$plugin."/backend/ZFSMAdmin.php";
-	$urlcreatedataset = "/plugins/".$plugin."/frontend/ZFSMCreateDataset.php";
-	$urladmindatasetsnaps = "/plugins/".$plugin."/frontend/ZFSMAdminDatasetSnaps.php";
 ?>

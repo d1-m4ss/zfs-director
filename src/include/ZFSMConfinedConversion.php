@@ -169,7 +169,7 @@ function zfsmPublishConversion($id) {
     zfsmConfinedTarget($job,$job['source'],true,true);
     foreach ([$staging,$job['staging']] as $dir) @rmdir($dir);
     $job=zfsmJobUpdate($id,['stage'=>'complete_source_retained','state'=>'completed','finished_at'=>gmdate('c'),'error'=>null]);
-    refreshData();return $job;
+    return $job;
 }
 
 function zfsmRunConfinedConversionJob($id) {
@@ -229,7 +229,7 @@ function zfsmRunConfinedConversionJob($id) {
         $activated=zfsmConfinedTarget($job,$job['source'],true,true);
         if ($activated['canmount']!=='on') throw new RuntimeException('Published filesystem activation was not applied; noauto target retained for inspection');
         $job=zfsmJobUpdate($id,['stage'=>'complete_source_retained','state'=>'completed','finished_at'=>gmdate('c'),'error'=>null]);
-        zfsmWriteJobProgress($id,['stage'=>'completed','percent'=>100]);zfsmAuditFinish($audit,['status'=>'succeeded']);$audit=null;refreshData();return $job;
+        zfsmWriteJobProgress($id,['stage'=>'completed','percent'=>100]);zfsmAuditFinish($audit,['status'=>'succeeded']);$audit=null;return $job;
     } catch (Throwable $error) {
         $job=zfsmJobUpdate($id,['state'=>'recovery_required','finished_at'=>gmdate('c'),'error'=>substr($error->getMessage(),0,4096)]);
         if ($audit!==null) {try{zfsmAuditFinish($audit,['status'=>'recovery_required','reason'=>'command_failed','details'=>['stage'=>$job['stage']??'unknown']]);}catch(Throwable $ignored){zfsmJobUpdate($id,['audit_error'=>'Unable to record conversion outcome']);}}

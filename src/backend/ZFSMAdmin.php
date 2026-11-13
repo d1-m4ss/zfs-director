@@ -32,7 +32,7 @@ function zfsmResolveAnswerCodes($answer) {
 	return $answer;
 }
 
-function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $refresh = false, $unraid_notify = false) {
+function zfsmReturnAnswer($ret) {
 	$answer = zfsmResolveAnswerCodes($ret);
 	if (!empty($GLOBALS['zfsm_request_audit'])) {
 		$id=$GLOBALS['zfsm_request_audit']; unset($GLOBALS['zfsm_request_audit']);
@@ -51,16 +51,6 @@ function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $refresh = 
 		catch (Throwable $error) { $answer['failed']['audit']='Operation may have completed, but its final audit record failed. Inspect actual state before retrying.'; error_log('ZFS Director: final audit write failed'); }
 	}
 	try{$answer=zfsmRequestJobAnswer($answer);}catch(Throwable$error){$answer['failed']['job_record']='The final job record could not be saved. Inspect Jobs and actual state before retrying.';error_log('ZFS Director: operation journal failed');}
-	if ($refresh && count($answer['succeeded']) > 0) refreshData();
-	if ($unraid_notify) {
-		$notification_map = function($map) {
-			$rows = array();
-			foreach ($map as $key=>$value) $rows[] = htmlspecialchars((string)$key, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').': '.htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-			return implode('<br>', $rows);
-		};
-		if ($answer['succeeded']) zfsnotify($title, $success_text.' for:<br>'.$notification_map($answer['succeeded']), '', 'normal');
-		if ($answer['failed']) zfsnotify($title, $failed_text.' for:<br>'.$notification_map($answer['failed']), '', 'warning');
-	}
 	echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 }
 
@@ -141,19 +131,19 @@ try {
 	zfsmAuditSetStage('executing_operation');
 	switch ($command) {
 		case 'protectionexternalpreview': echo json_encode(zfsmOwnershipTransferPreview(['id'=>zfsmPostString('id'),'type'=>zfsmPostString('type'),'data'=>is_array($_POST['data']??null)?$_POST['data']:[]],$request_token),JSON_THROW_ON_ERROR);break;
-		case 'protectionexternaltransfer': zfsmReturnAnswer(zfsmOwnershipTransferCommit($_POST,$request_token),'External ownership transfer','','');break;
+		case 'protectionexternaltransfer': zfsmReturnAnswer(zfsmOwnershipTransferCommit($_POST,$request_token));break;
 		case 'previewspaceproperty': echo json_encode(zfsmOperationPreview(zfsmSpacePropertyScope(zfsmPostString('zdataset'),zfsmPostString('property'),zfsmPostString('value')),$request_token),JSON_THROW_ON_ERROR);break;
 		case 'acleditorinfo': echo json_encode(zfsmACLEditorInfo(zfsmPostString('zdataset')),JSON_THROW_ON_ERROR);break;
 		case 'previewacl': echo json_encode(zfsmACLPreview(zfsmPostString('zdataset'),zfsmPostString('acl'),$request_token),JSON_THROW_ON_ERROR);break;
-		case 'editacl': zfsmReturnAnswer(zfsmCommitACL($_POST,$request_token),'POSIX ACL','','',true);break;
+		case 'editacl': zfsmReturnAnswer(zfsmCommitACL($_POST,$request_token));break;
 		case 'previewpromote': echo json_encode(zfsmOperationPreview(zfsmPromoteScope(zfsmPostString('zdataset')),$request_token),JSON_THROW_ON_ERROR);break;
 		case 'quotaoverview': echo json_encode(zfsmQuotaOverview(zfsmPostString('zdataset'),$zfsm_cfg),JSON_THROW_ON_ERROR);break;
 		case 'previewquota': echo json_encode(zfsmOperationPreview(zfsmQuotaScope(zfsmPostString('zdataset'),is_array($_POST['data']??null)?$_POST['data']:[]),$request_token),JSON_THROW_ON_ERROR);break;
-		case 'setquota': zfsmReturnAnswer(zfsmCommitQuota($_POST,$request_token),'Quota','','',true);break;
+		case 'setquota': zfsmReturnAnswer(zfsmCommitQuota($_POST,$request_token));break;
 		case 'protectionimportpreview':
 			echo json_encode(zfsmSanoidImportPreview(zfsmPostString('id'),$request_token),JSON_THROW_ON_ERROR);break;
 		case 'protectionimport':
-			zfsmReturnAnswer(zfsmSanoidImportCommit($_POST,$request_token),'Import snapshot policy','','');break;
+			zfsmReturnAnswer(zfsmSanoidImportCommit($_POST,$request_token));break;
 		case 'protectiondata':
 			echo json_encode(zfsmProtectionData(),JSON_THROW_ON_ERROR);break;
 		case 'protectionpolicypreview':
@@ -161,38 +151,38 @@ try {
 		case 'protectionreplicationpreview':
 			echo json_encode(zfsmSyncoidPreview(is_array($_POST['data']??null)?$_POST['data']:[],$request_token),JSON_THROW_ON_ERROR);break;
 		case 'protectionpolicysave':
-			zfsmReturnAnswer(zfsmSanoidCommit($_POST,$request_token),'Snapshot policy','','');break;
+			zfsmReturnAnswer(zfsmSanoidCommit($_POST,$request_token));break;
 		case 'protectionreplicationsave':
-			zfsmReturnAnswer(zfsmSyncoidCommit($_POST,$request_token),'Replication','','');break;
+			zfsmReturnAnswer(zfsmSyncoidCommit($_POST,$request_token));break;
 		case 'protectionrunpreview':
 			echo json_encode(zfsmProtectionRunPreview($_POST,$request_token),JSON_THROW_ON_ERROR);break;
 		case 'protectionrun':
-			zfsmReturnAnswer(zfsmProtectionRunCommit($_POST,$request_token),'Protection run','','');break;
+			zfsmReturnAnswer(zfsmProtectionRunCommit($_POST,$request_token));break;
 		case 'protectioncontrolpreview':
 			echo json_encode(zfsmProtectionControlPreview($_POST,$request_token),JSON_THROW_ON_ERROR);break;
 		case 'protectioncontrol':
-			zfsmReturnAnswer(zfsmProtectionControlCommit($_POST,$request_token),'Protection definition','','');break;
+			zfsmReturnAnswer(zfsmProtectionControlCommit($_POST,$request_token));break;
 		case 'protectioncancel':
 			zfsmProtectionRequire();$job=zfsmProtectionCancel(zfsmPostString('job_id'));
-			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Cancellation requested; partial data retained'],'failed'=>[]],'Cancel protection run','','');break;
+			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Cancellation requested; partial data retained'],'failed'=>[]]);break;
 		case 'protectiontest':
 			echo json_encode(zfsmProtectionTestConfiguration(),JSON_THROW_ON_ERROR);break;
 		case 'protectiondetect':
 			echo json_encode(zfsmProtectionDetection(),JSON_THROW_ON_ERROR);
 			break;
 		case 'protectionsettings':
-			zfsmReturnAnswer(zfsmProtectionSettings($_POST),'Data Protection','','');
+			zfsmReturnAnswer(zfsmProtectionSettings($_POST));
 			break;
 		case 'validatesettings':
 			echo json_encode(zfsmValidateSettings(is_array($_POST['settings']??null)?$_POST['settings']:[]),JSON_THROW_ON_ERROR);
 			break;
 		case 'scrubpool':
-			zfsmReturnAnswer(zfsmStartPoolScrub(zfsmPostString('pool'),zfsmPostString('confirmed')), 'ZFS Pool Scrub', '', '');
+			zfsmReturnAnswer(zfsmStartPoolScrub(zfsmPostString('pool'),zfsmPostString('confirmed')));
 			break;
 		case 'archivesnapshotfiles':
 			$job=zfsmQueueArchive(zfsmPostString('snapshot'),$_POST['selection']??[],zfsmPostString('snapshot_guid'));
 			$warning=null;try{zfsmStartWorker();}catch(Throwable$error){$warning='Worker did not start; ZIP remains queued';}
-			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'ZIP preparation queued'],'failed'=>[],'job'=>$job,'worker_warning'=>$warning],'Prepare ZIP','','');
+			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'ZIP preparation queued'],'failed'=>[],'job'=>$job,'worker_warning'=>$warning]);
 			break;
 		case 'downloadsnapshotarchive':
 			$id=zfsmJobId(zfsmPostString('job_id'));
@@ -215,11 +205,11 @@ try {
 		case 'restoresnapshotfiles':
 			$job=zfsmQueueRestore(zfsmPostString('preview_id'),zfsmPostString('preview_token'),$request_token,zfsmPostString('confirmed'));
 			$warning=null;try{zfsmStartWorker();}catch(Throwable $error){$warning='Worker did not start; restore remains queued';}
-			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Restore queued'],'failed'=>[],'job'=>$job,'worker_warning'=>$warning],'Restore files','','');
+			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Restore queued'],'failed'=>[],'job'=>$job,'worker_warning'=>$warning]);
 			break;
 		case 'cancelrestore':
 			$job=zfsmCancelRestore(zfsmPostString('job_id'));
-			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Cancellation requested; copied and replaced files will be retained'],'failed'=>[],'job'=>$job],'Cancel restore','','');
+			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Cancellation requested; copied and replaced files will be retained'],'failed'=>[],'job'=>$job]);
 			break;
 		case 'pooldiagnostics':
 			echo json_encode(zfsmReadMaintenanceDiagnostics(zfsmPostString('pool'),$zfsm_cfg), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
@@ -230,7 +220,7 @@ try {
 		case 'activityvisibility':
 			if(!is_string($_POST['kind']??null)||!in_array($_POST['kind'],['jobs','history'],true)||!is_string($_POST['archived']??null)||!in_array($_POST['archived'],['0','1'],true))throw new InvalidArgumentException('Invalid visibility request');
 			$answer=$_POST['kind']==='jobs'?zfsmActivitySetJobs($_POST['ids']??null,$_POST['archived']==='1'):zfsmActivitySetHistory($_POST['ids']??null,$_POST['archived']==='1',zfsmPostString('review_token'));
-			zfsmReturnAnswer($answer,'Activity visibility','','');
+			zfsmReturnAnswer($answer);
 			break;
 		case 'conversionjobs':
 			foreach(['page','page_size','filter','sort','view']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');
@@ -243,19 +233,19 @@ try {
 			break;
 		case 'cancelconversion':
 			$job=zfsmCancelConversion(zfsmPostString('job_id'));
-			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Cancellation requested; retained source will not be deleted'],'failed'=>[],'job'=>$job],'Cancel','','');
+			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Cancellation requested; retained source will not be deleted'],'failed'=>[],'job'=>$job]);
 			break;
 		case 'resumeconversion':
 			$job=zfsmResumeConversion(zfsmPostString('job_id'),zfsmPostString('offline_confirmed'));
 			$warning=null;
 			try { zfsmStartWorker(); } catch (Throwable $error) { $warning='Worker did not start; job remains queued'; }
-			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Resume queued'],'failed'=>[],'job'=>$job,'worker_warning'=>$warning],'Resume','','');
+			zfsmReturnAnswer(['succeeded'=>[$job['id']=>'Resume queued'],'failed'=>[],'job'=>$job,'worker_warning'=>$warning]);
 			break;
 		case 'publishconversion':
-			zfsmReturnAnswer(['succeeded'=>[zfsmPublishConversion(zfsmPostString('job_id'))['source']=>'Verified conversion copy published at its original path'],'failed'=>[]],'Publish conversion','','',true);
+			zfsmReturnAnswer(['succeeded'=>[zfsmPublishConversion(zfsmPostString('job_id'))['source']=>'Verified conversion copy published at its original path'],'failed'=>[]]);
 			break;
 		case 'saveconfig':
-			zfsmReturnAnswer(zfsmSaveSettings(is_array($_POST['settings']??null)?$_POST['settings']:[]),'Settings','','',true);
+			zfsmReturnAnswer(zfsmSaveSettings(is_array($_POST['settings']??null)?$_POST['settings']:[]));
 			break;
 		case 'inventory':
 		case 'inventorysnapshots':
@@ -264,7 +254,6 @@ try {
 			if ($command === 'inventorysnapshots' && $pool === '') throw new InvalidArgumentException('Missing pool name');
 			$answer = zfsmReadInventory($zfsm_cfg, $command === 'inventorysnapshots' || !$zfsm_cfg['lazy_load'], $pool);
 			$answer['config'] = $zfsm_cfg;
-			$answer['publishing_paused'] = is_file('/tmp/publishPaused');
 			// These fields are maps. PHP otherwise emits [] for empty maps,
 			// which violates the client contract even on a healthy pool.
 			foreach (array('pools','devices','datasets','errors') as $key) $answer['data'][$key] = (object)$answer['data'][$key];
@@ -272,12 +261,8 @@ try {
 			break;
 
 		case 'refresh':
-			// Compatibility for older clients: an accepted signal is not fresh inventory.
-			if (is_file('/tmp/publishPaused')) {
-				zfsmReturnAnswer(zfsmFailure('refresh', 'Unraid publishing is paused. Reload the updated ZFS Director page to use direct inventory.'), 'Refresh', '', '');
-			} else {
-				zfsmReturnAnswer(refreshData() ? array('succeeded' => array('refresh' => 'Refresh queued'), 'failed' => array()) : zfsmFailure('refresh', 'Unable to queue refresh'), 'Refresh', '', '');
-			}
+			// Compatibility for older clients: inventory is read directly on every request.
+			zfsmReturnAnswer(array('succeeded' => array('refresh' => 'Inventory is read directly; no refresh is needed'), 'failed' => array()));
 			break;
 
 		case 'createdataset':
@@ -286,12 +271,12 @@ try {
 			$pool = is_string($data['zpool'] ?? null) ? $data['zpool'] : '';
 			$name = is_string($data['name'] ?? null) ? trim($data['name'], '/') : '';
 			$dataset = $pool.($name !== '' ? '/'.$name : '');
-			zfsmReturnAnswer(createDataset($dataset, cleanZFSCreateDatasetParams($data)), 'ZFS Dataset Creation', 'Dataset created successfully', 'Unable to create dataset', true);
+			zfsmReturnAnswer(createDataset($dataset, cleanZFSCreateDatasetParams($data)));
 			break;
 
 		case 'editdatasetproperty':
 			$ret=in_array(zfsmPostString('property'),['quota','refquota','reservation','refreservation'],true)?zfsmCommitSpaceProperty($_POST,$request_token):setDatasetProperty(zfsmPostString('zdataset'), zfsmPostString('property'), zfsmPostString('value'));
-			zfsmReturnAnswer($ret, 'ZFS Dataset Edit', 'Dataset edited successfully', 'Unable to edit dataset', true);
+			zfsmReturnAnswer($ret);
 			break;
 
 		case 'getdatasetproperties':
@@ -299,22 +284,22 @@ try {
 			break;
 
 		case 'adddirectortlisting':
-			zfsmReturnAnswer(addToDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset added successfully', 'Unable to add dataset');
+			zfsmReturnAnswer(addToDirectoryListing(zfsmPostString('zdataset')));
 			break;
 
 		case 'removedirectorylisting':
-			zfsmReturnAnswer(removeFromDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset removed successfully', 'Unable to remove dataset');
+			zfsmReturnAnswer(removeFromDirectoryListing(zfsmPostString('zdataset')));
 			break;
 
 		case 'renamedataset':
-			zfsmReturnAnswer(renameDataset(zfsmPostString('zdataset'), zfsmPostString('newname'), zfsmPostString('force')), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset', true);
+			zfsmReturnAnswer(renameDataset(zfsmPostString('zdataset'), zfsmPostString('newname'), zfsmPostString('force')));
 			break;
 
 		case 'previewdestroy':
 			echo json_encode(zfsmPreviewDestroy(zfsmPostString('snapshot')?:zfsmPostString('zdataset'), zfsmPostString('recursive',zfsmPostString('force','0')), $request_token), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 		case 'stopdestroyprocesses':
-			zfsmReturnAnswer(zfsmStopDestroyProcesses(zfsmPostString('snapshot')?:zfsmPostString('zdataset'),zfsmPostString('force','0'),$_POST['processes']??null),'Stop processes','Processes asked to stop','Unable to stop processes');
+			zfsmReturnAnswer(zfsmStopDestroyProcesses(zfsmPostString('snapshot')?:zfsmPostString('zdataset'),zfsmPostString('force','0'),$_POST['processes']??null));
 			break;
 		case 'previewrollback':
 			echo json_encode(zfsmPreviewRollback(zfsmPostString('snapshot'),zfsmPostString('destroy_newer','0'),$request_token),JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
@@ -323,82 +308,82 @@ try {
 			$dataset = zfsmPostString('zdataset');
 			$scope = zfsmValidateDestroyPreview($dataset,zfsmPostString('force','0'),$request_token,zfsmPostString('preview_id'),zfsmPostString('preview_token'));
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $dataset);
-			zfsmReturnAnswer($blocked ?? zfsmQueueDeletion('dataset',$dataset,zfsmPostString('force','0'),$scope), 'ZFS Dataset Destroy', 'Dataset deletion queued', 'Unable to queue dataset deletion');
+			zfsmReturnAnswer($blocked ?? zfsmQueueDeletion('dataset',$dataset,zfsmPostString('force','0'),$scope));
 			break;
 
 		case 'lockdataset':
-			zfsmReturnAnswer(lockDataset(zfsmPostString('zdataset')), 'ZFS Dataset Lock', 'Dataset locked successfully', 'Unable to lock dataset', true);
+			zfsmReturnAnswer(lockDataset(zfsmPostString('zdataset')));
 			break;
 
 		case 'unlockdataset':
-			zfsmReturnAnswer(unlockDataset(zfsmPostString('zdataset'), zfsmPostString('passphrase')), 'ZFS Dataset Unlock', 'Dataset unlocked successfully', 'Unable to unlock dataset', true);
+			zfsmReturnAnswer(unlockDataset(zfsmPostString('zdataset'), zfsmPostString('passphrase')));
 			break;
 
 		case 'promotedataset':
-			zfsmReturnAnswer(zfsmCommitPromote($_POST,$request_token), 'ZFS Dataset Promote', 'Dataset promoted successfully', 'Unable to promote dataset', true);
+			zfsmReturnAnswer(zfsmCommitPromote($_POST,$request_token));
 			break;
 
 		case 'movedirectory':
-			zfsmReturnAnswer(moveDirectory(zfsmPostString('directory'), zfsmPostString('newname')), 'ZFS Directory Move', 'Directory moved successfully', 'Unable to move directory', true);
+			zfsmReturnAnswer(moveDirectory(zfsmPostString('directory'), zfsmPostString('newname')));
 			break;
 
 		case 'convertdirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);
-			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool'), zfsmPostString('offline_confirmed')), 'ZFS Directory Convert', 'Conversion queued; original will be retained', 'Unable to queue conversion', false);
+			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool'), zfsmPostString('offline_confirmed')));
 			break;
 
 		case 'previewcleanup': echo json_encode(zfsmCleanupPreview(zfsmPostString('directory'),$request_token),JSON_THROW_ON_ERROR);break;
-		case 'cleanupmutation': zfsmReturnAnswer(zfsmCleanupCommit($_POST,$request_token),'Recovery cleanup','Completed recovery journal archived and removed','Recovery cleanup refused',true);break;
+		case 'cleanupmutation': zfsmReturnAnswer(zfsmCleanupCommit($_POST,$request_token));break;
 		case 'previewdeletedirectory':
 			echo json_encode(zfsmDirectoryDeletionPreview(zfsmPostString('directory'),zfsmPostString('force','0')),JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 		case 'deletedirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);
-			zfsmReturnAnswer($blocked ?? zfsmQueueDeletion('directory',$directory,zfsmPostString('force','0')), 'ZFS Directory Delete', 'Directory deletion queued', 'Unable to queue directory deletion');
+			zfsmReturnAnswer($blocked ?? zfsmQueueDeletion('directory',$directory,zfsmPostString('force','0')));
 			break;
 
 		case 'rollbacksnapshot':
 			$preview=zfsmValidateRollbackPreview(zfsmPostString('snapshot'),zfsmPostString('destroy_newer','0'),$request_token,zfsmPostString('preview_token'));
 			if (!$preview['can_rollback']) throw new InvalidArgumentException('Newer snapshots/bookmarks require explicit deletion permission');
-			zfsmReturnAnswer(rollbackDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('destroy_newer')), 'ZFS Snapshot Rollback', 'Snapshot rolled back successfully', 'Unable to rollback snapshot', true);
+			zfsmReturnAnswer(rollbackDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('destroy_newer')));
 			break;
 
 		case 'renamesnapshot':
 			$snapshot = zfsmPostString('snapshot');
 			$pool = explode('/', explode('@', $snapshot, 2)[0], 2)[0];
-			zfsmReturnAnswer(renameDatasetSnapshot($pool, $snapshot, zfsmPostString('newname')), 'ZFS Snapshot Rename', 'Snapshot renamed successfully', 'Unable to rename snapshot', true);
+			zfsmReturnAnswer(renameDatasetSnapshot($pool, $snapshot, zfsmPostString('newname')));
 			break;
 
 		case 'holdsnapshot':
-			zfsmReturnAnswer(holdDatasetSnapshot(zfsmPostString('snapshot')), 'ZFS Snapshot Reference', 'Snapshot reference added successfully', 'Unable to add reference');
+			zfsmReturnAnswer(holdDatasetSnapshot(zfsmPostString('snapshot')));
 			break;
 
 		case 'releasesnapshot':
-			zfsmReturnAnswer(releaseDatasetSnapshot(zfsmPostString('snapshot')), 'ZFS Snapshot Release', 'Snapshot reference removed successfully', 'Unable to remove reference');
+			zfsmReturnAnswer(releaseDatasetSnapshot(zfsmPostString('snapshot')));
 			break;
 
 		case 'clonesnapshot':
-			zfsmReturnAnswer(cloneDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('clone')), 'ZFS Snapshot Clone', 'Snapshot cloned successfully', 'Unable to clone snapshot', true);
+			zfsmReturnAnswer(cloneDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('clone')));
 			break;
 
 		case 'destroysnapshot':
 			$scope = zfsmValidateDestroyPreview(zfsmPostString('snapshot'),zfsmPostString('recursive','0'),$request_token,zfsmPostString('preview_id'),zfsmPostString('preview_token'));
-			zfsmReturnAnswer(deleteDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('recursive'), $scope), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot', true);
+			zfsmReturnAnswer(deleteDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('recursive'), $scope));
 			break;
 
 		case 'snapshotdataset':
 			$snapshot = ($zfsm_cfg['snap_prefix'] ?? '').date($zfsm_cfg['snap_pattern'] ?? 'Y-m-d-His');
-			zfsmReturnAnswer(createDatasetSnapshot(zfsmPostString('zdataset'), $snapshot, zfsmPostString('recursive')), 'ZFS Snapshot Create', 'Snapshot created successfully', 'Unable to create snapshot', true);
+			zfsmReturnAnswer(createDatasetSnapshot(zfsmPostString('zdataset'), $snapshot, zfsmPostString('recursive')));
 			break;
 
 		default:
-			zfsmReturnAnswer(zfsmFailure('request', 'Unknown or missing command'), 'Request', '', '');
+			zfsmReturnAnswer(zfsmFailure('request', 'Unknown or missing command'));
 	}
 } catch (Throwable $error) {
 	error_log('ZFS Director backend request failed');
-	zfsmReturnAnswer(zfsmFailure('request', $error->getMessage()), 'Request', '', '');
+	zfsmReturnAnswer(zfsmFailure('request', $error->getMessage()));
 } finally {
     unset($GLOBALS['zfsm_operation_lock_handle']);
 	if (is_resource($mutation_lock)) { if ($lock_described) zfsmOperationLockForget(); flock($mutation_lock, LOCK_UN); fclose($mutation_lock); }

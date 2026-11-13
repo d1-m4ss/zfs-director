@@ -45,9 +45,6 @@ $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;
 if (is_file($unraid_publish)) require_once $unraid_publish;
 
-function refreshData() {
-	return touch('/tmp/zfs.master.ui-reload');
-}
 
 function buildArrayRet() {
 	return array('succeeded' => array(), 'failed' => array());
@@ -395,9 +392,7 @@ function zfsmCollectInventory($config, $include_snapshots, $pool) {
 	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array());
 	foreach ($pools as $name => $info) {
 		$data['devices'][$name] = getZFSPoolDevices($name);
-		$tree = $include_snapshots
-			? getZFSPoolDatasetsAndSnapshots($name, $config['dataset_exclusion'], 0, $config['directory_listing'])
-			: getZFSPoolDatasets($name, $config['dataset_exclusion'], 0, $config['directory_listing']);
+		$tree = zfsmPoolDatasetTree($name, $config['dataset_exclusion'], $config['directory_listing'], $include_snapshots);
 		zfsmAttachDirectoryIdentities($tree);
 		$data['datasets'][$name] = $tree;
 		$data['pools'][$name]['MountPoint'] = $tree['mountpoint'] ?? '';
@@ -428,24 +423,17 @@ function getZFSPoolDevices($zpool) {
 	return implode("\n", $devices);
 }
 
-function getZFSPoolDatasets($zpool, $zexc_pattern, $ext, $directory_listing = array()) {
-	$result = zfsmLoadPoolTree($zpool, false, $zexc_pattern, $ext);
+function zfsmPoolDatasetTree($zpool, $zexc_pattern, $directory_listing, $include_snapshots) {
+	$result = zfsmLoadPoolTree($zpool, $include_snapshots, $zexc_pattern, 0);
 	$result['directories'] = listDirectories($result['mountpoint'] ?? '', $result['child'] ?? array(), $zexc_pattern);
-	if ($directory_listing) $result['child'] = getDatasetDirectories($result['child'] ?? array(), $directory_listing, $zexc_pattern, $ext);
+	if ($directory_listing) $result['child'] = getDatasetDirectories($result['child'] ?? array(), $directory_listing, $zexc_pattern);
 	return $result;
 }
 
-function getZFSPoolDatasetsAndSnapshots($zpool, $zexc_pattern, $ext, $directory_listing = array()) {
-	$result = zfsmLoadPoolTree($zpool, true, $zexc_pattern, $ext);
-	$result['directories'] = listDirectories($result['mountpoint'] ?? '', $result['child'] ?? array(), $zexc_pattern);
-	if ($directory_listing) $result['child'] = getDatasetDirectories($result['child'] ?? array(), $directory_listing, $zexc_pattern, $ext);
-	return $result;
-}
-
-function getDatasetDirectories($dataset_tree, $directory_listing, $zexc_pattern, $ext) {
+function getDatasetDirectories($dataset_tree, $directory_listing, $zexc_pattern) {
 	foreach ($dataset_tree as &$dataset) {
 		if (in_array($dataset['name'] ?? '', $directory_listing, true)) $dataset['directories'] = listDirectories($dataset['mountpoint'] ?? '', $dataset['child'] ?? array(), $zexc_pattern);
-		if (!empty($dataset['child'])) $dataset['child'] = getDatasetDirectories($dataset['child'], $directory_listing, $zexc_pattern, $ext);
+		if (!empty($dataset['child'])) $dataset['child'] = getDatasetDirectories($dataset['child'], $directory_listing, $zexc_pattern);
 	}
 	return $dataset_tree;
 }
@@ -536,9 +524,6 @@ function getDatasetSnapshotsResult($zpool, $zdataset) {
 	return array('ok' => true, 'snapshots' => $snapshots, 'error' => '');
 }
 
-function getDatasetSnapshots($zpool, $zdataset) {
-	return getDatasetSnapshotsResult($zpool, $zdataset)['snapshots'];
-}
 
 function zfsmAllowedDatasetProperties() {
 	return array('mountpoint', 'compression', 'quota', 'refquota', 'reservation', 'refreservation', 'recordsize', 'atime', 'xattr', 'primarycache', 'readonly', 'casesensitivity', 'sync');
@@ -673,9 +658,6 @@ function unlockDataset($zdataset, $passphrase) {
 	return zfsmRestoreSavedEncryptionMounts($record);
 }
 
-function promoteDataset($zdataset, $zforce = 0) {
-	return zfsmFailure($zdataset, 'Load and confirm a fresh promote dependency preview.');
-}
 
 function destroyDataset($zdataset, $force, $scope = null) {
 	if (!is_string($zdataset) || strpos($zdataset, '/') === false || strpos($zdataset, '@') !== false) return zfsmFailure($zdataset, 'Pool root destruction is not allowed');
