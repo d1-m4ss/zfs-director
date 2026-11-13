@@ -403,7 +403,7 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
  #zfsm-workspace .zfsm-explorer-header p{font-size:11px}
  #zfsm-workspace .zfsm-file-dialog .zfsm-explorer-path{padding:6px 12px}
  #zfsm-workspace .zfsm-explorer-jobs{padding:6px 12px}
- #zfsm-workspace .zfsm-file-dialog .zfsm-explorer-toolbar{display:grid;grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) 30px 30px;padding:6px 12px;gap:5px}
+ #zfsm-workspace .zfsm-file-dialog .zfsm-explorer-toolbar{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(0,1fr) auto auto;padding:6px 12px;gap:5px}
  #zfsm-workspace .zfsm-explorer-toolbar input{grid-column:2/-1;width:100%}
  #zfsm-workspace .zfsm-explorer-toolbar select{width:100%}
  #zfsm-workspace .zfsm-explorer-toolbar select:first-of-type{grid-column:1/3}

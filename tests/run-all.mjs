@@ -37,7 +37,6 @@ const INTEGRATION_SCRIPTS = [
 // source it exercises (TEST-001); none of these scripts were ever wired to a
 // runner, so they were not kept in sync with later UI changes.
 const KNOWN_FAILURES={
-  'gui:icon-alignment':'File Manager toolbar overflows by 2px at 390px with touch input (icon buttons grow to 44px inside 30px grid columns); CSS fix awaits UI approval.',
   'integration:activity':'Hiding a job itself creates a new request-job row in Jobs; resolved by ARCH-001 (synchronous actions only in Administrative History).',
 };
 
