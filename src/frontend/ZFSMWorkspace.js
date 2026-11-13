@@ -268,9 +268,11 @@ function zfsmCreateWorkspace(options) {
         if(focusedNode){const target=[...browserHost.querySelectorAll('[data-node]')].find(n=>n.dataset.node===focusedNode);target?.focus({preventScroll:true});}else if(focused==='Search datasets'){search.focus({preventScroll:true});search.setSelectionRange(caret,caret);}else if(focused==='Filter datasets')filter.focus({preventScroll:true});browserHost.scrollTop=scroll;
     }
     function selectRow(row,nextTab){
-        const position={top:browserHost?.scrollTop||0,left:browserHost?.scrollLeft||0,tableLeft:browserHost?.querySelector('.zfsm-table-wrap')?.scrollLeft||0},viewport={left:window.scrollX,top:window.scrollY},focused=document.activeElement,browserAction=browserHost?.contains(focused)?focused.dataset.nodeAction:null,browserFocus=browserHost?.contains(focused)?focused.dataset.node:null;
+        const position={top:browserHost?.scrollTop||0,left:browserHost?.scrollLeft||0,tableLeft:browserHost?.querySelector('.zfsm-table-wrap')?.scrollLeft||0},viewport={left:window.scrollX,top:window.scrollY},bodyTop=body.scrollTop,focused=document.activeElement,browserAction=browserHost?.contains(focused)?focused.dataset.nodeAction:null,browserFocus=browserHost?.contains(focused)?focused.dataset.node:null;
         selectionChanged=false;selection=row.name;selectionIdentity=selectionFingerprint(row);tab=compatibleTab(row,nextTab||(row.kind==='directory'&&servicePath(row.name)?'actions':datasetTab));if(nextTab&&row.kind==='dataset')datasetTab=tab;savePreferences();renderSection();
         if(browserHost){if(browserFocus)[...browserHost.querySelectorAll('[data-node]')].find(control=>control.dataset.node===browserFocus)?.focus({preventScroll:true});else if(browserAction)[...browserHost.querySelectorAll('[data-node-action]')].find(control=>control.dataset.nodeAction===browserAction)?.focus({preventScroll:true});browserHost.scrollTop=position.top;browserHost.scrollLeft=position.left;const table=browserHost.querySelector('.zfsm-table-wrap');if(table)table.scrollLeft=position.tableLeft;}
+        // In the narrow layout the fixed-height frame scrolls the main body, not the tree.
+        if(body.scrollTop!==bodyTop)body.scrollTop=bodyTop;
         if(window.scrollX!==viewport.left||window.scrollY!==viewport.top)window.scrollTo({...viewport,behavior:'instant'});
     }
     function snapshotError(item){return inventoryError||(data&&data.errors||{})[pool]||(item&&item._snapshot_error)||'';}

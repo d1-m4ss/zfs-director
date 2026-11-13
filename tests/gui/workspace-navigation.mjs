@@ -29,9 +29,13 @@ async function setup(page,layout){
 async function scrollSelection(page,path){
  const target=page.locator('[data-node="'+path+'"]');
  await target.evaluate(el=>{el.scrollIntoView({block:'center'});el.focus({preventScroll:true});});await settled(page);
- const read=()=>page.evaluate(()=>({top:document.querySelector('.zfsm-browser').scrollTop,left:document.querySelector('.zfsm-browser').scrollLeft,pageY:scrollY,focused:document.activeElement?.dataset.node}));
+ // The fixed-height frame scrolls either the tree pane itself (wide tree layout) or the
+ // whole main body (narrow layout, or the Compact table where .zfsm-browser is overflow:visible).
+ const read=()=>page.evaluate(()=>{const browserEl=document.querySelector('.zfsm-browser'),mainBody=document.querySelector('.zfsm-main-body'),container=browserEl.scrollHeight>browserEl.clientHeight+1?browserEl:mainBody;const focusedEl=document.activeElement,box=focusedEl?.getBoundingClientRect(),view=container.getBoundingClientRect();return {top:container.scrollTop,maxTop:container.scrollHeight-container.clientHeight,left:container.scrollLeft,pageY:scrollY,focused:focusedEl?.dataset.node,visible:Boolean(box&&box.bottom>view.top&&box.top<view.bottom)};});
  const before=await read();assert.ok(before.top>100,'Fixture must actually scroll the tree');await page.keyboard.press('Enter');await settled(page);const after=await read();
- assert.equal(after.focused,path,'Keyboard focus stays on the selected directory');assert.ok(Math.abs(after.top-before.top)<=1,JSON.stringify({before,after}));assert.equal(after.left,before.left);assert.ok(Math.abs(after.pageY-before.pageY)<=1,'Page position changed: '+JSON.stringify({before,after}));
+ assert.equal(after.focused,path,'Keyboard focus stays on the selected directory');// Position is kept; only when the content got shorter may it clamp to the new end, and the
+ // selected row must then still be on screen.
+ assert.ok(Math.abs(after.top-before.top)<=1||(after.top<before.top&&Math.abs(after.top-after.maxTop)<=1&&after.visible),JSON.stringify({before,after}));assert.equal(after.left,before.left);assert.ok(Math.abs(after.pageY-before.pageY)<=1,'Page position changed: '+JSON.stringify({before,after}));
  return {before,after};
 }
 async function compactSelections(page,path){
