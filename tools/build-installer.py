@@ -197,7 +197,8 @@ def build(output, release_base=None, plugin_url_base=None, changelog=None):
     update_base = plugin_url_base or release_base
     plugin_url = update_base + '/' + plugin_name if release_base else 'file:///boot/config/plugins/zfs.master.ui/' + plugin_name
     plugin = ET.Element('PLUGIN', name='zfs.master.ui', author='d1-m4ss', version=VERSION, min='7.3.3',
-                        icon='database', launch='Main/ZFSDirector', pluginURL=plugin_url)
+                        icon='database', launch='Main/ZFSDirector', pluginURL=plugin_url,
+                        support='https://forums.unraid.net/topic/200986-plugin-zfs-director/')
     ET.SubElement(plugin, 'CHANGES').text = changes_text(VERSION, changelog or pathlib.Path(os.environ.get('ZFSD_CHANGELOG', ROOT / 'CHANGELOG.md')))
     package = ET.SubElement(plugin, 'FILE', Name=f'/boot/config/plugins/zfs.master.ui/{archive.name}')
     ET.SubElement(package, 'URL' if release_base else 'LOCAL').text = release_base + '/' + archive.name if release_base else package.attrib['Name']

@@ -7,7 +7,7 @@
   <MinVer>7.3.3</MinVer>
   <Category>Tools:Utilities</Category>
   <Icon>https://raw.githubusercontent.com/d1-m4ss/zfs-director/2026.11.09.12/src/icons/zfs-director.png</Icon>
-  <Support>https://github.com/d1-m4ss/zfs-director/issues</Support>
+  <Support>https://forums.unraid.net/topic/200986-plugin-zfs-director/</Support>
   <Project>https://github.com/d1-m4ss/zfs-director</Project>
   <ReadMe>https://github.com/d1-m4ss/zfs-director/blob/main/README.md</ReadMe>
   <License>https://github.com/d1-m4ss/zfs-director/blob/main/LICENSE</License>
