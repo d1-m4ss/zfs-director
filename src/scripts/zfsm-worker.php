@@ -85,7 +85,7 @@ try {
                 if(($job['state']??'')==='queued'&&zfsmProtectionJobConflict($job)!==null)continue;
                 $GLOBALS['zfsm_operation_lock_handle']=$lock;
                 $label=($job['schema']??null)===6?(($job['kind']??null)==='dataset'?'Delete dataset':'Delete directory'):(($job['type']??'')==='archive'?'Prepare ZIP':(($job['type']??'')==='restore'?'Restore files':'Convert directory'));
-                zfsmOperationLockDescribe($label,is_string($job['source']??null)?$job['source']:null);
+                zfsmOperationLockDescribe($label,is_string($job['source']??null)?$job['source']:null,$job['id']);
                 if(($job['schema']??null)===6){zfsmRunDeletionJob($job['id']);continue;}
                 // Recovery only releases our protection and records retained
                 // data. It must run even if destructive actions were disabled.

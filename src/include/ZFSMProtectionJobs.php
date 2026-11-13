@@ -287,6 +287,8 @@ function zfsmRunProtectionJob(array $job): void {
         $job=zfsmProtectionConfigLock(function()use($job){if((int)loadConfig(parse_plugin_cfg($GLOBALS['plugin'],true))['sanoid_integration']!==1)throw new RuntimeException('Sanoid / Syncoid integration is disabled; queued execution requires review.');$live=zfsmReadJob($job['id']);if($live['state']!=='queued'||$live['cancel_requested'])return null;$store=zfsmProtectionReadStore();$d=$store[$live['type']==='policy'?'policies':'replications'][$live['definition_id']]??null;if(!$d||!hash_equals($live['definition_hash'],hash('sha256',json_encode($d,JSON_THROW_ON_ERROR))))throw new RuntimeException('Queued definition changed; inspect and queue a fresh run.');zfsmProtectionCheckDefinitionSchedules($live['type'],$d,zfsmProtectionSchedules());return zfsmJobUpdate($live['id'],['state'=>'running','stage'=>'inspecting','verified_outcome'=>'running','started_at'=>gmdate('c')]);},true);
         if($job===null)return;
         $GLOBALS['zfsm_operation_lock_handle']=$lock;if(!$quiet)$audit=zfsmAuditBegin('protectionexecute',$auditFields);
+        // A policy holds the operation lock for its whole sanoid run (UX-012 names it).
+        if($job['type']==='policy')zfsmOperationLockDescribe('Snapshot policy',$job['source'],$job['id']);
         if($job['type']==='replication'){flock($mutation,LOCK_UN);fclose($mutation);$mutation=null;}
         $out=$job['type']==='policy'?zfsmSanoidExecute($job):zfsmSyncoidExecute($job);
         // A scheduled check's outcome is only known now; promote before recording anything
@@ -305,7 +307,7 @@ function zfsmRunProtectionJob(array $job): void {
         else{try{zfsmProtectionPromoteJob($job['id']);}catch(Throwable$promoteError){}zfsmProtectionFinish($job['id'],['outcome'=>'recovery_required','reason'=>$e->getMessage(),'exit_code'=>null]);}
         if($audit===null&&!empty($quiet)){$audit=zfsmAuditBegin('protectionexecute',$auditFields);}if($audit!==null)zfsmAuditFinish($audit,['status'=>'recovery_required','reason'=>'Protection execution requires inspection.']);
     }
-    finally{unset($GLOBALS['zfsm_operation_lock_handle']);if(is_resource($mutation)){flock($mutation,LOCK_UN);fclose($mutation);}flock($laneLock,LOCK_UN);fclose($laneLock);flock($lock,LOCK_UN);fclose($lock);}
+    finally{unset($GLOBALS['zfsm_operation_lock_handle']);if(is_resource($mutation)){zfsmOperationLockForget();flock($mutation,LOCK_UN);fclose($mutation);}flock($laneLock,LOCK_UN);fclose($laneLock);flock($lock,LOCK_UN);fclose($lock);}
 }
 // REL-001: policy and replication jobs run in separate worker lanes. Every runner holds the
 // boot-persistent execution.lock SHARED, so the installer pause (which takes it exclusively)

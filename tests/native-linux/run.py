@@ -182,6 +182,12 @@ def worker_cases():
     result=json.loads(p.stdout.decode().strip().splitlines()[-1]);assert result['failed']==0,result
     SUBCHECKS['worker']=result['results']
 
+def operation_status():
+    p=subprocess.run(['php','/stand/tests/native-linux/operation-status.php'],capture_output=True,timeout=20)
+    assert p.returncode==0,p.stdout.decode()+p.stderr.decode()
+    result=json.loads(p.stdout);assert result['status']=='PASS',result
+    SUBCHECKS['operation-status']=result
+
 def protection_lock():
     p=subprocess.run(['php','/stand/tests/native-linux/protection-lock.php'],capture_output=True,timeout=15)
     assert p.returncode==0,p.stdout.decode()+p.stderr.decode()
@@ -217,6 +223,7 @@ def main():
     test('native audit cursor pagination bounds identity redaction and retained history',audit_cases)
     test('native worker kill restart stop and recovery integration',worker_cases)
     test('protection worker defers config lock contention without losing its queued occurrence',protection_lock)
+    test('operation bar reads the real lock owner without taking the lock',operation_status)
     test('native process input failures and duplex pipe backpressure',process_cases)
     finish()
 if __name__=='__main__':main()

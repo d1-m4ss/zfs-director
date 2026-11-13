@@ -101,7 +101,9 @@ function zfsmCreateWorkspace(options) {
     const createButton=button('Create Dataset',()=>{if(pool)openActionForm('createdataset',selected()?context(selected()):{pool});},{'data-section':'create',class:'zfsm-primary'});sectionButtons.set('create',createButton);datasetTools.append(poolToolsButton,createButton);
     const status=node('div','Loading workspace…','zfsm-refresh-status');status.setAttribute('role','status');
     const cleanupNotice=node('section',undefined,'zfsm-notice');cleanupNotice.hidden=true;cleanupNotice.setAttribute('role','status');
-    const poolHost=node('nav',undefined,'zfsm-pools');poolHost.setAttribute('aria-label','Pools');const content=node('div',undefined,'zfsm-content'),body=node('div',undefined,'zfsm-main-body');const topbar=node('div',undefined,'zfsm-topbar'),attentionHost=node('div',undefined,'zfsm-attention');attentionHost.hidden=true;attentionHost.setAttribute('role','status');topbar.append(poolHost,status,datasetTools,attentionHost);body.append(cleanupNotice,topbar,content);workspace.append(header,body);shell.append(sidebar,workspace);root.append(shell);applyTheme();
+    // UX-012: the operation holding the operation lock, from every Jobs poll; visible on all screens.
+    const operationNotice=node('section',undefined,'zfsm-operation-bar');operationNotice.hidden=true;operationNotice.setAttribute('role','status');let operationNow=null;
+    const poolHost=node('nav',undefined,'zfsm-pools');poolHost.setAttribute('aria-label','Pools');const content=node('div',undefined,'zfsm-content'),body=node('div',undefined,'zfsm-main-body');const topbar=node('div',undefined,'zfsm-topbar'),attentionHost=node('div',undefined,'zfsm-attention');attentionHost.hidden=true;attentionHost.setAttribute('role','status');topbar.append(poolHost,status,datasetTools,attentionHost);body.append(cleanupNotice,operationNotice,topbar,content);workspace.append(header,body);shell.append(sidebar,workspace);root.append(shell);applyTheme();
     const forms=zfsmCreateInlineForms({request,getConfig:()=>config,getDataset:name=>flatten(name.split('/')[0],false).find(row=>row.name===name)?.node,getDatasets:name=>flatten(name,false).filter(item=>item.kind==='dataset').map(item=>item.name),getOperationIssue:snapshotOperationIssue,getMutationFields:mutationFields,onComplete:operationComplete,onClose:()=>closeActionForm(),onViewJob:id=>{jobsExpanded.delete(id);jobsPage=1;jobsFilter='all';jobsSort='newest';jobsView='working';navigate('jobs');}});
     const protectionHost=node('div',undefined,'zfsm-protection'),protectionButton=sectionButtons.get('protection'),replicationButton=sectionButtons.get('replication');protectionButton.hidden=true;replicationButton.hidden=true;
     const protection=typeof zfsmCreateProtection==='function'?zfsmCreateProtection({root:protectionHost,request,getLayout:()=>layout,embeddedNavigation:true,getDatasets:()=>Object.keys(data?.datasets||{}).flatMap(name=>flatten(name,false).filter(item=>item.kind==='dataset').map(item=>item.name)),onAvailability:(visible,detection)=>{const ready=Boolean(visible&&detection?.visible&&detection?.compatible);protectionButton.hidden=!ready;replicationButton.hidden=!ready;if(typeof detection?.enabled==='boolean'){config.sanoid_integration=detection.enabled?1:0;if(activeForm?.action==='saveconfig')forms.render(activeForm.host,activeForm.action,activeForm.context);}},onNavigate:next=>navigate(next==='settings'?'settings':next==='replication'?'replication':next==='jobs'?'jobs':'protection'),onJobs:()=>navigate('jobs'),onHistory:()=>navigate('history')}):null;
@@ -427,7 +429,9 @@ function zfsmCreateWorkspace(options) {
             const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),path=document.createElementNS(svg.namespaceURI,'path');
             svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');path.setAttribute('d',drawing);svg.append(path);control.append(svg,node('span',label));control.classList.add('zfsm-action-label-button');
             if(['destroydataset','deletedirectory','cleanupmutation','lockdataset'].includes(command))control.classList.add('zfsm-danger');
-            const issue=snapshotOperationIssue(command,ctx),blocked=!enabled||Boolean(issue),message=issue||(!enabled?reason:'');
+            // Queued jobs (conversion) do not need the operation lock; every other action here does.
+            const busy=operationNow&&command!=='convertdirectory'?'Wait: '+(operationNow.label||'another operation')+' is running':'';
+            const issue=snapshotOperationIssue(command,ctx)||busy,blocked=!enabled||Boolean(issue),message=issue||(!enabled?reason:'');
             control.disabled=blocked;if(message){control.title=label+' — '+message;control.setAttribute('aria-description',message);}bar.append(control);
             if(blocked&&message){
                 const note=node('p',message,'zfsm-muted zfsm-action-reason');
@@ -571,6 +575,16 @@ function zfsmCreateWorkspace(options) {
         diagnosticBusy=false;if(diagnosticPending&&!stopped){diagnosticPending=false;loadDiagnostics();}else scheduleDiagnostics();
     }
     function jobRequestFields(){return {cmd:'conversionjobs',page:String(section==='jobs'?jobsPage:1),page_size:String(section==='jobs'?jobsPageSize:10),...(section==='jobs'?{filter:jobsFilter,type:jobsType,sort:jobsSort,view:jobsView}:{})};}
+    function operationText(op){return (op.label||'Another operation')+(op.subject?' · '+op.subject:'')+(Number.isInteger(op.minutes)?' · '+(op.minutes<1?'under 1 min':op.minutes+' min'):'');}
+    function renderOperation(op){
+        const next=op&&typeof op==='object'&&!Array.isArray(op)?op:null,changed=Boolean(next)!==Boolean(operationNow);operationNow=next;
+        if(!next){operationNotice.hidden=true;operationNotice.replaceChildren();}
+        else{const parts=[node('span','',"zfsm-operation-pulse"),node('strong','Running now:'),node('span',operationText(next),'zfsm-operation-text'),node('span','Other changes wait until it finishes.','zfsm-muted')];
+            if(next.job)parts.push(button('Open in Jobs',()=>{jobsExpanded.add(next.job);navigate('jobs');}));
+            operationNotice.replaceChildren(...parts);operationNotice.hidden=false;}
+        // Re-render dataset actions only when the bar appears or disappears.
+        if(changed&&section==='datasets'&&!activeForm)renderSection();
+    }
     async function loadJobs(){
         if(stopped)return;if(jobsBusy){jobsPending=true;return;}jobsBusy=true;clearTimeout(jobsTimer);
         const fields=jobRequestFields(),scope=JSON.stringify(fields),tracked=[...inventoryJobs];
@@ -597,7 +611,7 @@ function zfsmCreateWorkspace(options) {
             jobs=answer;jobsScope=scope;jobsError='';if(refreshInventory)inventory.refresh();
         }
         catch(error){if(scope!==JSON.stringify(jobRequestFields()))jobsPending=true;else jobsError='Job status unavailable. Retained results may be stale: '+error.message;}
-        finally{jobsBusy=false;if(!stopped){const attention=(Number(jobs.counts?.active)||0)+(Number(jobs.counts?.needs_attention)||0);sectionButtons.get('jobs').querySelector('.zfsm-nav-label').textContent='Jobs'+(attention>0?' · '+attention:'');renderJobs();if(section==='overview')renderSection();if(activeForm&&['cancelconversion','resumeconversion','cancelrestore'].includes(activeForm.action))forms.render(activeForm.host,activeForm.action,activeForm.context);explorer?.updateJobs?.(jobs.jobs);if(jobsPending){jobsPending=false;loadJobs();}else jobsTimer=setTimeout(loadJobs,2500);}}
+        finally{jobsBusy=false;if(!stopped){if(!jobsError)renderOperation(jobs.operation);const attention=(Number(jobs.counts?.active)||0)+(Number(jobs.counts?.needs_attention)||0);sectionButtons.get('jobs').querySelector('.zfsm-nav-label').textContent='Jobs'+(attention>0?' · '+attention:'');renderJobs();if(section==='overview')renderSection();if(activeForm&&['cancelconversion','resumeconversion','cancelrestore'].includes(activeForm.action))forms.render(activeForm.host,activeForm.action,activeForm.context);explorer?.updateJobs?.(jobs.jobs);if(jobsPending){jobsPending=false;loadJobs();}else jobsTimer=setTimeout(loadJobs,2500);}}
     }
     function renderJobs(){
         if(!jobsHost)return;

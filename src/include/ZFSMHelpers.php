@@ -17,13 +17,13 @@ function zfsmOperationLockFailure($code,$owner=null) {
 // Best-effort description of the command/job currently holding the operation
 // lock, for a human-readable busy message. Never a source of truth for
 // locking itself; a mismatched or unreadable file is silently ignored.
-function zfsmOperationLockDescribe($label,$subject=null) {
+function zfsmOperationLockDescribe($label,$subject=null,$job=null) {
     try{
         $dir=$GLOBALS['plugin_runtime']??null;if(!is_string($dir)||$dir==='')return;
         if(!is_dir($dir)&&!@mkdir($dir,0700,true))return;
         if(is_link($dir))return;
         $file=$dir.'/lock-owner.json';if(is_link($file))return;
-        @file_put_contents($file,json_encode(['label'=>(string)$label,'subject'=>$subject!==null?(string)$subject:null,'pid'=>getmypid(),'started'=>time()],JSON_THROW_ON_ERROR),LOCK_EX);
+        @file_put_contents($file,json_encode(['label'=>(string)$label,'subject'=>$subject!==null?(string)$subject:null,'job'=>is_string($job)&&preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$job)?$job:null,'pid'=>getmypid(),'started'=>time()],JSON_THROW_ON_ERROR),LOCK_EX);
     }catch(Throwable$error){}
 }
 function zfsmOperationLockForget() {
@@ -45,6 +45,24 @@ function zfsmOperationLockRunningNow($owner) {
         $minutes=max(0,(int)round((time()-$data['started'])/60));
         $subject=is_string($data['subject']??null)&&$data['subject']!==''?' '.$data['subject']:'';
         return 'Running now: '.$data['label'].$subject.' ('.$minutes.' min)';
+    }catch(Throwable$error){return null;}
+}
+// UX-012: who holds the operation lock right now, for the "operation running" bar. Read-only:
+// it never takes the lock, so it cannot delay the operation it describes. The description is
+// used only when its PID is the real kernel lock owner. Null when the lock is free or unknown.
+function zfsmOperationLockStatus(): ?array {
+    try{
+        $file=$GLOBALS['plugin_lock']??null;if(!is_string($file)||is_link($file)||!is_file($file))return null;
+        $h=@fopen($file,'r');if(!$h)return null;$opened=fstat($h);fclose($h);
+        $owner=zfsmOperationLockOwner($opened);if($owner===null)return null;
+        $status=['label'=>null,'subject'=>null,'job'=>null,'minutes'=>null];
+        $dir=$GLOBALS['plugin_runtime']??null;$desc=is_string($dir)?$dir.'/lock-owner.json':null;
+        if($desc&&!is_link($desc)&&is_file($desc)&&filesize($desc)<=4096){
+            $data=json_decode((string)file_get_contents($desc),true,4);
+            if(is_array($data)&&($data['pid']??null)===$owner['pid']&&is_string($data['label']??null)&&$data['label']!==''&&is_int($data['started']??null))
+                $status=['label'=>$data['label'],'subject'=>is_string($data['subject']??null)&&$data['subject']!==''?$data['subject']:null,'job'=>is_string($data['job']??null)?$data['job']:null,'minutes'=>max(0,(int)floor((time()-$data['started'])/60))];
+        }
+        return $status;
     }catch(Throwable$error){return null;}
 }
 // The worker takes the same lock briefly for each pending job. A user request

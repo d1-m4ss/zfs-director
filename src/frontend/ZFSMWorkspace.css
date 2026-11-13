@@ -567,3 +567,12 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
 #zfsm-workspace[data-overlay="true"]{position:fixed;inset:2vh 2vw;width:auto;height:var(--zfsm-frame-height);z-index:2147483000;margin:0;box-shadow:0 0 0 100vmax rgba(0,0,0,.62),0 12px 48px rgba(0,0,0,.5)}
 #zfsm-workspace .zfsm-overlay-button{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 @media (max-width:640px){#zfsm-workspace .zfsm-overlay-button span{display:none}}
+
+/* UX-012: operation running bar */
+#zfsm-workspace .zfsm-operation-bar {display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:0 0 10px;padding:6px 10px;border:1px solid var(--zfsm-accent);border-radius:6px;background:var(--zfsm-panel);color:var(--zfsm-text);font-size:13px}
+#zfsm-workspace .zfsm-operation-bar[hidden] {display:none}
+#zfsm-workspace .zfsm-operation-bar .zfsm-operation-text {font-weight:600;overflow-wrap:anywhere}
+#zfsm-workspace .zfsm-operation-bar button {margin-left:auto;min-height:28px;padding:2px 10px}
+#zfsm-workspace .zfsm-operation-pulse {width:8px;height:8px;border-radius:50%;background:var(--zfsm-accent);flex:none;animation:zfsm-operation-pulse 1.4s ease-in-out infinite}
+@keyframes zfsm-operation-pulse {0%,100%{opacity:1}50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){#zfsm-workspace .zfsm-operation-pulse{animation:none}}
