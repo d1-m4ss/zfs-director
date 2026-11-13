@@ -1,3 +1,8 @@
+### 2026.11.13.2
+Fixed an update that was refused with Jobs scan incomplete on servers with a large Jobs folder. The pre-update check now counts only job journals, not their lock files, and allows up to 50000 of them.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.13.1
 Jobs now lists background work and failures only. Quick actions such as taking a snapshot or saving settings are recorded in Administrative History, so the list is no longer flooded. Scheduled snapshot checks that find nothing to do no longer write anything to the USB flash, and settings and policy changes can be saved while a long operation is running. The Jobs badge shows active and attention jobs, replication schedules are shown in words, a disabled action shows why, and the empty Unknown rows are gone. One interface layout replaces Workspace and Compact. Rare settings sit under Advanced, and technical texts are plainer. The File Manager fits a phone screen again, and a busy operation lock now names the running operation. The support link points to the Unraid forum thread.
 

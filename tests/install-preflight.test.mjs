@@ -76,3 +76,16 @@ test('preflight ignores a stale tmpfs leftover once its id already has a durable
         assert.equal(result.exitCode,0,result.errors+result.text);
     } finally {php.exit();}
 });
+
+test('a large but healthy Jobs folder (journals plus their lock files) does not block an update',async()=>{
+    const php=await runtime();
+    try{
+        php.mkdir('/state/jobs');php.writeFile('/state/zfs.master.ui.cfg','[general]\nsanoid_integration=0\n');
+        const done=JSON.stringify({state:'completed',type:'policy',schema:4});
+        for(let i=0;i<3000;i++){const id='20261101-'+String(100000+i)+'-'+i.toString(16).padStart(12,'0');php.writeFile('/state/jobs/'+id+'.json',done);php.writeFile('/state/jobs/'+id+'.json.lock','');}
+        for(let i=0;i<200;i++)php.writeFile('/state/jobs/other-'+i+'.tmp','x');
+        const source=(await readFile('src/scripts/zfsm-upgrade-preflight.php','utf8')).replace("if(PHP_SAPI!=='cli')exit(2);",'');
+        const result=await php.run({code:'<?php define("STDERR",fopen("php://stderr","w"));$argv=["preflight","/state","install"]; ?>'+source}).catch(error=>{if(error.response)return error.response;throw error;});
+        assert.equal(result.exitCode,0,result.errors+result.text);
+    }finally{php.exit();}
+});

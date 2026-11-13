@@ -18,7 +18,9 @@ try{
     $scanJobs=function($directory,$skipIfDurable=null)use(&$pendingJobs,$requireRecovery){
         if(!is_dir($directory))return;
         $scan=opendir($directory);$count=0;
-        try{while(($name=readdir($scan))!==false){if(++$count>4096)$requireRecovery('Jobs scan incomplete; restore stopped for inspection');if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\.json$/D',$name))continue;
+        // Only job journals count toward the bound: every journal also keeps a .lock file and may
+        // sit next to other files, so counting raw directory entries refused healthy installs.
+        try{while(($name=readdir($scan))!==false){if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\.json$/D',$name))continue;if(++$count>50000)$requireRecovery('Jobs scan incomplete: more than 50000 job journals; restore stopped for inspection');
             // A promotion can crash between writing the durable copy and removing this leftover
             // (REL-002); once a durable record exists for this id, it alone is authoritative.
             if($skipIfDurable!==null&&is_file($skipIfDurable.'/'.$name))continue;
