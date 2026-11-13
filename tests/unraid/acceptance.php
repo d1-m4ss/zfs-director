@@ -1,7 +1,7 @@
 <?php
 /** Explicitly authorized native acceptance. Never invoke against an existing user dataset. */
 if (PHP_SAPI !== 'cli') exit(2);
-require '/usr/local/emhttp/plugins/zfs.master.ui/backend/ZFSMOperations.php';
+require '/usr/local/emhttp/plugins/zfs.master.ui/backend/ZFSMOperations.php';require __DIR__.'/../fixtures/test-mutations.php';
 $root=getenv('ZFSD_TEST_DATASET');$rootGuid=getenv('ZFSD_TEST_GUID');
 if($root!=='cache/zfs-director-acceptance-20261016T225600'||$rootGuid!=='1484883988092487105')throw new RuntimeException('Exact authorized test identity required');
 zfsmRequireIdentity($root,$rootGuid);
@@ -42,7 +42,7 @@ if(($argv[1]??'')==='basic'){
  $clone=$root.'/clone';acceptCheck('backend clone',acceptMutate($clone,fn()=>acceptSuccess(cloneDatasetSnapshot($snap,$clone))));acceptRemember($clone);acceptCheck('native clone content SHA256',hash_file('sha256','/mnt/'.$clone.'/hello.txt')===$state['fixture_sha256']['hello.txt']);
  $blocked=zfsmPreviewDestroy($snap,'0','synthetic-acceptance-signing-secret');acceptCheck('destroy preview detects clone dependency',$blocked['can_destroy']===false&&count($blocked['dependencies'])===1);
  $preview=zfsmPreviewDestroy($clone,'0','synthetic-acceptance-signing-secret');acceptCheck('destroy preview lists exact clone identity',$preview['can_destroy']===true&&$preview['objects'][0]['guid']===$state['objects'][$clone]);
- acceptMutate($clone,function()use($clone,$preview){acceptIdentity($clone);zfsmValidateDestroyPreview($clone,'0','synthetic-acceptance-signing-secret',$preview['preview_id'],$preview['token']);if(!acceptSuccess(destroyDataset($clone,'0')))throw new RuntimeException('Clone destroy failed');});acceptCheck('native clone destruction',!zfsmDatasetExists($clone));unset($state['objects'][$clone]);
+ acceptMutate($clone,function()use($clone,$preview){acceptIdentity($clone);zfsmValidateDestroyPreview($clone,'0','synthetic-acceptance-signing-secret',$preview['preview_id'],$preview['token']);if(!acceptSuccess(zfsmTestDestroyDataset($clone,'0')))throw new RuntimeException('Clone destroy failed');});acceptCheck('native clone destruction',!zfsmDatasetExists($clone));unset($state['objects'][$clone]);
  acceptCheck('destroy preview cannot replay',acceptRefused(fn()=>zfsmValidateDestroyPreview($clone,'0','synthetic-acceptance-signing-secret',$preview['preview_id'],$preview['token'])));
  acceptCheck('stale GUID refused',acceptRefused(fn()=>zfsmGuardMutationIdentity('editdatasetproperty',['zdataset'=>$files,'expected_guid'=>'1'])));
  $list=zfsmExplorerList($snap,'','','name','asc','0','0',$state['objects'][$snap]);acceptCheck('native helper snapshot listing',isset($list['entries'])&&count($list['entries'])>=5,['keys'=>array_keys($list)]);
@@ -116,7 +116,7 @@ if(($argv[1]??'')==='basic'){
  $preview=zfsmPreviewRestore($snap,['hello.txt'],'idempotent-restore','new','synthetic-acceptance-signing-secret',$state['objects'][$snap]);
  $first=zfsmQueueRestore($preview['id'],$preview['token'],'synthetic-acceptance-signing-secret','1');$second=zfsmQueueRestore($preview['id'],$preview['token'],'synthetic-acceptance-signing-secret','1');$state['own_jobs'][]=$first['id'];acceptSaveState();
  acceptCheck('duplicate reviewed restore queues one job',$first['id']===$second['id']);acceptStartWorker();$done=acceptWaitJob($first['id']);acceptCheck('idempotent restore SHA256',$done['state']==='completed'&&hash_file('sha256','/mnt/'.$files.'/idempotent-restore/hello.txt')===$state['fixture_sha256']['hello.txt']);
- $p=zfsmPreviewDestroy($child,'0','synthetic-acceptance-signing-secret');acceptMutate($child,function()use($child,$p){acceptIdentity($child);zfsmValidateDestroyPreview($child,'0','synthetic-acceptance-signing-secret',$p['preview_id'],$p['token']);if(!acceptSuccess(destroyDataset($child,'0')))throw new RuntimeException('Own mounted child destroy failed');});acceptCheck('own nested mount cleanup',!zfsmDatasetExists($child));unset($state['objects'][$child]);acceptSaveState();
+ $p=zfsmPreviewDestroy($child,'0','synthetic-acceptance-signing-secret');acceptMutate($child,function()use($child,$p){acceptIdentity($child);zfsmValidateDestroyPreview($child,'0','synthetic-acceptance-signing-secret',$p['preview_id'],$p['token']);if(!acceptSuccess(zfsmTestDestroyDataset($child,'0')))throw new RuntimeException('Own mounted child destroy failed');});acceptCheck('own nested mount cleanup',!zfsmDatasetExists($child));unset($state['objects'][$child]);acceptSaveState();
 }elseif(($argv[1]??'')==='interrupt'){
  $files=$state['files_dataset'];$path='/mnt/'.$files;acceptIdentity($files);
  acceptCheck('no pending work before isolated worker interruption',count(zfsmPendingJobs())===0);

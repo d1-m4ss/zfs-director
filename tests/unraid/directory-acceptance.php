@@ -132,12 +132,12 @@ function runAcceptance($phase){
         protectFixtures();fixtureDirectory($base.'/move-parent');fixtureDirectory($base.'/destination');fixtureDirectory($base.'/move-parent/source');$sha=fixtureContents($base.'/move-parent/source');$before=zfsmDirectoryIdentity($base.'/move-parent/source');exposeFixtures([$base.'/move-parent'=>0777,$base.'/destination'=>0777,$base.'/move-parent/source'=>0777]);
         $answer=lockedTest(fn()=>moveDirectory($base.'/move-parent/source',$base.'/destination/moved'));passed('Move under ordinary permissions',successful($answer),['result'=>$answer]);passed('Move inode and SHA-256',!file_exists($base.'/move-parent/source')&&zfsmDirectoryIdentity($base.'/destination/moved')===$before&&hash_file('sha256',$base.'/destination/moved/payload')===$sha,['sha256'=>$sha]);
         protectFixtures();fixtureDirectory($base.'/outside');file_put_contents($base.'/outside/sentinel','untouched synthetic sibling');$outside=hash_file('sha256',$base.'/outside/sentinel');fixtureDirectory($base.'/delete-me');fixtureDirectory($base.'/delete-me/nested');for($i=0;$i<20;$i++)file_put_contents($base.'/delete-me/nested/file-'.$i,'synthetic '.$i);symlink('../outside',$base.'/delete-me/escape');exposeFixtures([$base.'/outside'=>0777,$base.'/delete-me'=>0777,$base.'/delete-me/nested'=>0777]);
-        $answer=lockedTest(fn()=>deleteDirectory($base.'/delete-me','1'));passed('Recursive Delete under ordinary permissions',successful($answer),['result'=>$answer]);passed('Delete does not follow sibling symlink',!file_exists($base.'/delete-me')&&hash_file('sha256',$base.'/outside/sentinel')===$outside,['sha256'=>$outside]);ownIdentity();passed('Host root metadata unchanged',rootMetadata()===$state['root_metadata']);$state['phase']='completed';saveAcceptance();
+        $answer=lockedTest(fn()=>zfsmTestDirectoryDelete($base.'/delete-me','1'));passed('Recursive Delete under ordinary permissions',successful($answer),['result'=>$answer]);passed('Delete does not follow sibling symlink',!file_exists($base.'/delete-me')&&hash_file('sha256',$base.'/outside/sentinel')===$outside,['sha256'=>$outside]);ownIdentity();passed('Host root metadata unchanged',rootMetadata()===$state['root_metadata']);$state['phase']='completed';saveAcceptance();
     }catch(Throwable$error){if($running&&is_array($state)&&is_resource($stateHandle)){$state['failure']=$error->getMessage();saveAcceptance();}throw $error;}
     finally{if(is_resource($stateHandle)){flock($stateHandle,LOCK_UN);fclose($stateHandle);$stateHandle=null;}}
 }
 
 // Driver entry point. Tests load definitions only from a virtual filesystem copy.
 if(PHP_SAPI!=='cli')exit(2);
-require '/usr/local/emhttp/plugins/zfs.master.ui/backend/ZFSMOperations.php';
+require '/usr/local/emhttp/plugins/zfs.master.ui/backend/ZFSMOperations.php';require __DIR__.'/../fixtures/test-mutations.php';
 try{runAcceptance($argv[1]??'');}catch(Throwable$error){fwrite(STDERR,$error->getMessage()."\n");exit(1);}

@@ -1,5 +1,5 @@
 <?php
-require __DIR__.'/protection-bootstrap.php';
+require __DIR__.'/protection-bootstrap.php';require __DIR__.'/../fixtures/test-mutations.php';
 // Dedicated file-backed test pool only; no production paths or service config writes.
 $pool=runProcess('zpool',['status','-P','director_it_1018']);
 nativeExpect($pool['code']===0&&str_contains($pool['output'],'/var/lib/zfs-director-native-20261018/'),'Unexpected native test pool backing');
@@ -17,8 +17,8 @@ nativeCheck('real ZFS ownership and synthetic share configuration permit ordinar
  $nested=$report;$nested['services'][]=['service'=>'smb','path'=>$target.'/remove.txt'];nativeExpect(zfsmDependencyBlocks($nested,'deletedirectory',$target),'Nested export unprotected');
  $busy=$report;$busy['services'][]=['service'=>'docker','path'=>$path];nativeExpect(zfsmDependencyBlocks($busy,'deletedirectory',$target),'Docker ancestor unprotected');
  $mounts=$report;$mounts['entries'][]=['kind'=>'nested_mount','path'=>$target.'/mount'];nativeExpect(zfsmDependencyBlocks($mounts,'deletedirectory',$target),'Nested mount unprotected');
- $reserved=$path.'/.zfsm-mutation-test';mkdir($reserved);file_put_contents($reserved.'/journal.jsonl','synthetic protected fixture');$refused=deleteDirectory($reserved,'1');nativeExpect(str_contains(json_encode($refused),'protected recovery data')&&is_file($reserved.'/journal.jsonl'),'Reserved recovery directory not protected/explained');
- $result=deleteDirectory($target,'1');clearstatcache();nativeExpect(!file_exists($target),'Real native deletion did not remove fixture: '.json_encode($result));nativeExpect(file_get_contents($sibling.'/keep.txt')==='preserve','Sibling changed');
+ $reserved=$path.'/.zfsm-mutation-test';mkdir($reserved);file_put_contents($reserved.'/journal.jsonl','synthetic protected fixture');$refused=zfsmTestDirectoryDelete($reserved,'1');nativeExpect(str_contains(json_encode($refused),'protected recovery data')&&is_file($reserved.'/journal.jsonl'),'Reserved recovery directory not protected/explained');
+ $result=zfsmTestDirectoryDelete($target,'1');clearstatcache();nativeExpect(!file_exists($target),'Real native deletion did not remove fixture: '.json_encode($result));nativeExpect(file_get_contents($sibling.'/keep.txt')==='preserve','Sibling changed');
  return ['dataset'=>$props['name'],'guid'=>$props['guid'],'removed'=>$target,'sibling_preserved'=>true,'result'=>$result,'boundary'=>'Real ZFS inventory/ownership and confined Perl deletion; synthetic read-only SMB/NFS config, no Samba service'];
 });
 exit(array_filter($results,fn($r)=>$r['status']!=='PASS')?1:0);

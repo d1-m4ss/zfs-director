@@ -43,7 +43,7 @@ test('HTTP identity guard binds the selected inode through a writable-parent rep
  $expected=zfsmDirectoryIdentity('/mnt/cache/SampleProject');expectProcess('zfs',['list','-H','-p','-o','name,type,guid','-t','filesystem,volume,snapshot','cache'],"cache\\tfilesystem\\t123");
  zfsmGuardMutationIdentity('deletedirectory',['directory'=>'/mnt/cache/SampleProject','expected_guid'=>'123','directory_identity'=>$expected]);
  rename('/mnt/cache/SampleProject','/mnt/cache/retained-original');mkdir('/mnt/cache/SampleProject');file_put_contents('/mnt/cache/SampleProject/replacement','KEEP TOO');
- $answer=deleteDirectory('/mnt/cache/SampleProject','1');
+ $answer=zfsmTestDirectoryDelete('/mnt/cache/SampleProject','1');
  echo json_encode(['answer'=>$answer,'original'=>file_get_contents('/mnt/cache/retained-original/original'),'replacement'=>file_get_contents('/mnt/cache/SampleProject/replacement'),'calls'=>$GLOBALS['test_calls']]);`});
  assert.equal(r.exitCode,0,r.text+r.errors);const a=JSON.parse(r.text);assert.equal(a.original,'KEEP');assert.equal(a.replacement,'KEEP TOO');assert.equal(Object.keys(a.answer.succeeded).length,0);assert.match(Object.values(a.answer.failed).join(' '),/identity changed/i);assert.equal(a.calls.length,1,'no mutation helper invoked for replaced reviewed object');
  }finally{php.exit();}

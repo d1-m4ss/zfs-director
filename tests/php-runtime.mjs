@@ -25,6 +25,6 @@ export async function runtime() {
     assert.ok(start > 0 && end > start);
     php.writeFile('/app/src/include/ZFSMHelpers.php', helpers.slice(0, start) +
         'function runProcess($command, $args = [], $stdin = null) { return zfsmTestProcess($command, $args); }\n' + helpers.slice(end));
-    php.writeFile('/app/harness.php', await readFile('tests/harness.php'));
+    php.writeFile('/app/harness.php', (await readFile('tests/harness.php','utf8'))+'\n'+(await readFile('tests/fixtures/test-mutations.php','utf8')).replace(/^<\?php\n/,''));
     return php;
 }

@@ -48,7 +48,7 @@ $GLOBALS['acceptance_process_hook'] = function($command,$args) use(&$effect,$sou
     $effect = realpath($source);
 };
 expectProcess('/usr/bin/perl',['/app/src/scripts/zfsm-directory.pl'],json_encode(['error'=>'Path is unavailable, contains a symbolic link, or crosses a mount']),1);
-$answer = deleteDirectory($source,'1');
+$answer = zfsmTestDirectoryDelete($source,'1');
 echo json_encode(['effect'=>$effect,'succeeded'=>!empty($answer['succeeded']),'remaining_processes'=>count($GLOBALS['test_responses'])]);
 ` });
         assert.equal(result.errors, '', result.errors);

@@ -107,7 +107,7 @@ function runProcess($command,$args=[],$stdin=null) {
 // Load the unchanged dependency graph through an isolated copied PHP tree so
 // require_once remains truthful. Four exact function declaration seams
 // were renamed by the Python driver before this script started.
-require $fixture.'/code/src/backend/ZFSMOperations.php';
+require $fixture.'/code/src/backend/ZFSMOperations.php';require __DIR__.'/../fixtures/test-mutations.php';
 $plugin_state=$fixture.'/state';$plugin_runtime=$fixture.'/runtime';$plugin_audit=$fixture.'/audit';
 $plugin_conversion_runtime=$fixture.'/conversions';$plugin_worker_lock=$fixture.'/worker.lock';$plugin_service_lock=$fixture.'/service.lock';
 foreach([$plugin_state,$plugin_runtime,$plugin_audit,$plugin_conversion_runtime] as $dir)if(!is_dir($dir))mkdir($dir,0700,true);
@@ -132,7 +132,7 @@ try {
     if(in_array($mode,['move','delete'],true)) {
         $review=json_decode(file_get_contents($fixture.'/review.json'),true);
         zfsmGuardMutationIdentity($mode==='move'?'movedirectory':'deletedirectory',['directory'=>$review['path'],'directory_identity'=>$review['identity'],'expected_guid'=>'101']);
-        $answer=$mode==='move'?moveDirectory($review['path'],$review['destination']):deleteDirectory($review['path'],'1');
+        $answer=$mode==='move'?moveDirectory($review['path'],$review['destination']):zfsmTestDirectoryDelete($review['path'],'1');
         echo json_encode(['ok'=>true,'answer'=>$answer],JSON_THROW_ON_ERROR)."\n";return;
     } elseif($mode==='queue') {
         $answer=zfsmQueueConversion($fixture.'/owner/SampleProject','tank',true);
