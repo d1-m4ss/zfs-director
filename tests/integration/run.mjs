@@ -61,7 +61,7 @@ try{
  await scenario('corrupt and unsupported journals remain visible with no automatic actions',async()=>{
   stand.php.writeFile('/boot/config/plugins/zfs.master.ui/jobs/20261016-100099-999999999999.json','{"passphrase":"synthetic-corrupt-secret"');
   const answer=(await post({cmd:'conversionjobs'})).body;const bad=answer.jobs.find(j=>j.id==='20261016-100099-999999999999');assert.equal(bad.actions.cancel,false);assert.equal(bad.actions.resume,false);assert.equal(bad.actions.download,false);assert.ok(!JSON.stringify(answer).includes('synthetic-corrupt-secret'));
-  await page.getByRole('button',{name:/^Jobs/}).click();await page.getByRole('combobox',{name:'Filter jobs',exact:true}).selectOption('needs_attention');await page.locator('[data-job-id="20261016-100099-999999999999"]').waitFor();await capture('jobs-needs-attention');
+  await page.getByRole('button',{name:/^Jobs/}).click();await page.getByRole('combobox',{name:'Job status',exact:true}).selectOption('needs_attention');await page.locator('[data-job-id="20261016-100099-999999999999"]').waitFor();await capture('jobs-needs-attention');
  });
  await scenario('global dataset views and pool shortcut navigate without issuing scrub',async()=>{
   const scrubCalls=()=>stand.calls.filter(c=>new URLSearchParams(c.body).get('cmd')==='scrubpool').length,before=scrubCalls();

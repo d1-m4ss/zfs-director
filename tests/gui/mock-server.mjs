@@ -50,9 +50,9 @@ export function createModel() {
         switch(cmd){
             case 'inventory':case 'inventorysnapshots':{if(cmd==='inventorysnapshots'&&model.pendingSnapshotReplacement){find(lab+'/project').guid=model.pendingSnapshotReplacement;model.pendingSnapshotReplacement='';}const answer=inventory();if(cmd==='inventory'&&Number(config.lazy_load)===1){answer.op='getDatasets';answer.data.pools.cache.Snapshots=null;}return answer;}
             case 'pooldiagnostics':{const d=structuredClone(model.diagnostic);if(fields.pool!=='cache'){d.pool=fields.pool;d.status.rows[0].name=fields.pool;d.information.rows[0].name=fields.pool;}return d;}
-            case 'conversionjobs':{if(fields.filter||fields.sort||fields.view){
+            case 'conversionjobs':{if(fields.filter||fields.type||fields.sort||fields.view){
                 const group=j=>['queued','running'].includes(j.state)?'active':j.state==='completed'?'completed':'needs_attention';
-                let rows=jobs.filter(j=>(!fields.filter||fields.filter==='all'||fields.filter===group(j)||(fields.filter==='recovery'&&j.state==='recovery_required')||fields.filter===j.type)&&(fields.view!=='archived'));
+                let rows=jobs.filter(j=>(!fields.filter||fields.filter==='all'||fields.filter===group(j)||(fields.filter==='recovery'&&j.state==='recovery_required')||fields.filter===j.type)&&(!fields.type||fields.type==='all'||fields.type===j.type)&&(fields.view!=='archived'));
                 const time=j=>typeof j.created==='number'?j.created:Date.parse(j.created)/1000||0;
                 rows.sort((a,b)=>{if(fields.sort==='attention'){const rank={needs_attention:0,active:1,completed:2},d=rank[group(a)]-rank[group(b)];if(d)return d;}const d=time(b)-time(a)||b.id.localeCompare(a.id);return fields.sort==='oldest'?-d:d;});
                 const size=Math.max(1,Math.min(200,Number(fields.page_size)||25)),pages=Math.max(1,Math.ceil(rows.length/size)),page=Math.max(1,Math.min(pages,Number(fields.page)||1));

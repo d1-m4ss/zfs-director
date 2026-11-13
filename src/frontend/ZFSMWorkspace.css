@@ -550,6 +550,8 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
 /* Jobs toolbar: the buttons sit on the same line as the selects, not level with their captions. */
 #zfsm-workspace .zfsm-jobs-toolbar {align-items:flex-end}
 #zfsm-workspace .zfsm-jobs-toolbar>button {min-height:36px}
+#zfsm-workspace .zfsm-jobs-archive-toggle {display:inline-flex;align-items:center;gap:6px;min-height:36px;flex-direction:row}
+#zfsm-workspace .zfsm-jobs-archive-toggle input {margin:0}
 
 
 /* One compact line per warning: pool, reason (at most two lines) and the two links. */

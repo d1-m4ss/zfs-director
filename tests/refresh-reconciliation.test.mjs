@@ -23,7 +23,7 @@ async function fixture({type='conversion',interval=0,initial=true,holdInitial=fa
   if(fields.cmd==='getdatasetproperties')return structuredClone(owner);
   if(fields.cmd==='conversionjobs'){
    if(!fields.filter&&failObservation)throw Error('Synthetic observation failure');
-   const rows=fields.filter==='active'?jobs.filter(j=>['queued','running'].includes(j.state)):fields.filter==='restore'?jobs.filter(j=>j.type==='restore'):jobs;
+   const rows=fields.filter==='active'?jobs.filter(j=>['queued','running'].includes(j.state)):fields.type==='restore'?jobs.filter(j=>j.type==='restore'):jobs;
    const active=jobs.filter(j=>['queued','running'].includes(j.state)),attention=jobs.filter(j=>!['queued','running','completed'].includes(j.state)),completed=jobs.filter(j=>j.state==='completed'),size=Number(fields.page_size)||10;
    const answer={jobs:structuredClone(fields.filter?rows.slice(0,size):[...active,...attention,...completed.slice(0,size)]),worker_running:true,counts:{active:active.length,completed:completed.length,needs_attention:attention.length}};
    if(!fields.filter&&holdObservation)await new Promise(resolve=>releaseObservation=resolve);
@@ -34,7 +34,7 @@ async function fixture({type='conversion',interval=0,initial=true,holdInitial=fa
  }});await settle();
  return {w,root,app,jobs,job,calls,timers,button,reads:()=>calls.filter(c=>c.cmd==='inventory').length,
   async poll(){const entry=[...timers].find(([,v])=>v.ms===2500);assert.ok(entry);timers.delete(entry[0]);entry[1].fn();await settle();},
-  async filter(value){root.querySelector('[data-section=jobs]').click();await settle();const f=root.querySelector('[aria-label="Filter jobs"]');f.value=value;f.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();},
+  async filter(value){root.querySelector('[data-section=jobs]').click();await settle();const f=root.querySelector(['all','active','needs_attention','completed'].includes(value)?'[aria-label="Job status"]':'[aria-label="Job type"]');f.value=value;f.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();},
   finish(state='completed'){owner.directories=[];owner._directory_identities={};if(type==='conversion')owner.child[target]=ds(target,'3');job.state=state;job.stage=state;},
   async queueFast(){root.querySelector('[data-node="'+source+'"]').click();root.querySelector('[data-tab=actions]').click();button('Convert to dataset').click();await settle();const f=root.querySelector('.zfsm-form');f.querySelector('[name=offline_confirmed]').checked=true;f.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();f.querySelector('[data-confirm-operation]').click();await settle();},
   fail:()=>failObservation=true,recover:()=>failObservation=false,hold:()=>holdObservation=true,pending:()=>Boolean(releaseObservation),release:()=>{holdObservation=false;releaseObservation?.();},close(){app.stop();w.close();}};
@@ -50,7 +50,7 @@ test('queued reply remains tracked if it completes before the next Jobs poll',as
  const x=await fixture({initial:false});try{await x.queueFast();x.finish();await x.poll();assert.equal(x.reads(),2);assert.equal(x.root.querySelector('[data-node="'+source+'"]'),null);assert.ok(x.root.querySelector('[data-node="'+target+'"]'));}finally{x.close();}
 });
 for(const filter of ['active','restore'])test('deletion hidden by '+filter+' filter still reconciles once',async()=>{
- const x=await fixture({type:'deletion'});try{await x.filter(filter);x.finish();await x.poll();assert.equal(x.reads(),2);assert.equal(x.root.querySelector('[aria-label="Filter jobs"]').value,filter);assert.equal(x.root.querySelector('[data-job-id="'+id+'"]'),null);await x.poll();assert.equal(x.reads(),2);}finally{x.close();}
+ const x=await fixture({type:'deletion'});try{await x.filter(filter);x.finish();await x.poll();assert.equal(x.reads(),2);assert.equal(x.root.querySelector(filter==='active'?'[aria-label="Job status"]':'[aria-label="Job type"]').value,filter);assert.equal(x.root.querySelector('[data-job-id="'+id+'"]'),null);await x.poll();assert.equal(x.reads(),2);}finally{x.close();}
 });
 test('failed unfiltered observation retains pending work until the next successful poll',async()=>{
  const x=await fixture({type:'deletion'});try{await x.filter('active');x.finish();x.fail();await x.poll();assert.equal(x.reads(),1);assert.match(x.root.textContent,/Job status unavailable/);x.recover();await x.poll();assert.equal(x.reads(),2);}finally{x.close();}
@@ -66,10 +66,10 @@ test('a completed deletion outside the one-record observation page still reconci
  const x=await fixture({type:'deletion'});try{await x.filter('active');x.finish();x.jobs.unshift({id:'newer-archive',type:'archive',state:'completed'});await x.poll();assert.equal(x.reads(),2);assert.ok(x.calls.some(c=>c.page_size==='1'&&!c.filter));await x.poll();assert.equal(x.reads(),2);}finally{x.close();}
 });
 test('a Jobs filter change discards a pending observation and reconciles using the new scope',async()=>{
- const x=await fixture({type:'deletion'});try{await x.filter('active');x.finish();x.hold();await x.poll();assert.equal(x.pending(),true);await x.filter('restore');x.release();await settle();assert.equal(x.reads(),2);assert.equal(x.root.querySelector('[aria-label="Filter jobs"]').value,'restore');assert.equal(x.root.querySelector('[data-job-id="'+id+'"]'),null);await x.poll();assert.equal(x.reads(),2);}finally{x.close();}
+ const x=await fixture({type:'deletion'});try{await x.filter('active');x.finish();x.hold();await x.poll();assert.equal(x.pending(),true);await x.filter('restore');x.release();await settle();assert.equal(x.reads(),2);assert.equal(x.root.querySelector('[aria-label="Job type"]').value,'restore');assert.equal(x.root.querySelector('[data-job-id="'+id+'"]'),null);await x.poll();assert.equal(x.reads(),2);}finally{x.close();}
 });
 test('global active count discovers an inventory Job outside the visible filter',async()=>{
- const x=await fixture({type:'deletion',initial:false});try{await x.filter('restore');x.jobs.push(x.job);await x.poll();assert.equal(x.reads(),1);x.finish();await x.poll();assert.equal(x.reads(),2);assert.equal(x.root.querySelector('[aria-label="Filter jobs"]').value,'restore');}finally{x.close();}
+ const x=await fixture({type:'deletion',initial:false});try{await x.filter('restore');x.jobs.push(x.job);await x.poll();assert.equal(x.reads(),1);x.finish();await x.poll();assert.equal(x.reads(),2);assert.equal(x.root.querySelector('[aria-label="Job type"]').value,'restore');}finally{x.close();}
 });
 
 test('an observation started before queueing cannot discard the new Job as missing',async()=>{

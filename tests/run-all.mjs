@@ -37,7 +37,6 @@ const INTEGRATION_SCRIPTS = [
 // source it exercises (TEST-001); none of these scripts were ever wired to a
 // runner, so they were not kept in sync with later UI changes.
 const KNOWN_FAILURES={
-  'integration:activity':'Hiding a job itself creates a new request-job row in Jobs; resolved by ARCH-001 (synchronous actions only in Administrative History).',
 };
 
 const steps = [];

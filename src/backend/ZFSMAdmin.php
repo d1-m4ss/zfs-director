@@ -219,8 +219,8 @@ try {
 			zfsmReturnAnswer($answer);
 			break;
 		case 'conversionjobs':
-			foreach(['page','page_size','filter','sort','view']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');
-			$job_options=array_intersect_key($_POST,array_flip(['filter','sort','view']));
+			foreach(['page','page_size','filter','type','sort','view']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');
+			$job_options=array_intersect_key($_POST,array_flip(['filter','type','sort','view']));
 			echo json_encode(zfsmJobPage(zfsmPostString('page','1'),zfsmPostString('page_size','25'),$job_options?:null)+['worker_running'=>zfsmWorkerRunning(),'history'=>zfsmJobHistoryStatus()],JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 		case 'auditlog':
