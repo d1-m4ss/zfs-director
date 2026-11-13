@@ -1,0 +1,440 @@
+{
+ "acleditorinfo": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "activityvisibility": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "adddirectortlisting": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "archivesnapshotfiles": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "auditlog": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "cancelconversion": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "cancelrestore": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "cleanupmutation": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "clonesnapshot": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "conversionjobs": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "convertdirectory": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": true,
+  "observed": false
+ },
+ "createdataset": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "deletedirectory": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "destroydataset": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "destroysnapshot": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "downloadsnapshotarchive": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": true
+ },
+ "downloadsnapshotfile": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": true
+ },
+ "editacl": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "editdatasetproperty": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "getdatasetproperties": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "holdsnapshot": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "inventory": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "inventorysnapshots": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "lockdataset": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "movedirectory": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "pooldiagnostics": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewacl": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewcleanup": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewdeletedirectory": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewdestroy": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewhistoryarchive": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewpromote": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewquota": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewrestore": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewrollback": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "previewspaceproperty": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "promotedataset": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "protectioncancel": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectioncontrol": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "protectioncontrolpreview": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectiondata": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectiondetect": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionexternalpreview": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionexternaltransfer": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionimport": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionimportpreview": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionpolicypreview": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionpolicysave": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionreplicationpreview": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionreplicationsave": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionrun": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionrunpreview": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "protectionsettings": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "protectiontest": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "publishconversion": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "quotaoverview": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "refresh": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "releasesnapshot": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "removedirectorylisting": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "renamedataset": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "renamesnapshot": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "restoresnapshotfiles": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": true,
+  "observed": false
+ },
+ "resumeconversion": {
+  "kind": "admin",
+  "lock": "none",
+  "destructive": true,
+  "observed": false
+ },
+ "rollbacksnapshot": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "saveconfig": {
+  "kind": "admin",
+  "lock": "config",
+  "destructive": false,
+  "observed": false
+ },
+ "scrubpool": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": true
+ },
+ "setquota": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "snapshotdataset": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "snapshotfileinfo": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "snapshotfiles": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
+ "stopdestroyprocesses": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": true,
+  "observed": false
+ },
+ "unlockdataset": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
+ "validatesettings": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ }
+}

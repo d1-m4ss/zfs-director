@@ -116,11 +116,9 @@ test('signed definition review gives Jobs its policy name, dataset and remove ac
 
 
 test('every administrative mutation is covered by a Jobs journal registry entry',async()=>fixture(async({s})=>{
- const r=await s.run({code:"<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';echo json_encode(array_keys(zfsmRequestJobCommands()));"});
- const registered=new Set(JSON.parse(r.text)),source=readFileSync('src/backend/ZFSMAdmin.php','utf8');
- const assignments=source.match(/\$administrative(?:\s*=\s*[^;]+|\[\]\s*=\s*[^;]+)/g)||[];
- const administrative=new Set(assignments.flatMap(a=>[...a.matchAll(/'([a-z]+)'/g)].map(m=>m[1])));
- assert.ok(administrative.size>35);for(const command of administrative)if(command!=='refresh')assert.ok(registered.has(command),'Missing operation journal: '+command);
+ const r=await s.run({code:"<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';echo json_encode(['labels'=>array_keys(zfsmRequestJobCommands()),'admin'=>array_keys(array_filter(zfsmCommandRegistry(),fn($c)=>$c['kind']==='admin'))]);"});
+ const out=JSON.parse(r.text),registered=new Set(out.labels);
+ assert.ok(out.admin.length>35);for(const command of out.admin)if(command!=='refresh')assert.ok(registered.has(command),'Missing operation journal: '+command);
 }));
 
 test('wrong-type control parent is refused with a valid journal, not an invalid history record',async()=>fixture(async({s,post})=>{

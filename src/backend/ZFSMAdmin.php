@@ -79,20 +79,13 @@ $lock_described = false;
 try {
 	$request_token = zfsmValidateRequest();
 	$command = zfsmPostString('cmd');
-	$destructive = array('stopdestroyprocesses','destroydataset','destroysnapshot','rollbacksnapshot','deletedirectory','cleanupmutation','movedirectory','convertdirectory','resumeconversion','publishconversion','lockdataset','restoresnapshotfiles');
-	$readonly = array('inventory','inventorysnapshots','pooldiagnostics','getdatasetproperties','previewdestroy','previewrollback','conversionjobs','auditlog','snapshotfiles','snapshotfileinfo','downloadsnapshotfile','previewrestore','downloadsnapshotarchive','validatesettings');
-	$administrative = array('stopdestroyprocesses','refresh','createdataset','editdatasetproperty','adddirectortlisting','removedirectorylisting','renamedataset','destroydataset','lockdataset','unlockdataset','promotedataset','movedirectory','convertdirectory','deletedirectory','cleanupmutation','rollbacksnapshot','renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','destroysnapshot','snapshotdataset','cancelconversion','resumeconversion','publishconversion','saveconfig','restoresnapshotfiles','cancelrestore','archivesnapshotfiles','scrubpool','activityvisibility');
-	$readonly=array_merge($readonly,['protectiondetect','protectiondata','protectionpolicypreview','protectionreplicationpreview','protectionrunpreview','protectioncontrolpreview','protectiontest']);
-	$administrative=array_merge($administrative,['protectionsettings','protectionpolicysave','protectionreplicationsave','protectionrun','protectioncontrol','protectioncancel']);
-	$readonly[]='protectionimportpreview';$administrative[]='protectionimport';
-	$readonly[]='protectionexternalpreview';$administrative[]='protectionexternaltransfer';
-	$readonly=array_merge($readonly,['previewpromote','quotaoverview','previewquota']);$administrative[]='setquota';
-	$readonly=array_merge($readonly,['acleditorinfo','previewacl']);$administrative[]='editacl';
-	$readonly[]='previewdeletedirectory';$readonly[]='previewcleanup';$readonly[]='previewspaceproperty';$readonly[]='previewhistoryarchive';
-	if (!in_array($command,array_merge($readonly,$administrative),true)) throw new InvalidArgumentException('Unknown command');
+	// ARCH-002: kind, lock, Destructive Mode and journaling come from zfsmCommandRegistry().
+	$spec = zfsmCommand($command);
+	if ($spec === null) throw new InvalidArgumentException('Unknown command');
+	$command = $_POST['cmd'] = $spec['name'];
 	$GLOBALS['zfsm_job_request_command']=$command;
-	if(in_array($command,zfsmRequestJobObservedCommands(),true))zfsmRequestJobBegin($command,$_POST);
-	if (in_array($command,$administrative,true)) {
+	if($spec['observed'])zfsmRequestJobBegin($command,$_POST);
+	if ($spec['kind'] === 'admin') {
 		$fields=$_POST;
 		if ($command==='createdataset' && is_array($_POST['data']??null)) {
 			$data=$_POST['data'];
@@ -102,27 +95,24 @@ try {
 		$GLOBALS['zfsm_job_request_audit']=$GLOBALS['zfsm_request_audit'];
         if(isset($GLOBALS['zfsm_request_job']))zfsmJobUpdate($GLOBALS['zfsm_request_job']['id'],['audit_id'=>$GLOBALS['zfsm_request_audit']]);
 	}
-	// protectionrun only queues a durable job and protectioncancel only flags
-	// an existing one; both serialize on their own job/config locks already.
-	$controls=array('convertdirectory','cancelconversion','resumeconversion','restoresnapshotfiles','cancelrestore','archivesnapshotfiles','protectionrun','protectioncancel');
-	if (!in_array($command, array_merge($readonly,$controls), true)) {
+	// Lock 'none' admin commands (protectionrun, conversion/restore queueing and cancels) only
+	// queue or flag a durable job; they serialize on their own job/config locks already.
+	if ($spec['lock'] !== 'none') {
 		zfsmAuditSetStage('acquiring_lock');
-		// These commands only change the config file, Director's protection store
-		// or cron (never a mutating ZFS/sanoid/syncoid call), so a long ZFS job
-		// holding the operation lock must not block them; they serialize on the
-		// same config lock saveconfig uses, so every writer of the .cfg agrees.
-		$config_only = in_array($command,array('saveconfig','adddirectortlisting','removedirectorylisting','protectionsettings','protectionpolicysave','protectionreplicationsave','protectioncontrol','protectionimport','protectionexternaltransfer'),true);
+		// Config commands never make a mutating ZFS/sanoid/syncoid call, so a long ZFS job holding
+		// the operation lock must not block them; they share the config lock saveconfig uses.
+		$config_only = $spec['lock'] === 'config';
 		$mutation_lock = zfsmAcquireOperationLockWaiting($config_only?$GLOBALS['plugin_config_lock']:$GLOBALS['plugin_lock']);
         $GLOBALS['zfsm_operation_lock_handle']=$mutation_lock;
         $subject=null;foreach(['zdataset','snapshot','directory','pool','newname','job_id']as$key)if(is_string($_POST[$key]??null)&&$_POST[$key]!==''){$subject=$_POST[$key];break;}
         // Only the operation-lock holder describes itself: a config-only command
         // must not overwrite or remove the running ZFS operation's description.
-        if(!$config_only){zfsmOperationLockDescribe(zfsmRequestJobCommands()[$command]??$command,$subject);$lock_described=true;}
+        if(!$config_only){zfsmOperationLockDescribe($spec['label']??$command,$subject);$lock_described=true;}
 	}
 	// Settings may have changed while audit storage was locked. Recheck policy
 	// under the mutation lock that serializes ZFS changes (settings use their own
 	// lock, so an operation already running keeps the policy it started under).
-	if (in_array($command, $destructive, true)) {
+	if ($spec['destructive']) {
 		$zfsm_cfg=loadConfig(parse_plugin_cfg($plugin,true));
 		if ((int)$zfsm_cfg['destructive_mode'] !== 1) throw new InvalidArgumentException('Destructive Mode is disabled in ZFS Director settings');
 	}

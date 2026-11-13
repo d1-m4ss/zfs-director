@@ -1,12 +1,15 @@
 <?php
 // Request-owned journals are observations, never executable/replayable payloads.
+require_once __DIR__.'/ZFSMCommands.php';
+// Labels of every audited command (ARCH-002 registry) plus internal worker maintenance.
 function zfsmRequestJobCommands() {
-    return ['stopdestroyprocesses'=>'Stop processes','cancelconversion'=>'Cancel conversion','resumeconversion'=>'Resume conversion','publishconversion'=>'Publish conversion','cancelrestore'=>'Cancel restore','protectioncancel'=>'Cancel protection job','activityvisibility'=>'Organize activity history','jobhistorycleanup'=>'Clean job history','createdataset'=>'Create dataset','editdatasetproperty'=>'Change dataset property','adddirectortlisting'=>'Add directory listing','removedirectorylisting'=>'Remove directory listing','renamedataset'=>'Rename dataset','lockdataset'=>'Lock dataset','unlockdataset'=>'Unlock dataset','promotedataset'=>'Promote clone','movedirectory'=>'Move directory','cleanupmutation'=>'Clean completed recovery','rollbacksnapshot'=>'Restore dataset from snapshot','renamesnapshot'=>'Rename snapshot','holdsnapshot'=>'Hold snapshot','releasesnapshot'=>'Release snapshot hold','clonesnapshot'=>'Clone snapshot','destroysnapshot'=>'Delete snapshots','snapshotdataset'=>'Create snapshots','saveconfig'=>'Save settings','setquota'=>'Change quota','editacl'=>'Change permissions','protectionsettings'=>'Change Data Protection settings','protectionpolicysave'=>'Save snapshot policy','protectionreplicationsave'=>'Save replication task','protectioncontrol'=>'Change protection definition','protectionimport'=>'Import policy','protectionexternaltransfer'=>'Transfer External ownership','scrubpool'=>'Pool scrub','downloadsnapshotfile'=>'Download snapshot file','downloadsnapshotarchive'=>'Download ZIP','convertdirectory'=>'Convert directory','deletedirectory'=>'Delete directory','destroydataset'=>'Delete dataset','restoresnapshotfiles'=>'Restore files','archivesnapshotfiles'=>'Prepare ZIP','protectionrun'=>'Run Data Protection'];
+    $labels=[];foreach(zfsmCommandRegistry()as$name=>$c)if($c['label']!==null)$labels[$name]=$c['label'];
+    return $labels+['jobhistorycleanup'=>'Clean job history'];
 }
 // Only these synchronous requests keep a journal from the start: their outcome is
 // observed over time (scrub progress, download transfer). Every other synchronous
 // command is recorded in Administrative History, and in Jobs only when it fails.
-function zfsmRequestJobObservedCommands() { return ['scrubpool','downloadsnapshotfile','downloadsnapshotarchive']; }
+function zfsmRequestJobObservedCommands() { return array_keys(array_filter(zfsmCommandRegistry(),fn($c)=>$c['observed'])); }
 function zfsmRequestJobQueuedCommands() { return ['convertdirectory','deletedirectory','destroydataset','restoresnapshotfiles','archivesnapshotfiles','protectionrun']; }
 function zfsmRequestJobCategory($job) {
     $categories=['snapshotdataset'=>'snapshot','renamesnapshot'=>'snapshot','holdsnapshot'=>'snapshot','releasesnapshot'=>'snapshot','clonesnapshot'=>'snapshot','protectionpolicysave'=>'policy','protectionimport'=>'policy','protectionexternaltransfer'=>'policy','protectionreplicationsave'=>'replication','restoresnapshotfiles'=>'restore','rollbacksnapshot'=>'restore','archivesnapshotfiles'=>'archive','convertdirectory'=>'conversion','cancelconversion'=>'conversion','resumeconversion'=>'conversion','publishconversion'=>'conversion','cancelrestore'=>'restore','deletedirectory'=>'deletion','destroydataset'=>'deletion','destroysnapshot'=>'deletion'];
