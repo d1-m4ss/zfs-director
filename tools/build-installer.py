@@ -18,7 +18,7 @@ import zipfile
 from urllib.parse import urlsplit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-VERSION = '2026.11.13.2'
+VERSION = '2026.11.13.3'
 STOP_MARKER = r'''use strict;
 use warnings;
 use Fcntl qw(:DEFAULT :mode);

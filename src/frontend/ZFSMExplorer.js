@@ -28,7 +28,7 @@
   eye:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z M15 12a3 3 0 1 0-6 0 3 3 0 0 0 6 0',
   refresh:'M20 9a8 8 0 1 0 0 7 M20 3v6h-6',up:'M12 21V4 M5 11l7-7 7 7',back:'M20 12H4 M11 5l-7 7 7 7',
   'chevron-left':'M15 5l-7 7 7 7','chevron-right':'M9 5l7 7-7 7','chevron-down':'M5 9l7 7 7-7',
-  check:'M4 4h16v16H4Z M7 12l3 3 7-7',clear:'M5 5h14v14H5Z M9 9l6 6 M15 9l-6 6',close:'M6 6l12 12 M18 6 6 18',
+  check:'M4 4h16v16H4Z M7 12l3 3 7-7',clear:'M5 5h14v14H5Z M9 9l6 6 M15 9l-6 6',close:'M6 6l12 12 M18 6 6 18',expand:'M14 4h6v6 M20 4l-7 7 M10 20H4v-6 M4 20l7-7',
   details:'M5 3h14v18H5Z M8 7h8 M8 11h8 M8 15h4',space:'M12 3a9 9 0 1 0 9 9 M12 3v9h9 M16 3v5h5',
   shield:'M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z M8 12l3 3 5-6',users:'M8 3a3 3 0 1 0 0 6 3 3 0 1 0 0-6 M3 20v-5a5 5 0 0 1 10 0v5 M16 4a3 3 0 0 1 0 6 M17 13a4 4 0 0 1 4 4v3'
  };

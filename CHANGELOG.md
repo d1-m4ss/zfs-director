@@ -1,3 +1,8 @@
+### 2026.11.13.3
+New Large window button in the plugin header opens the whole plugin in a large window over the page; Escape or Close window returns. The pool warning bar is now one compact line with a shorter replication message.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.13.2
 Fixed an update that was refused with Jobs scan incomplete on servers with a large Jobs folder. The pre-update check now counts only job journals, not their lock files, and allows up to 50000 of them.
 

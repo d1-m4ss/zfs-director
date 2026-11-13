@@ -9,8 +9,17 @@ function zfsmCreateWorkspace(options) {
     // Fixed-height frame: the workspace fills the viewport below its own top edge, so the page itself
     // does not scroll; each screen scrolls in exactly one place inside the frame.
     root.dataset.frame='fixed';
-    const sizeFrame=()=>{const style=getComputedStyle(root);root.dataset.wide=String(root.clientWidth-parseFloat(style.paddingLeft||0)-parseFloat(style.paddingRight||0)>850);const top=root.getBoundingClientRect().top+(window.scrollY||0);root.style.setProperty('--zfsm-frame-height',Math.max(520,Math.floor(window.innerHeight-top-32))+'px');};
+    const sizeFrame=()=>{const style=getComputedStyle(root);root.dataset.wide=String(root.clientWidth-parseFloat(style.paddingLeft||0)-parseFloat(style.paddingRight||0)>850);const top=root.getBoundingClientRect().top+(window.scrollY||0);root.style.setProperty('--zfsm-frame-height',root.dataset.overlay==='true'?Math.floor(window.innerHeight*0.96)+'px':Math.max(520,Math.floor(window.innerHeight-top-32))+'px');};
     sizeFrame();window.addEventListener('resize',sizeFrame);window.addEventListener('load',sizeFrame);
+    // Large window: the whole workspace floats over the Unraid page (same screens, same actions).
+    let overlayButton=null;
+    const setOverlay=on=>{
+        root.dataset.overlay=String(on);document.documentElement.style.overflow=on?'hidden':'';
+        if(overlayButton){overlayButton.setAttribute('aria-pressed',String(on));overlayButton.textContent='';overlayButton.append(zfsmCreateIcon(on?'close':'expand'),node('span',on?'Close window':'Large window'));overlayButton.title=on?'Return to the page (Esc)':'Open the plugin in a large window over the page';}
+        sizeFrame();requestAnimationFrame(sizeFrame);
+    };
+    const overlayKey=event=>{if(event.key==='Escape'&&root.dataset.overlay==='true'&&!root.querySelector('dialog[open]')&&!document.querySelector('dialog[open]')){event.preventDefault();setOverlay(false);}};
+    window.addEventListener('keydown',overlayKey);
     const frameObserver=typeof ResizeObserver==='function'?new ResizeObserver(sizeFrame):null;frameObserver?.observe(document.documentElement);
     // While a modal dialog is open, wheel and touch gestures outside it must not move the page behind it.
     const modalScrollGuard=event=>{
@@ -84,7 +93,7 @@ function zfsmCreateWorkspace(options) {
     const protectionSection=()=>['protection','replication','protection-settings'].includes(section);
 
     const themeSelect=node('select');themeSelect.setAttribute('aria-label','Theme');for(const [value,label] of [['auto','Unraid (auto)'],['dark','Black'],['gray','Gray'],['light','White'],['azure','Azure']]){const item=node('option',label);item.value=value;themeSelect.append(item);}themeSelect.addEventListener('change',()=>{theme=themeSelect.value;applyTheme();savePreferences();});controls.append(themeSelect);
-    const refreshButton=button('',()=>protectionSection()&&protection?protection.refresh():section==='jobs'?loadJobs():section==='settings'?protection?.refresh():inventory.refresh(),{'aria-label':'Refresh',title:'Refresh',class:'zfsm-refresh-button'}),refreshIcon=zfsmCreateIcon('refresh');refreshIcon.classList.add('zfsm-refresh-icon');refreshButton.append(refreshIcon);controls.append(refreshButton);header.append(breadcrumb,controls);
+    const refreshButton=button('',()=>protectionSection()&&protection?protection.refresh():section==='jobs'?loadJobs():section==='settings'?protection?.refresh():inventory.refresh(),{'aria-label':'Refresh',title:'Refresh',class:'zfsm-refresh-button'}),refreshIcon=zfsmCreateIcon('refresh');refreshIcon.classList.add('zfsm-refresh-icon');refreshButton.append(refreshIcon);controls.append(refreshButton);overlayButton=button('',()=>setOverlay(root.dataset.overlay!=='true'),{'data-overlay-toggle':'','aria-pressed':'false',class:'zfsm-overlay-button'});setOverlay(false);controls.prepend(overlayButton);header.append(breadcrumb,controls);
     const nav=node('nav',undefined,'zfsm-global-nav');nav.setAttribute('aria-label','Plugin sections');const sectionButtons=new Map();
     for(const [key,label] of [['overview','Overview'],['datasets','Datasets'],['protection','Snapshot Policies'],['replication','Replication'],['jobs','Jobs'],['settings','Settings']]){const item=button('',()=>navigate(key),{'data-section':key});item.append(navigationIcon(key),node('span',label,'zfsm-nav-label'));sectionButtons.set(key,item);nav.append(item);}
     sidebar.append(nav);const sidebarNote=node('p','ZFS Director · local management','zfsm-sidebar-note');sidebar.append(sidebarNote);
@@ -707,5 +716,5 @@ function zfsmCreateWorkspace(options) {
     if(Number(config.refresh_interval)===0){const cached=storageRead(cacheKey);if(cached&&cached.data&&cached.data.pools&&cached.data.datasets&&cached.data.devices){data=cached.data;inventoryFresh=false;if(!data.pools[pool])pool=Object.keys(data.pools)[0]||'';if(!selected())selection=pool;selectionIdentity=selectionFingerprint();renderPools();renderSection();}}
     inventory.refresh();
     if(protection)protection.availability().catch(()=>{protectionButton.hidden=true;replicationButton.hidden=true;});
-    return {refresh:()=>inventory.refresh(),stop:()=>{if(stopped)return;stopped=true;window.removeEventListener('resize',sizeFrame);window.removeEventListener('load',sizeFrame);frameObserver?.disconnect();window.removeEventListener('wheel',modalScrollGuard,true);window.removeEventListener('touchmove',modalScrollGuard,true);protection?.stop();inventory.stop();clearTimeout(jobsTimer);clearTimeout(diagnosticTimer);invalidateForm();disposeSnapshots();disposeExplorer();themeObserver.disconnect();media.removeEventListener('change',themeListener);for(const controller of controllers)controller.abort();controllers.clear();},getState:()=>({section,tab,pool,selection,layout,theme})};
+    return {refresh:()=>inventory.refresh(),stop:()=>{if(stopped)return;stopped=true;window.removeEventListener('resize',sizeFrame);window.removeEventListener('load',sizeFrame);window.removeEventListener('keydown',overlayKey);document.documentElement.style.overflow='';frameObserver?.disconnect();window.removeEventListener('wheel',modalScrollGuard,true);window.removeEventListener('touchmove',modalScrollGuard,true);protection?.stop();inventory.stop();clearTimeout(jobsTimer);clearTimeout(diagnosticTimer);invalidateForm();disposeSnapshots();disposeExplorer();themeObserver.disconnect();media.removeEventListener('change',themeListener);for(const controller of controllers)controller.abort();controllers.clear();},getState:()=>({section,tab,pool,selection,layout,theme})};
 }
