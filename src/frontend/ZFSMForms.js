@@ -4,8 +4,8 @@
   const destructive = new Set(['destroydataset', 'destroysnapshot', 'rollbacksnapshot', 'deletedirectory', 'cleanupmutation', 'movedirectory', 'convertdirectory', 'resumeconversion', 'publishconversion', 'lockdataset']);
   const titles = {
     createdataset: 'Create dataset', editdatasetproperty: 'Edit properties', renamedataset: 'Rename dataset', destroydataset: 'Destroy dataset',
-    lockdataset: 'Lock dataset', unlockdataset: 'Unlock dataset', promotedataset: 'Promote clone', adddirectortlisting: 'Enable directory listing',
-    removedirectorylisting: 'Disable directory listing', movedirectory: 'Move directory', convertdirectory: 'Convert directory to dataset', deletedirectory: 'Delete directory', cleanupmutation: 'Clean completed recovery',
+    lockdataset: 'Lock dataset', unlockdataset: 'Unlock dataset', promotedataset: 'Promote clone', adddirectortlisting: 'Show folders in tree',
+    removedirectorylisting: 'Hide folders in tree', movedirectory: 'Move directory', convertdirectory: 'Convert directory to dataset', deletedirectory: 'Delete directory', cleanupmutation: 'Clean completed recovery',
     snapshotdataset: 'Create snapshot', renamesnapshot: 'Rename snapshot', holdsnapshot: 'Hold snapshot', releasesnapshot: 'Release snapshot hold',
     clonesnapshot: 'Clone snapshot', rollbacksnapshot: 'Rollback snapshot', destroysnapshot: 'Destroy snapshots', cancelconversion: 'Cancel conversion',
     resumeconversion: 'Resume conversion', publishconversion: 'Publish verified conversion copy', cancelrestore: 'Cancel file operation', saveconfig: 'Settings', setquota:'User / group quotas',editacl:'POSIX ACL editor'
@@ -596,8 +596,8 @@
       field(state, 'refresh_interval', 'Refresh interval', values.refresh_interval, [['0', 'No refresh'], ['30', '30 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['300', '5 minutes'], ['900', '15 minutes'], ['1800', '30 minutes']]);
       for (const [key, label] of [['lazy_load', 'Lazy load snapshots'], ['sanoid_integration', 'Sanoid / Syncoid integration'], ['destructive_mode', 'Destructive Mode']]) field(state, key, label, values[key], [['0', 'No'], ['1', 'Yes']]);
       field(state, 'exclusion', 'Dataset exclusion regex (one pattern)', values.exclusion, null, { type: 'textarea', rows: 2, maxLength: 1024 });
-      const listing = field(state, 'directory_listing', 'Directory listing datasets', values.directory_listing, null, { type: 'textarea', rows: 5, maxLength: 16384 });
-      if (state.context && Array.isArray(state.context.datasets) && typeof global.zfsmDatasetChecklist === 'function') global.zfsmDatasetChecklist(listing, () => state.context.datasets, { label: 'Directory listing datasets' });
+      const listing = field(state, 'directory_listing', 'Show folders in the tree for these datasets', values.directory_listing, null, { type: 'textarea', rows: 5, maxLength: 16384 });
+      if (state.context && Array.isArray(state.context.datasets) && typeof global.zfsmDatasetChecklist === 'function') global.zfsmDatasetChecklist(listing, () => state.context.datasets, { label: 'Show folders in the tree for these datasets' });
       field(state, 'snap_max_days_alert', 'Snapshot age warning (days)', values.snap_max_days_alert, null, { type: 'number', min: 0, max: 36500, step: 1, required: true });
       field(state,'space_warning_percent','Space warning threshold (%)',values.space_warning_percent,null,{type:'number',min:1,max:99,step:1,required:true});
       field(state,'space_critical_percent','Space critical threshold (%)',values.space_critical_percent,null,{type:'number',min:2,max:100,step:1,required:true});
@@ -741,7 +741,7 @@
         case 'destroysnapshot': snapshotSelection(state); break;
         case 'releasesnapshot': acknowledgment(state, 'I confirm releasing the zfsmaster hold; this removes its protection against deletion.'); break;
         case 'holdsnapshot': state.grid.append(element('p', 'Add the zfsmaster hold to protect this snapshot from deletion.', 'zfsm-notice')); break;
-        case 'adddirectortlisting': case 'removedirectorylisting': state.grid.append(element('p', 'This updates the directory listing setting for the selected dataset.', 'zfsm-notice')); break;
+        case 'adddirectortlisting': case 'removedirectorylisting': state.grid.append(element('p', 'Ordinary folders inside this dataset are listed under it in the dataset tree, or hidden again. Nothing on disk changes.', 'zfsm-notice')); break;
       }
       return Promise.resolve();
     }

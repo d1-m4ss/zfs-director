@@ -402,7 +402,7 @@ function zfsmCreateWorkspace(options) {
             snapshotdataset:['M3 7h4l2-3h6l2 3h4v13H3Z M16 13a4 4 0 1 0-8 0 4 4 0 0 0 8 0','Use when you need a restore point before changing files.'],
             renamedataset:['m15 4 5 5-11 11H4v-5Z M13 6l5 5','Use when you want to change this dataset name or path.'],
             editdatasetproperty:['M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6','Use when you need to change storage behaviour, compression, limits or mountpoint.'],
-            adddirectortlisting:['M3 6h7l2 3h9v11H3Z M12 12v6 M9 15h6','Use when you need to show ordinary directories inside this dataset.'],
+            adddirectortlisting:['M3 6h7l2 3h9v11H3Z M12 12v6 M9 15h6','Lists the ordinary folders inside this dataset in the dataset tree.'],
             removedirectorylisting:['M3 6h7l2 3h9v11H3Z M9 15h6','Use when you want to hide ordinary directories from the list; files are kept.'],
             promotedataset:['M5 20V6h7 M9 9l3-3-3-3 M12 12h7v8h-7Z','Use when you need to reverse the clone dependency so the original dataset no longer owns its base snapshot.'],
             unlockdataset:['M6 10h13v11H5V10 M9 10V7a4 4 0 0 1 8 0 M12 14v3','Use when you need to load the encryption key and access this dataset.'],
@@ -436,7 +436,7 @@ function zfsmCreateWorkspace(options) {
             action('Edit Dataset','editdatasetproperty');
             if(item.node.type==='filesystem')action('User / group quotas','setquota');
             if(item.node.type==='filesystem')action('POSIX ACL editor','editacl');
-            if(item.node.type!=='volume'){const listed=Array.isArray(config.directory_listing)&&config.directory_listing.includes(item.name);action(listed?'Remove Directory Listing':'Add Directory Listing',listed?'removedirectorylisting':'adddirectortlisting');}
+            if(item.node.type!=='volume'){const listed=Array.isArray(config.directory_listing)&&config.directory_listing.includes(item.name);action(listed?'Hide folders in tree':'Show folders in tree',listed?'removedirectorylisting':'adddirectortlisting');}
             if(item.node.origin&&item.node.origin!=='-')action('Promote clone','promotedataset');
             if(item.node.type!=='volume'&&item.node.encryption&&item.node.encryption!=='off'&&item.node.encryptionroot===item.name&&item.node.keystatus!=='none'){
                 const recovery=item.node.keystatus==='available'&&item.node._encryption_recovery;
