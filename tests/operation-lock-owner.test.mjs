@@ -63,6 +63,16 @@ test('busy-lock failure names the running command/job only when its pid matches 
    zfsmOperationLockForget();
   })();
   (function(){
+   // Another process's description (e.g. the worker holding the operation lock) must survive
+   // a forget from this process (e.g. a config-only settings request finishing).
+   $file=$GLOBALS['plugin_runtime'].'/lock-owner.json';
+   file_put_contents($file,json_encode(['label'=>'Delete dataset','subject'=>'tank/d','pid'=>getmypid()+1,'started'=>time()]));
+   zfsmOperationLockForget();
+   same(true,is_file($file));
+   same('Running now: Delete dataset tank/d (0 min)',zfsmOperationLockRunningNow(['pid'=>getmypid()+1]));
+   unlink($file);
+  })();
+  (function(){
    $file=$GLOBALS['plugin_runtime'].'/lock-owner.json';
    file_put_contents($file,'not json');
    same(null,zfsmOperationLockRunningNow(['pid'=>getmypid()]));

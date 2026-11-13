@@ -28,7 +28,10 @@ function zfsmOperationLockDescribe($label,$subject=null) {
 }
 function zfsmOperationLockForget() {
     $dir=$GLOBALS['plugin_runtime']??null;if(!is_string($dir)||$dir==='')return;
-    $file=$dir.'/lock-owner.json';if(is_file($file)&&!is_link($file))@unlink($file);
+    $file=$dir.'/lock-owner.json';if(!is_file($file)||is_link($file)||filesize($file)>4096)return;
+    // Remove only our own description, never another holder's.
+    $data=json_decode((string)@file_get_contents($file),true);
+    if(is_array($data)&&($data['pid']??null)===getmypid())@unlink($file);
 }
 /** Only trusted when the file's PID matches the real kernel lock owner. */
 function zfsmOperationLockRunningNow($owner) {

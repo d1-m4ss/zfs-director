@@ -85,6 +85,7 @@ function zfsmValidateRequest() {
 }
 
 $mutation_lock = null;
+$lock_described = false;
 try {
 	$request_token = zfsmValidateRequest();
 	$command = zfsmPostString('cmd');
@@ -124,7 +125,9 @@ try {
 		$mutation_lock = zfsmAcquireOperationLockWaiting($config_only?$GLOBALS['plugin_config_lock']:$GLOBALS['plugin_lock']);
         $GLOBALS['zfsm_operation_lock_handle']=$mutation_lock;
         $subject=null;foreach(['zdataset','snapshot','directory','pool','newname','job_id']as$key)if(is_string($_POST[$key]??null)&&$_POST[$key]!==''){$subject=$_POST[$key];break;}
-        zfsmOperationLockDescribe(zfsmRequestJobCommands()[$command]??$command,$subject);
+        // Only the operation-lock holder describes itself: a config-only command
+        // must not overwrite or remove the running ZFS operation's description.
+        if(!$config_only){zfsmOperationLockDescribe(zfsmRequestJobCommands()[$command]??$command,$subject);$lock_described=true;}
 	}
 	// Settings may have changed while audit storage was locked. Recheck policy
 	// under the mutation lock that serializes ZFS changes (settings use their own
@@ -398,7 +401,7 @@ try {
 	zfsmReturnAnswer(zfsmFailure('request', $error->getMessage()), 'Request', '', '');
 } finally {
     unset($GLOBALS['zfsm_operation_lock_handle']);
-	if (is_resource($mutation_lock)) { zfsmOperationLockForget(); flock($mutation_lock, LOCK_UN); fclose($mutation_lock); }
+	if (is_resource($mutation_lock)) { if ($lock_described) zfsmOperationLockForget(); flock($mutation_lock, LOCK_UN); fclose($mutation_lock); }
 }
 
 ?>
