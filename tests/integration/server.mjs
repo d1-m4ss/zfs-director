@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {runtime} from '../php-runtime.mjs';
+// The PHP mock re-encodes its model with associative arrays, so an empty map
+// such as _directory_identities comes back as []. Normalize it to {} so a
+// before/after comparison only sees real changes.
+function normalizeModel(model){const walk=value=>{if(Array.isArray(value)){value.forEach(walk);return;}if(!value||typeof value!=='object')return;for(const [key,item]of Object.entries(value)){if(key==='_directory_identities'&&Array.isArray(item)&&item.length===0)value[key]={};else walk(item);}};walk(model);return model;}
 import {createModel} from '../gui/mock-server.mjs';
 
 const repo=resolve(import.meta.dirname,'../..');
@@ -91,5 +95,5 @@ export async function startIntegration({protection=false,dependencyUsage=false}=
   }catch(error){errors.push(error.stack);res.statusCode=500;res.end(JSON.stringify({failed:{integration:error.message}}));}
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- return {url:'http://127.0.0.1:'+server.address().port,php,calls,errors,readModel:()=>JSON.parse(php.readFileAsText('/acceptance/model.json')),writeModel:m=>php.writeFile('/acceptance/model.json',JSON.stringify(m)),run,close:async()=>{await new Promise(resolve=>server.close(resolve));await queue;php.exit();}};
+ return {url:'http://127.0.0.1:'+server.address().port,php,calls,errors,readModel:()=>normalizeModel(JSON.parse(php.readFileAsText('/acceptance/model.json'))),writeModel:m=>php.writeFile('/acceptance/model.json',JSON.stringify(m)),run,close:async()=>{await new Promise(resolve=>server.close(resolve));await queue;php.exit();}};
 }

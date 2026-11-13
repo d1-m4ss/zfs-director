@@ -27,7 +27,7 @@ try{
   await row.waitFor();assert.equal(await row.getByRole('alert').isVisible(),true);assert.match(await row.getByRole('alert').textContent(),/Stop all writers/);assert.equal(await row.getByRole('button',{name:'Resume',exact:true}).count(),0);await page.screenshot({path:output+'/rejected-job.png'});
  });
  await check('GUI queues conversion of spaced directory inside parent SMB/NFS exports',async()=>{
-  await page.getByRole('button',{name:'Datasets',exact:true}).click();await page.locator('[data-node="'+target+'"]').click();await page.getByRole('button',{name:'Convert to dataset',exact:true}).click();
+  await page.getByRole('button',{name:'Datasets',exact:true}).click();await page.locator('[data-node="'+target+'"]').click();await page.locator('.zfsm-tabs [data-tab=actions]').click();await page.getByRole('button',{name:'Convert to dataset',exact:true}).click();
   const form=page.locator('.zfsm-form');assert.equal(await form.locator('button[type=submit]').isEnabled(),false);await form.locator('[name=offline_confirmed]').check();await page.screenshot({path:output+'/review.png'});
   let release;const gate=new Promise(resolve=>release=resolve);await page.route(endpoint,async route=>{if(new URLSearchParams(route.request().postData()).get('cmd')==='convertdirectory')await gate;await route.continue();});
   await form.locator('button[type=submit]').click();const response=page.waitForResponse(r=>r.url()===endpoint&&new URLSearchParams(r.request().postData()).get('cmd')==='convertdirectory');await form.locator('[data-confirm-operation]').click();

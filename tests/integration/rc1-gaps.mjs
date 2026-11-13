@@ -12,7 +12,7 @@ try{
  await check('child snapshot fresh destroy preview retains its own GUID',async()=>{const p=await post({cmd:'previewdestroy',zdataset:child+'@mixed-child',recursive:'0'});assert.equal(Object.keys(p.failed||{}).length,0,JSON.stringify(p));assert.match(JSON.stringify(p),/8102/);});
  browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true});const page=await browser.newPage();page.on('pageerror',e=>errors.push(e.message));
  await check('Chromium recursive scope shows mixed owners in both views and stays responsive',async()=>{
-  for(const mode of['Workspace','Compact table'])for(const width of[390,1280]){
+  for(const mode of['Workspace','Compact'])for(const width of[390,1280]){
    await page.setViewportSize({width,height:1000});await page.goto(stand.url);await page.getByRole('button',{name:'Refresh',exact:true}).click();await page.getByRole('button',{name:mode,exact:true}).click();await page.locator('[data-node="'+source+'"]').click();await page.getByRole('button',{name:'Snapshots',exact:true}).first().click();await page.getByRole('combobox',{name:'Snapshot scope',exact:true}).selectOption('recursive');await page.getByRole('row').filter({hasText:child+'@mixed-child'}).waitFor();assert.ok(await page.getByRole('row').filter({hasText:source+'@mixed-root'}).count());assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:output+'/'+mode.replaceAll(' ','-')+'-'+width+'.png',fullPage:true});
   }
  });
