@@ -14,6 +14,8 @@ npm run test:privacy
 
 `npm run test:all` runs the unit suite, both wired Chromium runners (`tests/gui/run.mjs`, `tests/integration/run.mjs`) and every standalone GUI/integration script under `tests/gui` and `tests/integration`, sequentially, from a single entry point (`tests/run-all.mjs`). It prints one `PASS`/`FAIL` line per step and a final summary; a small set of pre-existing failures in scripts that were never wired to a runner are listed as known failures in `tests/run-all.mjs` and do not fail the overall run. Use `node tests/run-all.mjs --only <substring>` to run a subset while debugging.
 
+It also runs the installer tests and the `tools/release.py` tests. `.github/workflows/ci.yml` runs the same `npm run test:all`, the privacy check, the version check and the native Linux suite on every push to `main` and on every pull request.
+
 GUI tests use the actual frontend with synthetic responses. PHP/WASM tests run the handlers with simulated external commands. These checks do not establish native ZFS semantics.
 
 Set `ZFSM_REFRESH_INTERVAL=0` or `30` to test with periodic refresh disabled or enabled. `ZFSM_OUTPUT` selects the result directory. `ZFSM_CHROME` optionally selects a compatible Chromium executable.

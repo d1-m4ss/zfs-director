@@ -1,0 +1,53 @@
+# TEST-002: every push and pull request runs the same checks as a local release.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    name: Unit, GUI, integration, installer and privacy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: All tests (npm run test:all)
+        run: npm run test:all
+      - name: Privacy and release check
+        run: python3 tools/check-release.py
+      - name: Version literals match VERSION
+        run: python3 tools/release.py --check-version
+  native:
+    name: Native Linux (real PHP, Perl, rsync, locks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build the native test image
+        run: docker build -t zfsm-native-tests:local tests/native-linux
+      - name: Native suite
+        env:
+          ZFSM_NATIVE_OUTPUT: native-results
+        run: node tests/native-linux/run.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-results
+          path: native-results
+          if-no-files-found: ignore
