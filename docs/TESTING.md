@@ -95,7 +95,7 @@ The checked package is **2026.10.22.1 RC1**. A separate, administrator-approved 
 | File integrity | All 2051 restored files matched; all 2050 conversion files matched in both copies; ZIP SHA-256, CRC and entry hashes matched |
 | Safety errors | A late readonly change rejected restore and conversion; nonrecursive removal of a nonempty directory failed with its files retained |
 | Jobs | Operations, progress and errors recorded; page sizes 10/25/50/100 reached every journal exactly once |
-| Live GUI | Four explicit themes plus inheritance, Workspace/Compact and startup with refresh OFF/ON checked |
+| Live GUI | Four explicit themes plus inheritance and startup with refresh OFF/ON checked |
 | Sanoid / Syncoid | Version 2.3.0 detection healthy; existing integration state and schedules preserved; no Managed retention or replication run |
 
 Normal reboot was checked only in the isolated VM. These results do not establish full hardware, accessibility, security or power-loss certification, or compatibility with every Unraid/OpenZFS version.

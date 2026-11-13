@@ -17,7 +17,7 @@
 
     Browse snapshots, restore selected files, prepare ZIP archives and convert directories
     to datasets. Follow operations, progress, errors and recovery in Jobs. Workspace and
-    Compact layouts support Black, Gray, White, Azure and the inherited Unraid theme.
+    Black, Gray, White and Azure themes and the inherited Unraid theme are supported.
 
     Tested on Unraid 7.3.3 with OpenZFS 2.4.4. Sanoid/Syncoid is
     optional, installed separately and OFF on a fresh configuration. Existing settings

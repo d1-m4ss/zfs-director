@@ -120,7 +120,7 @@ Reviewing or saving a definition is not a transfer. Run and enable decisions are
 | Area | Capabilities |
 | --- | --- |
 | Overview | Imported pools, health indicators, capacity and background-task activity |
-| Datasets | Workspace tree and Compact view, search/filtering, properties and space accounting |
+| Datasets | Dataset tree, search/filtering, properties and space accounting |
 | Dataset actions | Create, rename, edit properties, quotas, POSIX ACLs, encryption lock/unlock, clone and reviewed promotion where supported |
 | Snapshots | Create, search, filter, recursive views, rename, hold/release, clone, reviewed deletion and dataset rollback |
 | Snapshot File Manager | Browse snapshot files, prepare ZIP archives and review file restores |
@@ -151,13 +151,11 @@ We compared **Sanoid/Syncoid 2.2.0 and ZnapZend 0.23.6** in an isolated VM with 
 
 ## A quieter workspace
 
-Choose **Workspace** for a dataset tree beside the selected object's details, or **Compact** for a denser view. The selected dataset tab is retained when navigating between compatible objects, making it easier to inspect snapshots or actions across several datasets.
+The dataset tree sits beside the selected object's details. The selected dataset tab is retained when navigating between compatible objects, making it easier to inspect snapshots or actions across several datasets.
 
 Themes include **Black, Gray, White and Azure**, plus **Unraid (auto)** to inherit the host theme. The interface adapts to narrow screens. Dialogs keep long reviews inside a bounded window rather than extending the entire page.
 
 ![Dataset workspace with synthetic projects and storage statistics](docs/images/datasets.png)
-
-![Compact dataset table with generated data](docs/images/compact.png)
 
 <details>
 <summary>Other themes and a narrow screen</summary>

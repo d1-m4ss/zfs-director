@@ -17,7 +17,6 @@ async function closeModal(){if(await page.locator('dialog:modal').count()){await
 try{
  await page.clock.setFixedTime(new Date('2026-01-03T12:00:00Z'));await page.goto(url);await page.locator('[data-section=protection]').waitFor({state:'visible'});await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption('dark');await nav('overview');await page.getByLabel('tank · Healthy',{exact:true}).waitFor();await shot('overview');
  await nav('datasets');await page.locator('[data-node="tank/projects"]').click();await page.locator('[data-tab=overview]').click();await page.getByText('operator / storage',{exact:true}).waitFor();await shot('datasets');
- await page.getByRole('button',{name:'Compact',exact:true}).click();await page.locator('.zfsm-inventory-table').waitFor();await shot('compact');await page.getByRole('button',{name:'Workspace',exact:true}).click();
  await page.locator('[data-tab=snapshots]').click();await page.locator('[data-file-manager="tank/projects@manual-before-update"]').waitFor();await shot('snapshots');
  await page.locator('[data-file-manager="tank/projects@manual-before-update"]').click();await page.getByRole('button',{name:'Open design',exact:true}).waitFor();await shot('file-manager');
  await page.getByRole('checkbox',{name:'Select release-notes.txt',exact:true}).check();await page.getByRole('button',{name:'Restore selected',exact:true}).click();await page.getByRole('button',{name:'Review restore',exact:true}).click();await page.locator('.zfsm-restore-review').waitFor();await shot('restore-review');await closeModal();

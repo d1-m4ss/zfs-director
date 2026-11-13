@@ -50,15 +50,6 @@
       }
     },
     {
-      "file": "compact.png",
-      "sha256": "8114d0ad0ff3dc35e04c9d17a6c2451210717d6c5de07093bdb313286a48ad48",
-      "bytes": 189931,
-      "viewport": {
-        "width": 1440,
-        "height": 980
-      }
-    },
-    {
       "file": "snapshots.png",
       "sha256": "50a1d3a6072eea73fe73e598ddaf1645b3160eb4970eee2f11e9cf099e50ffde",
       "bytes": 157369,
