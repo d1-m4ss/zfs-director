@@ -58,6 +58,17 @@ try{
   await dialog.getByRole('combobox',{name:'Destination mode',exact:true}).selectOption('remote');
   const key=dialog.getByRole('combobox',{name:'SSH key',exact:true});
   assert.deepEqual(await key.locator('option').allTextContents(),['Choose an SSH key','used-key'],'the wizard lists registered keys');
+  // UX-007: the mode comes first; a remote destination shows no local dataset list.
+  const labels=await dialog.locator('.zfsm-protection-fields > label:not([hidden]) > span').allTextContents();
+  assert.equal(labels[0],'Destination mode','Destination mode is the first field');
+  assert.equal(await dialog.getByRole('combobox',{name:'Destination parent dataset',exact:true}).isVisible(),false,'no local parent list for a remote destination');
+  await dialog.getByRole('textbox',{name:'Destination dataset (full name on the remote server)',exact:true}).fill('tank/a');
+  await dialog.getByRole('textbox',{name:'Remote host',exact:true}).fill('backup.example');await key.selectOption('used-key');
+  await dialog.getByRole('button',{name:'Next',exact:true}).click();
+  const schedule=dialog.getByRole('combobox',{name:'Run schedule',exact:true});await schedule.waitFor();
+  assert.equal((await schedule.locator('option').allTextContents()).some(t=>/every minute/i.test(t)),false,'no every-minute preset for replication');
+  await dialog.getByRole('button',{name:'Back',exact:true}).click();await dialog.getByRole('combobox',{name:'Destination mode',exact:true}).selectOption('local');
+  assert.equal(await dialog.locator('details').filter({has:page.locator('summary',{hasText:'Remote SSH connection'})}).isVisible(),false,'the SSH block is hidden for a local destination');
   await page.close();
  }
  assert.deepEqual(errors,[]);
