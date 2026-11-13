@@ -594,18 +594,26 @@
       state.settingsBaseline = values;
       state.dirtySettings = new Set(Object.keys(state.draft).filter(name => Object.prototype.hasOwnProperty.call(values, name) && String(state.draft[name]) !== values[name]));
       field(state, 'refresh_interval', 'Refresh interval', values.refresh_interval, [['0', 'No refresh'], ['30', '30 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['300', '5 minutes'], ['900', '15 minutes'], ['1800', '30 minutes']]);
-      for (const [key, label] of [['lazy_load', 'Lazy load snapshots'], ['sanoid_integration', 'Sanoid / Syncoid integration'], ['destructive_mode', 'Destructive Mode']]) field(state, key, label, values[key], [['0', 'No'], ['1', 'Yes']]);
-      field(state, 'exclusion', 'Dataset exclusion regex (one pattern)', values.exclusion, null, { type: 'textarea', rows: 2, maxLength: 1024 });
+      for (const [key, label] of [['lazy_load', 'Load snapshots only when a pool is opened'], ['sanoid_integration', 'Sanoid / Syncoid integration'], ['destructive_mode', 'Destructive Mode']]) field(state, key, label, values[key], [['0', 'No'], ['1', 'Yes']]);
       const listing = field(state, 'directory_listing', 'Show folders in the tree for these datasets', values.directory_listing, null, { type: 'textarea', rows: 5, maxLength: 16384 });
       if (state.context && Array.isArray(state.context.datasets) && typeof global.zfsmDatasetChecklist === 'function') global.zfsmDatasetChecklist(listing, () => state.context.datasets, { label: 'Show folders in the tree for these datasets' });
       field(state, 'snap_max_days_alert', 'Snapshot age warning (days)', values.snap_max_days_alert, null, { type: 'number', min: 0, max: 36500, step: 1, required: true });
       field(state,'space_warning_percent','Space warning threshold (%)',values.space_warning_percent,null,{type:'number',min:1,max:99,step:1,required:true});
       field(state,'space_critical_percent','Space critical threshold (%)',values.space_critical_percent,null,{type:'number',min:2,max:100,step:1,required:true});
       field(state,'replication_lag_hours','Verified replication age alert (hours; 0 = disabled)',values.replication_lag_hours,null,{type:'number',min:0,max:8760,step:1,required:true});
-      field(state, 'snap_pattern', 'Snapshot date pattern (PHP date format)', values.snap_pattern, null, { maxLength: 128 });
-      field(state, 'snap_prefix', 'Snapshot prefix (without @, # or /)', values.snap_prefix, null, { maxLength: 128 });
+      // Rarely changed, expert-level options stay available but out of the way.
+      const basicGrid = state.grid, advanced = element('details'), advancedGrid = element('div');
+      advanced.className = 'zfsm-settings-advanced'; advancedGrid.className = basicGrid.className;
+      advanced.append(element('summary', 'Advanced'), advancedGrid); basicGrid.append(advanced); state.grid = advancedGrid;
+      field(state, 'exclusion', 'Hide datasets whose name matches (regular expression)', values.exclusion, null, { type: 'textarea', rows: 2, maxLength: 1024 });
+      const pattern = field(state, 'snap_pattern', 'Snapshot name date format', values.snap_pattern, null, { maxLength: 128 });
+      const presets = element('datalist'); presets.id = 'zfsm-snap-pattern-presets';
+      for (const [value, label] of [['Y-m-d-His', '2026-01-31-235959'], ['Ymd-His', '20260131-235959'], ['Y-m-d_H-i', '2026-01-31_23-59']]) { const option = element('option', label); option.value = value; presets.append(option); }
+      pattern.setAttribute('list', presets.id); advancedGrid.append(presets);
+      field(state, 'snap_prefix', 'Snapshot name prefix (without @, # or /)', values.snap_prefix, null, { maxLength: 128 });
       const preview = element('p', 'Snapshot name preview: validating…', 'zfsm-notice');
       preview.dataset.snapshotNamePreview = ''; state.grid.append(preview);
+      state.grid = basicGrid;
       const errors = {};
       for (const [name, control] of Object.entries(state.fields)) {
         const error = element('small', '', 'zfsm-error'); error.setAttribute('aria-live', 'polite');
