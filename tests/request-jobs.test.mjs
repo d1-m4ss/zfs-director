@@ -8,10 +8,14 @@ async function fixture(fn){const s=await startIntegration({dependencyUsage:true}
  await fn({s,post,model:s.readModel(),target:'cache/__mock__/project'});
 }finally{await s.close();}}
 
-test('snapshot creation appears once in Jobs with recorded stages, terminal result and no replay actions',async()=>fixture(async({s,post,model,target})=>{
- const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:model.datasets[target].guid});assert.deepEqual(a.failed,[]);assert.equal(a.job?.state,'completed');assert.equal(a.job.command,'snapshotdataset');assert.equal(a.job.type,'operation');
- const list=await post({cmd:'conversionjobs'});assert.equal(list.jobs.length,1);const j=list.jobs[0];assert.equal(j.id,a.job.id);assert.equal(j.diagnostics.issue,null);assert.deepEqual(j.actions,{cancel:false,resume:false,download:false,inspect:true});assert.ok(j.stage_history.some(e=>e.stage==='executing_operation'));assert.equal(j.stage_history.at(-1).state,'completed');assert.ok(j.result.summary);
- assert.match(j.audit_id,/^[a-f0-9]{32}$/);const audit=(await post({cmd:'auditlog'})).entries;assert.ok(audit.some(e=>e.operation_id===j.audit_id&&e.phase==='outcome'));
+test('a successful snapshot is recorded in Administrative History only, not in Jobs',async()=>fixture(async({s,post,model,target})=>{
+ const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:model.datasets[target].guid});assert.deepEqual(a.failed,[]);assert.equal(a.job,undefined);
+ const list=await post({cmd:'conversionjobs'});assert.equal(list.jobs.length,0);
+ const audit=(await post({cmd:'auditlog'})).entries;assert.ok(audit.some(e=>e.command==='snapshotdataset'&&e.phase==='outcome'&&e.status==='succeeded'));
+}));
+test('a failed snapshot request appears once in Jobs with its stage and no replay actions',async()=>fixture(async({s,post,model,target})=>{
+ const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:'999999'});assert.ok(Object.keys(a.failed).length);assert.equal(a.job?.state,'failed');assert.equal(a.job.command,'snapshotdataset');assert.equal(a.job.type,'operation');
+ const list=await post({cmd:'conversionjobs'});assert.equal(list.jobs.length,1);const j=list.jobs[0];assert.equal(j.id,a.job.id);assert.equal(j.diagnostics.issue,null);assert.deepEqual(j.actions,{cancel:false,resume:false,download:false,inspect:true});assert.equal(j.stage_history.at(-1).state,'failed');assert.ok(j.result.summary);
  const calls=s.readModel().calls.length;await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';zfsmObserveRequestJob('${j.id}');`});assert.equal(s.readModel().calls.length,calls);
 }));
 
@@ -65,8 +69,8 @@ test('existing queued directory deletion keeps its original Job without a duplic
  const a=await post({cmd:'deletedirectory',directory:f.paths.delete,force:'1',expected_guid:model.datasets[f.owner].guid,'directory_identity[dev]':i.dev,'directory_identity[ino]':i.ino});assert.equal(a.job?.schema,6);assert.equal(a.job.state,'queued');assert.equal((await post({cmd:'conversionjobs'})).jobs.length,1);
 }));
 
-test('recording failure stops a mutation before it runs and never reports unjournaled success',async()=>fixture(async({s,post,model,target})=>{
- const file='/app/src/include/ZFSMJobs.php';s.php.writeFile(file,s.php.readFileAsText(file).replace('function zfsmJobAtomicWrite($file,$data) {',"function zfsmJobAtomicWrite($file,$data) { if(($data['schema']??null)===7)throw new RuntimeException('Synthetic unavailable job journal');"));
+test('an unavailable history record stops a mutation before it runs and never reports unrecorded success',async()=>fixture(async({s,post,model,target})=>{
+ const file='/app/src/include/ZFSMAudit.php';s.php.writeFile(file,s.php.readFileAsText(file).replace('function zfsmAuditAppend(array $entry): void {',"function zfsmAuditAppend(array $entry): void { throw new RuntimeException('Synthetic unavailable audit history');"));
  const before=Object.keys(s.readModel().snapshots);const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:model.datasets[target].guid});assert.ok(Object.keys(a.failed).length);assert.deepEqual(Object.keys(s.readModel().snapshots),before);
 }));
 
@@ -101,8 +105,8 @@ for(const command of ['cancelconversion','resumeconversion','cancelrestore','pro
  const jobs=(await post({cmd:'conversionjobs',filter:'all'})).jobs;assert.equal(jobs.length,1);assert.equal(jobs[0].command,command);assert.equal(jobs[0].state,'failed');assert.deepEqual(s.readModel().datasets,before.datasets);
 }));
 
-test('snapshot creation has its own Jobs filter',async()=>fixture(async({post,model,target})=>{
- const answer=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:model.datasets[target].guid});assert.equal(answer.job?.state,'completed');
+test('a failed snapshot has its own Jobs filter',async()=>fixture(async({post,model,target})=>{
+ const answer=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:'999999'});assert.equal(answer.job?.state,'failed');
  const page=await post({cmd:'conversionjobs',filter:'snapshot'});assert.equal(page.jobs?.length,1,JSON.stringify(page));assert.equal(page.jobs[0].command,'snapshotdataset');
 }));
 

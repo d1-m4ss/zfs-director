@@ -226,7 +226,7 @@ echo json_encode(['outcome'=>$job['verified_outcome'],'state'=>$job['state'],'cr
     } finally { await s.close(); }
 });
 
-test('snapshotdataset makes 9 flash job-journal writes and 2 audit appends', async () => {
+test('snapshotdataset writes no job journal and 2 audit appends', async () => {
     const s = await startIntegration({dependencyUsage: true});
     try {
         instrumentWrites(s.php);
@@ -235,19 +235,15 @@ test('snapshotdataset makes 9 flash job-journal writes and 2 audit appends', asy
         const post = fields => fetch(s.url + '/plugins/zfs.master.ui/backend/ZFSMAdmin.php', {method: 'POST', body: new URLSearchParams({csrf_token: 'integration-token', ...fields})}).then(r => r.json());
         const a = await post({cmd: 'snapshotdataset', zdataset: target, recursive: '0', expected_guid: model.datasets[target].guid});
         assert.deepEqual(a.failed, []);
-        assert.equal(a.job?.state, 'completed');
+        assert.equal(a.job, undefined);
         const counts = readCounts(s.php);
-        // BASELINE (measured): zfsmRequestJobBegin writes queued then running (2); the audit_id
-        // update after zfsmAuditBegin (1); 3 stage changes via zfsmAuditSetStage->zfsmRequestJobStage
-        // (acquiring_lock, validating_identity, executing_operation) (3); zfsmRequestJobDownloadContext
-        // records the created snapshot (1); zfsmRequestJobAnswer writes audit_id again (1); and
-        // zfsmRequestJobFinish (1) = 9. Plus zfsmAuditBegin/zfsmAuditFinish = 2 audit appends.
-        // TARGET after REL-002: a synchronous command -> only 2 audit appends.
-        assert.deepEqual(counts, {jobs: 9, audit: 2, store: 0});
+        // A synchronous action writes only its two Administrative History records; it gets a
+        // Jobs journal only when it fails (ARCH-001). It used to cost 9 journal writes.
+        assert.deepEqual(counts, {jobs: 0, audit: 2, store: 0});
     } finally { await s.close(); }
 });
 
-test('saveconfig makes 8 flash job-journal writes and 2 audit appends', async () => {
+test('saveconfig writes no job journal and 2 audit appends', async () => {
     const s = await startIntegration();
     try {
         instrumentWrites(s.php);
@@ -258,11 +254,7 @@ test('saveconfig makes 8 flash job-journal writes and 2 audit appends', async ()
         const a = await fetch(s.url + '/plugins/zfs.master.ui/backend/ZFSMAdmin.php', {method: 'POST', body: new URLSearchParams(fields)}).then(r => r.json());
         assert.deepEqual(a.failed, [], JSON.stringify(a));
         const counts = readCounts(s.php);
-        // BASELINE (measured): same flow as snapshotdataset but without the download-context
-        // write (saveconfig never calls zfsmRequestJobDownloadContext), so it is "most other
-        // commands": zfsmRequestJobBegin (2) + audit_id update (1) + 3 stage changes (3) +
-        // audit_id again (1) + finish (1) = 8, plus 2 audit appends.
-        // TARGET after REL-002: a synchronous command -> only 2 audit appends.
-        assert.deepEqual(counts, {jobs: 8, audit: 2, store: 0});
+        // Same contract as snapshotdataset: two audit records, no journal on success. It used to cost 8.
+        assert.deepEqual(counts, {jobs: 0, audit: 2, store: 0});
     } finally { await s.close(); }
 });

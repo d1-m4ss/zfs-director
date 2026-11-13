@@ -3,6 +3,10 @@
 function zfsmRequestJobCommands() {
     return ['stopdestroyprocesses'=>'Stop processes','cancelconversion'=>'Cancel conversion','resumeconversion'=>'Resume conversion','publishconversion'=>'Publish conversion','cancelrestore'=>'Cancel restore','protectioncancel'=>'Cancel protection job','activityvisibility'=>'Organize activity history','jobhistorycleanup'=>'Clean job history','createdataset'=>'Create dataset','editdatasetproperty'=>'Change dataset property','adddirectortlisting'=>'Add directory listing','removedirectorylisting'=>'Remove directory listing','renamedataset'=>'Rename dataset','lockdataset'=>'Lock dataset','unlockdataset'=>'Unlock dataset','promotedataset'=>'Promote clone','movedirectory'=>'Move directory','cleanupmutation'=>'Clean completed recovery','rollbacksnapshot'=>'Restore dataset from snapshot','renamesnapshot'=>'Rename snapshot','holdsnapshot'=>'Hold snapshot','releasesnapshot'=>'Release snapshot hold','clonesnapshot'=>'Clone snapshot','destroysnapshot'=>'Delete snapshots','snapshotdataset'=>'Create snapshots','saveconfig'=>'Save settings','setquota'=>'Change quota','editacl'=>'Change permissions','protectionsettings'=>'Change Data Protection settings','protectionpolicysave'=>'Save snapshot policy','protectionreplicationsave'=>'Save replication task','protectioncontrol'=>'Change protection definition','protectionimport'=>'Import policy','protectionexternaltransfer'=>'Transfer External ownership','scrubpool'=>'Pool scrub','downloadsnapshotfile'=>'Download snapshot file','downloadsnapshotarchive'=>'Download ZIP','convertdirectory'=>'Convert directory','deletedirectory'=>'Delete directory','destroydataset'=>'Delete dataset','restoresnapshotfiles'=>'Restore files','archivesnapshotfiles'=>'Prepare ZIP','protectionrun'=>'Run Data Protection'];
 }
+// Only these synchronous requests keep a journal from the start: their outcome is
+// observed over time (scrub progress, download transfer). Every other synchronous
+// command is recorded in Administrative History, and in Jobs only when it fails.
+function zfsmRequestJobObservedCommands() { return ['scrubpool','downloadsnapshotfile','downloadsnapshotarchive']; }
 function zfsmRequestJobQueuedCommands() { return ['convertdirectory','deletedirectory','destroydataset','restoresnapshotfiles','archivesnapshotfiles','protectionrun']; }
 function zfsmRequestJobCategory($job) {
     $categories=['snapshotdataset'=>'snapshot','renamesnapshot'=>'snapshot','holdsnapshot'=>'snapshot','releasesnapshot'=>'snapshot','clonesnapshot'=>'snapshot','protectionpolicysave'=>'policy','protectionimport'=>'policy','protectionexternaltransfer'=>'policy','protectionreplicationsave'=>'replication','restoresnapshotfiles'=>'restore','rollbacksnapshot'=>'restore','archivesnapshotfiles'=>'archive','convertdirectory'=>'conversion','cancelconversion'=>'conversion','resumeconversion'=>'conversion','publishconversion'=>'conversion','cancelrestore'=>'restore','deletedirectory'=>'deletion','destroydataset'=>'deletion','destroysnapshot'=>'deletion'];
@@ -107,6 +111,12 @@ function zfsmRequestJobAnswer($answer) {
         $answer['job']=zfsmReadJob($GLOBALS['zfsm_request_published_job']);
     }elseif(empty($answer['job'])&&!empty($answer['failed'])&&in_array($command,zfsmRequestJobQueuedCommands(),true)&&empty($GLOBALS['zfsm_conversion_journal_started'])&&empty($GLOBALS['zfsm_deletion_journal_started'])){
         zfsmRequestJobBegin($command,$_POST,$GLOBALS['zfsm_job_request_audit']??null);$answer['job']=zfsmRequestJobFinish('failed',zfsmRequestJobFailure($answer['failed']),'preflight_rejected');
+    }elseif(empty($answer['job'])&&!empty($answer['failed'])&&isset(zfsmRequestJobCommands()[$command])&&!in_array($command,zfsmRequestJobObservedCommands(),true)){
+        // A failed synchronous action is still shown in Jobs, written once; a partial
+        // success needs inspection rather than a retry.
+        $partial=!empty($answer['succeeded'])||isset($answer['failed']['audit']);
+        zfsmRequestJobBegin($command,$_POST,$GLOBALS['zfsm_job_request_audit']??null);$context=$GLOBALS['zfsm_job_failure_context']??[];
+        $answer['job']=zfsmRequestJobFinish($partial?'recovery_required':'failed',$partial?'The operation may have completed partly. Inspect actual state and Administrative History before retrying.':zfsmRequestJobFailure($answer['failed']),null,['succeeded_count'=>count($answer['succeeded']??[]),'failed_count'=>count($answer['failed']),'failure'=>array_intersect_key($context,array_flip(['stage','exit_code','error_code','tool']))]);
     }
     return $answer;
 }

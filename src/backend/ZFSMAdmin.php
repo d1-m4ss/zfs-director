@@ -91,7 +91,7 @@ try {
 	$readonly[]='previewdeletedirectory';$readonly[]='previewcleanup';$readonly[]='previewspaceproperty';$readonly[]='previewhistoryarchive';
 	if (!in_array($command,array_merge($readonly,$administrative),true)) throw new InvalidArgumentException('Unknown command');
 	$GLOBALS['zfsm_job_request_command']=$command;
-	if(isset(zfsmRequestJobCommands()[$command])&&!in_array($command,zfsmRequestJobQueuedCommands(),true))zfsmRequestJobBegin($command,$_POST);
+	if(in_array($command,zfsmRequestJobObservedCommands(),true))zfsmRequestJobBegin($command,$_POST);
 	if (in_array($command,$administrative,true)) {
 		$fields=$_POST;
 		if ($command==='createdataset' && is_array($_POST['data']??null)) {
