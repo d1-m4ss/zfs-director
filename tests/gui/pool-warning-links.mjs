@@ -17,7 +17,7 @@ async function open(width,section){
    policies:[{id:'p1',name:'Daily',owner:'managed',dataset:'cache/a',enabled:true,hourly:24,daily:7,last_job:run('up_to_date')},{id:'p2',name:'Fresh',owner:'managed',dataset:'cache/b',enabled:false,hourly:24,daily:7},{id:'p3',name:'sanoid',owner:'external',dataset:'cache/a',enabled:true}],
    replications:[{id:'r1',name:'Nightly',owner:'managed',source:'cache/a',target:'backup/x',mode:'local',schedule:'0 2 * * *',enabled:true,last_job:run('completed')},{id:'r2',name:'Paused',owner:'managed',source:'cache/b',target:'backup/x',mode:'local',schedule:'0 3 * * *',enabled:false}],
    jobs:[],templates:{},issues:[],credentials:[],scheduler:{external:[],issues:[]}};
-  window.reasonText='Replication Nightly (r1) requires inspection; the latest run is not verified complete: Native transfer failed (exit 2).';
+  window.reasonText='Replication "Nightly": last run not verified. Native transfer failed (exit 2).';
   window.diagnosticAnswer=name=>({pool:name,collected_at:'2026-11-10T12:00:00Z',health:'ONLINE',severity:'warning',reasons:[window.reasonText],reason_links:[{reason:window.reasonText,type:'replication',id:'r1'}],command_errors:[],
    status:{text:'  pool: '+name,state:'ONLINE',rows:[{name,state:'ONLINE',read:'0',write:'0',cksum:'0'}],scan:'none requested',errors:'No known data errors',status:'',action:''},
    information:{text:'',columns:['NAME','SIZE','ALLOC','FREE','CKPOINT','EXPANDSZ','FRAG','CAP','DEDUP','HEALTH','ALTROOT'],rows:[{name,size:'1000',alloc:'100',free:'900',health:'ONLINE'}]},
@@ -33,12 +33,12 @@ try{
   try{
    page=await open(width,'overview');await page.setViewportSize({width,height:800});
    const why=page.locator('.zfsm-dashboard-reasons');await why.waitFor();
-   assert.match(await why.innerText(),/Replication Nightly \(r1\) requires inspection/);
+   assert.match(await why.innerText(),/Replication "Nightly": last run not verified/);
    assert.deepEqual(await why.getByRole('button').allTextContents(),['Open replication','Pool status'],'the overview explains the warning and offers both targets');
    await page.screenshot({path:out+'/'+width+'-overview.png'});
    // Header strip on the datasets screen.
    await page.locator('[data-section=datasets]').click();const strip=page.locator('.zfsm-attention');await strip.waitFor();
-   assert.match(await strip.innerText(),/cache[\s\S]*Replication Nightly/);assert.equal(await strip.getByRole('button',{name:'Open replication'}).count(),1);
+   assert.match(await strip.innerText(),/cache[\s\S]*Replication "Nightly"/);assert.equal(await strip.getByRole('button',{name:'Open replication'}).count(),1);
    await page.screenshot({path:out+'/'+width+'-header.png'});
    // Open replication lands on that job.
    await strip.getByRole('button',{name:'Open replication'}).click();
@@ -46,7 +46,7 @@ try{
    assert.equal(await page.locator('[data-section=replication]').getAttribute('aria-current'),'page');
    // Pool status lists the same reason with the same way out.
    await page.locator('[data-section=datasets]').click();await page.locator('.zfsm-attention').getByRole('button',{name:'Pool status'}).first().click();
-   const status=page.locator('[data-severity=warning]').filter({hasText:'Replication Nightly'}).first();await status.waitFor();
+   const status=page.locator('[data-severity=warning]').filter({hasText:'Replication "Nightly"'}).first();await status.waitFor();
    assert.equal(await status.getByRole('button',{name:'Open replication'}).count(),1);assert.equal(await status.getByRole('button',{name:'Pool status'}).count(),0,'already on the pool status');
    await page.screenshot({path:out+'/'+width+'-status.png'});
    results.push({width,status:'PASS'});
