@@ -38,9 +38,20 @@ def proc_info(pid):
     except (FileNotFoundError, ProcessLookupError):
         return None
 
-# The worker renames itself, so its path may no longer appear in argv.
+# The worker renames itself, so its path may no longer appear in argv. REL-001: the
+# service runs one daemon per lane; only the files lane owns the monitor.
+def daemon_lane(info):
+    argv=info['argv']
+    if 'zfs-director worker' in argv: return 'files'
+    for lane in ('policy','replication'):
+        if 'zfs-director worker '+lane in argv: return lane
+    if '--daemon' in argv:
+        rest=argv[argv.index('--daemon')+1:]
+        return rest[0] if rest else 'files'
+    return None
+
 def is_daemon(info):
-    return '--daemon' in info['argv'] or 'zfs-director worker' in info['argv']
+    return daemon_lane(info)=='files'
 
 def descends_from_test(pid):
     # Renamed processes no longer carry this test's path: scope them by ancestry.
@@ -156,6 +167,9 @@ sys.exit(91)
             assert competitor.returncode==0, competitor.stderr.decode()
         assert active(first['pid']), 'Competing worker disrupted owner'
         assert len([x for x in processes(source) if is_daemon(x) and x['state']!='Z'])==1
+        lanes=wait_for(lambda:(found:=sorted(daemon_lane(x) for x in processes(source) if daemon_lane(x) and x['state']!='Z'))==['files','policy','replication'] and found,'Service did not start one daemon per lane')
+        for lane in ('policy','replication'):assert not free_lock(base/('worker.'+lane+'.lock')),lane
+        mark('service runs one daemon per worker lane', {'lanes':lanes})
         mark('real competing daemons/services cannot acquire owner kernel locks', {'daemon_pid':first['pid'],'monitor_pid':old_monitor['pid'],'worker_lock_held':True,'service_lock_held':True})
 
         boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
@@ -199,7 +213,7 @@ sys.exit(91)
         assert service.wait(timeout=4)==0
         wait_for(lambda:not any(x['state']!='Z' for x in processes(source)), 'Cooperative stop left live daemon/monitor processes')
         reap()
-        for path in [base/'worker.lock',base/'service.lock',base/'mutation.lock',base/'runtime'/'monitor.lock']:assert free_lock(path),str(path)
+        for path in [base/'worker.lock',base/'worker.policy.lock',base/'worker.replication.lock',base/'service.lock',base/'mutation.lock',base/'runtime'/'monitor.lock']:assert free_lock(path),str(path)
         assert not any(active(pid) for pid in observed_pids)
         mark('actual --stop releases all locks and leaves no live descendants', {'stop_exit':stopped.returncode,'service_exit':service.returncode,'worker_service_mutation_monitor_locks_free':True,'live_descendants':0})
     finally:
@@ -225,17 +239,9 @@ sys.exit(91)
         # Preserve no jobs, logs, or spawned processes outside disposable /test.
         shutil.rmtree(base)
 
-# REL-001 will split zfsm-worker.php's single dispatch loop into independent
-# lanes. Today zfsmPendingJobs() is processed strictly one job at a time, so a
-# synchronous protection replication (schema 4) blocks every queued scheduled
-# policy and restore/ZIP job behind it until syncoid returns. This case proves
-# that and is meant to FAIL until REL-001 lands; it only runs when explicitly
-# requested so the default suite stays green in the meantime.
+# TEST-004 / REL-001: a long synchronous replication (schema 4) must not delay a
+# queued scheduled policy or a restore job; each runs in its own worker lane.
 def lanes_case():
-    if os.environ.get('ZFSM_TEST_LANES')!='1':
-        print('SKIP worker lanes: queued policy/restore jobs wait behind a running replication job (see REL-001); set ZFSM_TEST_LANES=1 to reproduce',file=sys.stderr,flush=True)
-        return
-    print('RUN worker lanes under ZFSM_TEST_LANES=1: expected to FAIL until REL-001 splits the worker into lanes',file=sys.stderr,flush=True)
     # Idempotent: run.py's own main() already does this before invoking this
     # file as a subprocess, but this file is also runnable standalone, and the
     # trusted-manifest chain below requires a non-world-writable ancestor.
@@ -366,12 +372,8 @@ fwrite(STDERR,"unknown action\n");exit(1);
         # No start_new_session here: the --daemon branch calls posix_setsid()
         # itself, which fails if Python already made this process a session
         # leader. Let the daemon create its own new session, as --service does.
-        service=subprocess.Popen(['php',str(worker),'--daemon'],env=env,stdout=log,stderr=subprocess.STDOUT)
-        def daemon():
-            for info in processes(source):
-                if is_daemon(info) and info['state']!='Z':
-                    return info
-        wait_for(daemon,'Lanes worker daemon failed to start')
+        service=subprocess.Popen(['php',str(worker),'--service'],env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+        wait_for(lambda:sorted(daemon_lane(x) for x in processes(source) if daemon_lane(x) and x['state']!='Z')==['files','policy','replication'],'Lane daemons failed to start')
         replication_id=run_setup('queue-replication',ids['replication_id'])
         time.sleep(1)
         policy_id=run_setup('queue-policy',ids['policy_id'])
@@ -384,7 +386,7 @@ fwrite(STDERR,"unknown action\n");exit(1);
                 return None
             return (p,r)
         try:
-            policy,restore=wait_for(secondary_terminal,'Queued policy/restore jobs did not reach a terminal state within 15s while replication was still running (REL-001 worker lanes not yet implemented)',timeout=15)
+            policy,restore=wait_for(secondary_terminal,'Queued policy/restore jobs did not reach a terminal state within 15s while replication was still running (REL-001)',timeout=15)
         except AssertionError as error:
             replication=job_read(base/'jobs'/(replication_id+'.json'))
             p=job_read(base/'jobs'/(policy_id+'.json'));r=job_read(base/'jobs'/(restore_id+'.json'))

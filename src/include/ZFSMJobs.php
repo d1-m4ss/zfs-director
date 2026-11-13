@@ -4,7 +4,8 @@ require_once __DIR__.'/ZFSMJobHistory.php';
 
 function zfsmJobDirectory($directory) {
     $exists=is_dir($directory);
-    if ((!$exists && !@mkdir($directory,0700,true)) || is_link($directory)) throw new RuntimeException('Job storage is unavailable');
+    // Worker lanes start together (REL-001): another process may create it between the check and mkdir.
+    if ((!$exists && !@mkdir($directory,0700,true) && !is_dir($directory)) || is_link($directory)) throw new RuntimeException('Job storage is unavailable');
     if (!$exists) zfsmAuditSyncDirectory(dirname($directory));
     return $directory;
 }
@@ -119,7 +120,7 @@ function zfsmRequireSourceIdentity($job,$path) {
     // The runner pins owner GUID and live mount; inode identifies its object.
     if (($expected['ino']??null)!==$actual['ino']) throw new RuntimeException('Original directory was replaced; manual recovery required');
 }
-function zfsmPendingJobs() {
+function zfsmPendingJobs(?string $lane=null) {
     $jobs=[];$seen=[];
     foreach (glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[] as $file) {
         $seen[basename($file,'.json')]=true;
@@ -140,8 +141,22 @@ function zfsmPendingJobs() {
         if (zfsmJobProblem($job) || !in_array($job['state']??'',['queued','running'],true)) continue;
         $jobs[]=$job;
     }
+    if ($lane!==null) $jobs=array_values(array_filter($jobs,fn($job)=>zfsmJobLane($job)===$lane));
     usort($jobs,function($a,$b){return strcmp($a['id'],$b['id']);});
     return $jobs;
+}
+// REL-001: the worker runs one daemon per lane, so a long replication never delays a snapshot
+// policy or a restore. Each lane keeps FIFO order. Files jobs (conversion, restore, ZIP,
+// deletion, request observation) stay serialized by the operation lock as before.
+function zfsmWorkerLanes(): array { return ['files','policy','replication']; }
+function zfsmJobLane(array $job): string {
+    if (($job['schema']??null)!==4) return 'files';
+    return ($job['type']??'')==='policy'?'policy':'replication';
+}
+function zfsmWorkerLaneLock(string $lane): string {
+    if (!in_array($lane,zfsmWorkerLanes(),true)) throw new InvalidArgumentException('Unknown worker lane');
+    $base=$GLOBALS['plugin_worker_lock']??'/var/lock/zfs.master.ui.worker.lock';
+    return $lane==='files'?$base:preg_replace('/\.lock$/D','',$base).'.'.$lane.'.lock';
 }
 // Unresolved conversions may hold the only copy in an unpublished target or in
 // the retained original. Neither may be removed while the other is not proven.
@@ -374,8 +389,11 @@ function zfsmResumeConversion($id,$offline_confirmed) {
         return ['state'=>'queued','cancel_requested'=>false,'ack_boot'=>zfsmBootId(),'error'=>null];
     });
 }
-function zfsmWorkerRunning() {
-    return zfsmLockHeld($GLOBALS['plugin_worker_lock']??'/var/lock/zfs.master.ui.worker.lock');
+// Default: the files lane, which also hosts the monitor. Null: any lane is still running.
+function zfsmWorkerRunning(?string $lane='files') {
+    if ($lane!==null) return zfsmLockHeld(zfsmWorkerLaneLock($lane));
+    foreach (zfsmWorkerLanes() as $name) if (zfsmLockHeld(zfsmWorkerLaneLock($name))) return true;
+    return false;
 }
 function zfsmServiceRunning() { return zfsmLockHeld($GLOBALS['plugin_service_lock']??'/var/lock/zfs.master.ui.service.lock'); }
 function zfsmLockHeld($file) {
@@ -383,15 +401,6 @@ function zfsmLockHeld($file) {
     $lock=@fopen($file,'c'); if(!$lock)return false;
     $free=flock($lock,LOCK_EX|LOCK_NB);
     if($free)flock($lock,LOCK_UN); fclose($lock); return !$free;
-}
-function zfsmSuperviseWorker($launch,$stop,$pause) {
-    $backoff=1;
-    while (!$stop()) {
-        $start=microtime(true); $launch();
-        if ($stop()) break;
-        $pause($backoff);
-        $backoff=microtime(true)-$start>30?1:min(5,$backoff*2);
-    }
 }
 function zfsmWorkerStopRequested() { return is_file(($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/stop'); }
 function zfsmWriteJobProgress($id,$progress) {

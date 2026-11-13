@@ -35,6 +35,8 @@ def removal_stand(output, anchor, filename='zfs-director.plg'):
     script = script.replace('/var/lock/zfs.master.ui.lock', str(anchor / 'operation.lock'))
     script = script.replace('/var/lock/zfs.master.ui.service.lock', str(anchor / 'service.lock'))
     script = script.replace('/var/lock/zfs.master.ui.worker.lock', str(anchor / 'worker.lock'))
+    for lane in ('policy', 'replication'):
+        script = script.replace('/var/lock/zfs.master.ui.worker.' + lane + '.lock', str(anchor / ('worker.' + lane + '.lock')))
     script = script.replace('/var/tmp/zfs.master.ui/jobs/monitor.lock', str(anchor / 'monitor.lock'))
     script = script.replace('-- /var/tmp 0 ', '-- ' + shlex.quote(str(anchor)) + ' ' + str(os.geteuid()) + ' ')
     return script.replace('/usr/bin/php', shlex.quote(str(anchor / 'php-boundary')))
@@ -124,7 +126,7 @@ class InstallerTests(unittest.TestCase):
                 self.assertEqual(sentinel.read_bytes(), before)
 
     def test_remove_refuses_orphan_services_even_when_worker_script_is_missing(self):
-        for name in ('service.lock', 'worker.lock', 'monitor.lock'):
+        for name in ('service.lock', 'worker.lock', 'worker.policy.lock', 'worker.replication.lock', 'monitor.lock'):
             with self.subTest(lock=name), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
                 anchor = pathlib.Path(folder)
                 output, retained, env = self.removal_fixture(anchor)
@@ -139,7 +141,7 @@ class InstallerTests(unittest.TestCase):
                 self.assertTrue((anchor / 'state/installed.sha256').is_file())
 
     def test_remove_rejects_nonregular_service_locks_before_worker_can_open_them(self):
-        for name in ('service.lock', 'worker.lock', 'monitor.lock'):
+        for name in ('service.lock', 'worker.lock', 'worker.policy.lock', 'worker.replication.lock', 'monitor.lock'):
             for kind in ('fifo', 'directory'):
                 with self.subTest(lock=name, kind=kind), tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
                     anchor = pathlib.Path(folder)

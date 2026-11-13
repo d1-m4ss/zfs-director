@@ -177,7 +177,7 @@ def concurrent_restore():
     assert sum(p.returncode==0 for p in procs)==1;assert sha(t/'same'/'notes.txt')==sha(s/'notes.txt')
 
 def worker_cases():
-    p=subprocess.run(['python3','/stand/tests/native-linux/worker-cases.py'],capture_output=True,timeout=40)
+    p=subprocess.run(['python3','/stand/tests/native-linux/worker-cases.py'],capture_output=True,timeout=90)
     assert p.returncode==0,p.stdout.decode()+p.stderr.decode()
     result=json.loads(p.stdout.decode().strip().splitlines()[-1]);assert result['failed']==0,result
     SUBCHECKS['worker']=result['results']

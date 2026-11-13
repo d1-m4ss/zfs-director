@@ -6,7 +6,7 @@ $runtime=zfsmJobDirectory($GLOBALS['plugin_runtime']);
 if (($argv[1]??'')==='--stop') {
     file_put_contents($runtime.'/stop','stop',LOCK_EX);
     $deadline=microtime(true)+12;
-    do { if (!zfsmWorkerRunning() && !zfsmServiceRunning() && !zfsmLockHeld($GLOBALS['plugin_lock'])) exit(0); usleep(100000); } while(microtime(true)<$deadline);
+    do { if (!zfsmWorkerRunning(null) && !zfsmServiceRunning() && !zfsmLockHeld($GLOBALS['plugin_lock'])) exit(0); usleep(100000); } while(microtime(true)<$deadline);
     fwrite(STDERR,"ZFS worker is busy; installation stopped before replacing its files.\n"); exit(1);
 }
 if (($argv[1]??'')==='--launch') { try { zfsmStartWorker(); exit(0); } catch(Throwable $error) { fwrite(STDERR,"Unable to launch ZFS worker; queued jobs retained.\n"); exit(1); } }
@@ -16,47 +16,73 @@ if (($argv[1]??'')==='--service') {
     if (is_link($GLOBALS['plugin_service_lock'])) exit(1);
     $service_lock=@fopen($GLOBALS['plugin_service_lock'],'c');
     if (!$service_lock || !flock($service_lock,LOCK_EX|LOCK_NB)) exit(0);
+    // REL-001: one daemon per lane. Each is restarted on its own with a short backoff; a crash
+    // in one lane never stops the others. On a stop request every daemon finishes its current
+    // job and exits by itself; the service waits for all of them before it releases its lock.
+    $children=[];$backoff=[];$retryAt=[];$startedAt=[];
+    foreach(zfsmWorkerLanes() as $lane){$children[$lane]=null;$backoff[$lane]=1;$retryAt[$lane]=0;$startedAt[$lane]=0;}
+    $reap=function($lane)use(&$children){
+        $child=$children[$lane];$children[$lane]=null;proc_close($child['process']);
+        // The directly owned daemon creates its own session. Reap remaining members after a
+        // crash before retrying its job.
+        if ($child['pid']>1) @posix_kill(-$child['pid'],9);
+    };
     try {
-        zfsmSuperviseWorker(function()use($runtime){
-            $pipes=[];
-            $child=proc_open([PHP_BINARY,__FILE__,'--daemon'],[0=>['file','/dev/null','r'],1=>['file',$runtime.'/worker.log','a'],2=>['redirect',1]],$pipes,null,null,['bypass_shell'=>true]);
-            if (is_resource($child)) {
-                $pid=proc_get_status($child)['pid']; proc_close($child);
-                // The directly owned daemon creates its own session. Reap
-                // remaining members after a crash before retrying its job.
-                if ($pid>1) @posix_kill(-$pid,9);
+        while (true) {
+            $stopping=zfsmWorkerStopRequested();$now=microtime(true);
+            foreach ($children as $lane=>$child) {
+                if ($child!==null) {
+                    if (proc_get_status($child['process'])['running']) continue;
+                    $reap($lane);
+                    if ($now-$startedAt[$lane]>30) $backoff[$lane]=1;
+                    $retryAt[$lane]=$now+$backoff[$lane];$backoff[$lane]=min(5,$backoff[$lane]*2);
+                }
+                if ($stopping || $now<$retryAt[$lane]) continue;
+                $pipes=[];
+                $process=proc_open([PHP_BINARY,__FILE__,'--daemon',$lane],[0=>['file','/dev/null','r'],1=>['file',$runtime.'/worker.log','a'],2=>['redirect',1]],$pipes,null,null,['bypass_shell'=>true]);
+                if (is_resource($process)) {$children[$lane]=['process'=>$process,'pid'=>proc_get_status($process)['pid']];$startedAt[$lane]=$now;}
+                else $retryAt[$lane]=$now+5;
             }
-        },fn()=>zfsmWorkerStopRequested(),function($seconds){
-            for($n=0;$n<$seconds*10 && !zfsmWorkerStopRequested();$n++)usleep(100000);
-        });
-    } finally { flock($service_lock,LOCK_UN); fclose($service_lock); }
+            if ($stopping && !array_filter($children)) break;
+            usleep(100000);
+        }
+    } finally {
+        foreach ($children as $lane=>$child) if ($child!==null) $reap($lane);
+        flock($service_lock,LOCK_UN); fclose($service_lock);
+    }
     exit(0);
 }
-if (($argv[1]??'')!=='--daemon') { fwrite(STDERR,"Use --daemon or --stop\n"); exit(2); }
-if (function_exists('cli_set_process_title')) @cli_set_process_title('zfs-director worker');
+if (($argv[1]??'')!=='--daemon') { fwrite(STDERR,"Use --daemon [files|policy|replication] or --stop\n"); exit(2); }
+$lane=$argv[2]??'files';
+if (!in_array($lane,zfsmWorkerLanes(),true)) { fwrite(STDERR,"Unknown worker lane\n"); exit(2); }
+if (function_exists('cli_set_process_title')) @cli_set_process_title($lane==='files'?'zfs-director worker':'zfs-director worker '.$lane);
 if (!function_exists('posix_setsid') || posix_setsid()===-1) { fwrite(STDERR,"Unable to isolate worker process group.\n"); exit(1); }
 $GLOBALS['zfsm_worker_group']=posix_getpid();
-if (is_link($GLOBALS['plugin_worker_lock'])) exit(1);
-$worker_lock=@fopen($GLOBALS['plugin_worker_lock'],'c');
+$lane_lock=zfsmWorkerLaneLock($lane);
+if (is_link($lane_lock)) exit(1);
+$worker_lock=@fopen($lane_lock,'c');
 if (!$worker_lock || !flock($worker_lock,LOCK_EX|LOCK_NB)) exit(0);
 $monitor=null;$historyCheckAt=0;
 try {
     while (!zfsmWorkerStopRequested()) {
-        if (!is_resource($monitor) || !proc_get_status($monitor)['running']) {
+        if ($lane==='files' && (!is_resource($monitor) || !proc_get_status($monitor)['running'])) {
             if (is_resource($monitor)) proc_close($monitor);
             $monitor_pipes=[];
             // Inherits this daemon's process group: the service reaps it after
             // a crash, and a cooperative stop uses the same stop marker.
             $monitor=proc_open([PHP_BINARY,__DIR__.'/zfsm-monitor.php'],[0=>['file','/dev/null','r'],1=>['file',$runtime.'/monitor.log','a'],2=>['redirect',1]],$monitor_pipes,null,null,['bypass_shell'=>true]);
         }
-        if(time()>=$historyCheckAt){$historyCheckAt=time()+60;try{zfsmJobHistoryCleanup();}catch(Throwable$error){error_log('ZFS Director: job history maintenance unavailable');}try{zfsmProtectionSweepRuntimeQueue();}catch(Throwable$error){error_log('ZFS Director: protection queue maintenance unavailable');}}
-        foreach (zfsmPendingJobs() as $job) {
+        if($lane==='files'&&time()>=$historyCheckAt){$historyCheckAt=time()+60;try{zfsmJobHistoryCleanup();}catch(Throwable$error){error_log('ZFS Director: job history maintenance unavailable');}try{zfsmProtectionSweepRuntimeQueue();}catch(Throwable$error){error_log('ZFS Director: protection queue maintenance unavailable');}}
+        foreach (zfsmPendingJobs($lane) as $job) {
             if (zfsmWorkerStopRequested()) break;
             if(($job['schema']??null)===7){try{zfsmObserveRequestJob($job['id']);}catch(Throwable$error){error_log('ZFS Director: request job requires inspection');}continue;}
             if(($job['schema']??null)===4){zfsmRunProtectionJob($job);continue;}
             try{$lock=zfsmAcquireOperationLock($GLOBALS['plugin_lock'],true);}catch(Throwable$error){error_log('ZFS Director worker: operation lock unavailable');break;}
             if($lock===null)break;
             try {
+                // REL-001: a queued job waits (stays queued) while a policy or replication owns
+                // its dataset scope; recovery of an interrupted job still runs immediately.
+                if(($job['state']??'')==='queued'&&zfsmProtectionJobConflict($job)!==null)continue;
                 $GLOBALS['zfsm_operation_lock_handle']=$lock;
                 $label=($job['schema']??null)===6?(($job['kind']??null)==='dataset'?'Delete dataset':'Delete directory'):(($job['type']??'')==='archive'?'Prepare ZIP':(($job['type']??'')==='restore'?'Restore files':'Convert directory'));
                 zfsmOperationLockDescribe($label,is_string($job['source']??null)?$job['source']:null);

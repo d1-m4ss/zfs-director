@@ -357,7 +357,7 @@ if [[ -L "$live" || ( -e "$live" && ! -d "$live" ) || -L "$(dirname "$installed"
   echo 'ZFS Director: unsafe uninstall path; no code or services changed.' >&2
   exit 1
 fi
-for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
+for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/lock/zfs.master.ui.worker.policy.lock /var/lock/zfs.master.ui.worker.replication.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
   if [[ -L "$service_lock" || ( -e "$service_lock" && ! -f "$service_lock" ) ]]; then
     echo 'ZFS Director: untrusted service lock; no code or services changed.' >&2
     exit 1
@@ -376,7 +376,7 @@ if ! flock -n 9; then
   exit 1
 fi
 # Also cover an incomplete installation with no usable worker stop script.
-for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
+for service_lock in /var/lock/zfs.master.ui.service.lock /var/lock/zfs.master.ui.worker.lock /var/lock/zfs.master.ui.worker.policy.lock /var/lock/zfs.master.ui.worker.replication.lock /var/tmp/zfs.master.ui/jobs/monitor.lock; do
   if [[ -L "$service_lock" || ( -e "$service_lock" && ! -f "$service_lock" ) ]]; then
     echo 'ZFS Director: untrusted service lock; code retained for inspection.' >&2
     exit 1

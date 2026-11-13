@@ -38,4 +38,13 @@ $bad=zfsmNewProtectionJob('policy',$policy);zfsmJobAtomicWrite(zfsmJobFile($bad[
 lockExpect(zfsmReadJob($bad['id'])['state']==='recovery_required','Cannot-open lock error was treated as contention');rmdir($lock);
 symlink($root.'/wrong-lock',$lock);$bad=zfsmNewProtectionJob('policy',$policy);zfsmJobAtomicWrite(zfsmJobFile($bad['id']),$bad);zfsmRunProtectionJob($bad);
 lockExpect(zfsmReadJob($bad['id'])['state']==='recovery_required'&&str_contains(zfsmReadJob($bad['id'])['error'],'Untrusted'),'Symlink lock was accepted');unlink($lock);
-echo json_encode(['status'=>'PASS','contention_preserves_entire_queued_journal'=>true,'locks_released'=>true,'later_pass_rechecks_integration'=>true,'terminal_no_auto_resume'=>true,'invalid_lock_fails_closed'=>true,'symlink_fails_closed'=>true,'native_storage_operations'=>0],JSON_PRETTY_PRINT)."\n";
+// REL-001: both lanes run at once, each lane has one runner, the installer pause waits for both.
+$policyLocks=zfsmProtectionExecutionLocks('policy');$replicationLocks=zfsmProtectionExecutionLocks('replication');
+lockExpect($policyLocks!==null&&$replicationLocks!==null,'Policy and replication lanes must be able to run at the same time');
+lockExpect(zfsmProtectionExecutionLocks('policy')===null,'A second policy runner must not start while one runs');
+$pause=fopen(zfsmProtectionDirectory().'/execution.lock','c');lockExpect(!flock($pause,LOCK_EX|LOCK_NB),'Installer pause must wait for running protection lanes');
+foreach([$policyLocks,$replicationLocks]as$pair)foreach($pair as$h){flock($h,LOCK_UN);fclose($h);}
+lockExpect(flock($pause,LOCK_EX|LOCK_NB),'Installer pause must succeed once the lanes are idle');
+lockExpect(zfsmProtectionExecutionLocks('policy')===null,'No lane may start while the installer pause is held');
+flock($pause,LOCK_UN);fclose($pause);
+echo json_encode(['status'=>'PASS','lanes_run_concurrently'=>true,'one_runner_per_lane'=>true,'installer_pause_waits_for_lanes'=>true,'contention_preserves_entire_queued_journal'=>true,'locks_released'=>true,'later_pass_rechecks_integration'=>true,'terminal_no_auto_resume'=>true,'invalid_lock_fails_closed'=>true,'symlink_fails_closed'=>true,'native_storage_operations'=>0],JSON_PRETTY_PRINT)."\n";

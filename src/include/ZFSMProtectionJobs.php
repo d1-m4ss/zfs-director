@@ -274,7 +274,7 @@ function zfsmProtectionSweepRuntimeQueue(): void {
 }
 function zfsmRunProtectionJob(array $job): void {
     $job=zfsmReadJob($job['id']);if(zfsmJobProblem($job)||!in_array($job['state'],['queued','running'],true))return;
-    $file=zfsmProtectionDirectory().'/execution.lock';if(is_link($file))throw new RuntimeException('Untrusted protection execution lock.');$lock=@fopen($file,'c');if(!$lock||!flock($lock,LOCK_EX|LOCK_NB)){if($lock)fclose($lock);return;}
+    $locks=zfsmProtectionExecutionLocks(zfsmJobLane($job));if($locks===null)return;[$lock,$laneLock]=$locks;
     $mutation=null;$audit=null;$out=null;
     // Known before anything can throw, so the compensating audit below always has its fields.
     $quiet=$job['type']==='policy'&&($job['trigger']??'')==='schedule';$auditFields=['job_id'=>$job['id'],'source'=>$job['source'],'target'=>$job['target']];
@@ -305,7 +305,35 @@ function zfsmRunProtectionJob(array $job): void {
         else{try{zfsmProtectionPromoteJob($job['id']);}catch(Throwable$promoteError){}zfsmProtectionFinish($job['id'],['outcome'=>'recovery_required','reason'=>$e->getMessage(),'exit_code'=>null]);}
         if($audit===null&&!empty($quiet)){$audit=zfsmAuditBegin('protectionexecute',$auditFields);}if($audit!==null)zfsmAuditFinish($audit,['status'=>'recovery_required','reason'=>'Protection execution requires inspection.']);
     }
-    finally{unset($GLOBALS['zfsm_operation_lock_handle']);if(is_resource($mutation)){flock($mutation,LOCK_UN);fclose($mutation);}flock($lock,LOCK_UN);fclose($lock);}
+    finally{unset($GLOBALS['zfsm_operation_lock_handle']);if(is_resource($mutation)){flock($mutation,LOCK_UN);fclose($mutation);}flock($laneLock,LOCK_UN);fclose($laneLock);flock($lock,LOCK_UN);fclose($lock);}
+}
+// REL-001: policy and replication jobs run in separate worker lanes. Every runner holds the
+// boot-persistent execution.lock SHARED, so the installer pause (which takes it exclusively)
+// still waits for all of them; the lane's own runtime lock keeps one runner per lane, so a
+// second runner can never mistake a live job of its lane for an interrupted one.
+function zfsmProtectionExecutionLocks(string $lane): ?array {
+    if(!in_array($lane,['policy','replication'],true))throw new InvalidArgumentException('Unknown protection lane.');
+    $file=zfsmProtectionDirectory().'/execution.lock';if(is_link($file))throw new RuntimeException('Untrusted protection execution lock.');
+    $own=zfsmJobDirectory($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/execution-'.$lane.'.lock';if(is_link($own))throw new RuntimeException('Untrusted protection execution lock.');
+    $shared=@fopen($file,'c');if(!$shared||!flock($shared,LOCK_SH|LOCK_NB)){if($shared)fclose($shared);return null;}
+    $lane=@fopen($own,'c');if(!$lane||!flock($lane,LOCK_EX|LOCK_NB)){if($lane)fclose($lane);flock($shared,LOCK_UN);fclose($shared);return null;}
+    return [$shared,$lane];
+}
+// REL-001: with lanes a conversion, restore or deletion can be dequeued while a replication or
+// policy runs. Datasets the files job would change must not overlap a running protection job
+// (the same scope rule as zfsmProtectionMutationGuard). The caller holds the operation lock, so
+// no protection job can newly reach "running" until it is released. Returns the blocking job id.
+function zfsmProtectionJobConflict(array $job): ?string {
+    $schema=$job['schema']??null;$targets=[];
+    if($schema===1)$targets=[$job['dataset']??null,$job['owner_dataset']??null];
+    elseif($schema===2&&($job['type']??'')==='restore')$targets=[$job['dataset']??null];
+    elseif($schema===6)$targets=[($job['kind']??'')==='dataset'?($job['source']??null):($job['owner_dataset']??null)];
+    $targets=array_values(array_filter($targets,fn($t)=>is_string($t)&&zfsmValidDatasetName($t)));if(!$targets)return null;
+    foreach(zfsmPendingJobs()as$running){
+        if(($running['schema']??null)!==4||$running['state']!=='running')continue;
+        foreach($targets as$target)if(zfsmProtectionScopeOverlap($target,$running['source'])||(($running['definition']['mode']??'local')==='local'&&is_string($running['target']??null)&&zfsmProtectionScopeOverlap($target,$running['target'])))return $running['id'];
+    }
+    return null;
 }
 function zfsmProtectionMutationGuard(string $command,array $fields): void {
     if(!in_array($command,['createdataset','clonesnapshot','destroydataset','destroysnapshot','renamedataset','lockdataset','unlockdataset','rollbacksnapshot','movedirectory','convertdirectory','deletedirectory','cleanupmutation','promotedataset','renamesnapshot','editdatasetproperty','setquota','editacl'],true))return;

@@ -72,7 +72,7 @@ try{
     $deadline=microtime(true)+15;
     do{
         $ready=true;
-        foreach(['/var/lock/zfs.master.ui.service.lock','/var/lock/zfs.master.ui.worker.lock',$runtime.'/monitor.lock']as$p){
+        foreach(['/var/lock/zfs.master.ui.service.lock','/var/lock/zfs.master.ui.worker.lock','/var/lock/zfs.master.ui.worker.policy.lock','/var/lock/zfs.master.ui.worker.replication.lock',$runtime.'/monitor.lock']as$p){
             if(!is_file($p)||is_link($p)){$ready=false;break;}$h=fopen($p,'ce');if(flock($h,LOCK_EX|LOCK_NB)){flock($h,LOCK_UN);$ready=false;}fclose($h);
         }
         if($ready)break;usleep(100000);
