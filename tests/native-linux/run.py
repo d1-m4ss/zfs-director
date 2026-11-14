@@ -194,6 +194,25 @@ def protection_lock():
     result=json.loads(p.stdout);assert result['status']=='PASS',result
     SUBCHECKS['protection-lock']=result
 
+# The folder-helper cases of directory-mutations.py (including the retained-restore deletion cases,
+# JOBS-007). Two cases cannot run in this container and are skipped by name, never silently:
+# device nodes need CAP_MKNOD, and keeping the setgid bit on a chmod needs CAP_FSETID; the stand
+# deliberately starts with every other capability dropped.
+DIRECTORY_CASES_SKIPPED={'test_device_nodes_are_not_opened_for_io','test_inherited_sgid_and_default_acl_private_container_only_is_secured'}
+def directory_cases():
+    code=("import importlib.util,sys,unittest\n"
+          "spec=importlib.util.spec_from_file_location('directory_mutations','/stand/tests/native-linux/directory-mutations.py')\n"
+          "module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)\n"
+          "skip="+repr(sorted(DIRECTORY_CASES_SKIPPED))+"\n"
+          "tests=[t for t in unittest.defaultTestLoader.loadTestsFromTestCase(module.DirectoryMutations) if t._testMethodName not in skip]\n"
+          "result=unittest.TextTestRunner(stream=sys.stderr,verbosity=0).run(unittest.TestSuite(tests))\n"
+          "print(len(tests),len(result.failures)+len(result.errors))\n"
+          "sys.exit(0 if result.wasSuccessful() and tests else 1)\n")
+    p=subprocess.run(['python3','-c',code],capture_output=True,timeout=300)
+    assert p.returncode==0,p.stdout.decode()+p.stderr.decode()
+    count,failed=p.stdout.decode().split()
+    SUBCHECKS['directory']={'status':'PASS','cases':int(count),'failed':int(failed),'skipped':sorted(DIRECTORY_CASES_SKIPPED)}
+
 def audit_cases():
     p=subprocess.run(['php','/stand/tests/rc-audit-pagination.php'],capture_output=True,timeout=20)
     assert p.returncode==0,p.stdout.decode()+p.stderr.decode()
@@ -227,6 +246,7 @@ def main():
     test('kernel flock serializes 80 concurrent PHP journal updates',journal_contention)
     test('real ZIP ENOSPC keeps partial cache inspectable and cleanup owned',archive_enospc)
     test('concurrent restore publication never overwrites another job',concurrent_restore)
+    test('folder helper deletes a retained restore folder and refuses everything inside it',directory_cases)
     test('native audit cursor pagination bounds identity redaction and retained history',audit_cases)
     test('native worker kill restart stop and recovery integration',worker_cases)
     test('protection worker defers config lock contention without losing its queued occurrence',protection_lock)
