@@ -144,3 +144,12 @@ test('a delete failure survives the poll and clears on the next click, a filter 
   x.root.querySelector('[data-section=overview]').click();await settle();x.root.querySelector('[data-section=jobs]').click();await settle();assert.equal(deleteError(x),null,'leaving Jobs clears it');
  }finally{x.close();}
 });
+test('every running conversion, restore and ZIP stage has plain words',async()=>{
+ const stages=[['conversion','planned','Running: getting ready'],['conversion','source_retained','Running: keeping the original'],['conversion','dataset_created','Running: creating the dataset'],['conversion','mountpoint_pending','Running: updating the mount point'],['conversion','publishing','Running: mounting the dataset'],['archive','publishing','Running: finishing the ZIP'],['archive','compressing','Running: making the ZIP'],['restore','publishing','Running: putting files in place'],['restore','validating','Running: checking the request']];
+ const jobs=stages.map(([type,stage],i)=>({id:'20261114-1400'+String(i).padStart(2,'0')+'-000000000001',schema:type==='conversion'?1:2,type,state:'running',stage,source:'/mnt/cache/photos',created:'2026-11-14T14:00:00Z',actions:{}}));
+ const x=await workspace(jobs);
+ try{
+  const status=job=>x.root.querySelector('[data-job-id="'+job.id+'"] summary>div').textContent;
+  assert.deepEqual(jobs.map(status),stages.map(row=>row[2]));
+ }finally{x.close();}
+});
