@@ -42,6 +42,19 @@ The runner checks registration, installed hashes, persistent state, automatic ba
 
 RC1 installation was evaluated in an isolated VM running Unraid 7.3.3 / OpenZFS 2.4.4: clean installation, upgrade from `.4`, early refusals, service startup and normal reboot. Pending recovery was also tested by reconstructing the interface while keeping execution paused. Power-loss recovery and a native reboot with pending recovery remain outside that evaluation.
 
+## Real ZFS stand
+
+A disposable Ubuntu 24.04 arm64 VM (QEMU with HVF) runs the plugin's PHP against real OpenZFS, Sanoid and Syncoid. Install `zfsutils-linux`, `php-cli` and the Sanoid release in the VM, copy `src` and `tests` there, create the marker `/etc/zfsm-disposable-vm`, then run as root:
+
+```sh
+php tests/native-linux/real-zfs-capture.php > capture.json
+sh tests/native-linux/protection-setup.sh
+```
+
+`real-zfs-capture.php` creates its own file-backed mirror pool and checks pool diagnostics for a never-scrubbed pool, a running, paused and finished scrub, a degraded mirror, a running and finished resilver, checksum errors repaired by a scrub and a cleared pool; it also checks inventory with unusual dataset and snapshot names, a hold that blocks deletion, and times the inventory read. Its captured `zpool` output is kept in `tests/fixtures/real-zfs/` and `tests/real-zfs-fixtures.test.mjs` replays it through the same parser on every `npm test`. `protection-setup.sh` runs `protection.php`: real Sanoid snapshots and retention, local Syncoid replication (initial, incremental, recursive), checkpoint hashes and a foreign receiver snapshot.
+
+Last run: OpenZFS 2.2.2 (Ubuntu), Sanoid/Syncoid 2.3.0, all checks passed. Inventory with snapshots took 0.14 s for 1 000 and 1.25 s for 10 000 snapshots (0.01 s with lazy loading). Unraid 7.3.3 ships OpenZFS 2.4.4; its output was not captured here.
+
 ## Backend comparison
 
 The backend-selection study on 2026-10-17–18 compared **Sanoid/Syncoid 2.2.0** and **ZnapZend 0.23.6** using the same adapter interface and GUI. It ran in an isolated Ubuntu 24.04 VM with **real ZFS 2.2.2**, file-backed pools and loopback SSH. These are the original comparison results; the later RC1 checks on Unraid are listed separately below.

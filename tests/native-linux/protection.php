@@ -9,7 +9,9 @@ nativeCheck('initial local replication verified by GUID with unmounted receiver'
  $r=zfsmSyncoidJob(['id'=>'a2','source'=>$src.'/send','target'=>$dst.'/recv','source_guid'=>zfsmReadIdentity($src.'/send')['guid']]);$s=zfsmProtectionReadStore();$s['replications']['a2']=$r;zfsmProtectionWriteStore($s);$j=nativeJob('replication','a2');nativeExpect($j['verified_outcome']==='completed',json_encode($j['verification']));nativeExpect(nativeCommand(['get','-H','-o','value','mounted',$dst.'/recv'])==='no','Receiver was mounted');return $j['verification'];
 });
 nativeCheck('incremental local replication advances verified checkpoint',function()use($src){
- $mount=nativeCommand(['get','-H','-o','value','mountpoint',$src.'/send']);file_put_contents($mount.'/delta.txt','incremental payload '.random_bytes(24));$j=nativeJob('replication','a2');nativeExpect($j['verified_outcome']==='completed',json_encode($j['verification']));return $j['verification'];
+ $mount=nativeCommand(['get','-H','-o','value','mountpoint',$src.'/send']);file_put_contents($mount.'/delta.txt','incremental payload '.random_bytes(24));
+ // syncoid names its snapshots to the second; a run in the same second as the previous one collides.
+ sleep(1);$j=nativeJob('replication','a2');nativeExpect($j['verified_outcome']==='completed',json_encode($j['verification']));return $j['verification'];
 });
 nativeCheck('source and receiver frozen checkpoint SHA256 match',function()use($src,$dst){
  $s=zfsmProtectionReadStore();$r=$s['replications']['a2'];$i=zfsmSyncoidInspect($r);$common=array_intersect_key($i['source']['']['snapshots'],$i['target']['']['snapshots']);nativeExpect((bool)$common,'No common GUID');$checkpoint=end($common)['name'];$mount=nativeCommand(['get','-H','-o','value','mountpoint',$src.'/send']);$targetMount='/var/lib/zfs-director-native-20261018/verify-target';if(!is_dir($targetMount))mkdir($targetMount,0700,true);
@@ -27,7 +29,11 @@ nativeCheck('recursive delivery verifies root and child GUIDs',function()use($sr
 nativeCheck('retention prunes owned GUIDs while preserving manual Sanoid-looking snapshot',function()use($src){
  $name=$src.'/policy@autosnap_2000-01-01_00:00:00_hourly';$probe=runProcess('zfs',['list','-H','-o','name',$name]);if($probe['code']!==0)nativeCommand(['snapshot',$name]);$guid=zfsmReadIdentity($name)['guid'];
  $s=zfsmProtectionReadStore();$original=$s['policies']['a1'];$p=$original;$p['autosnap']=false;$p['autoprune']=true;foreach(zfsmSanoidTiers()as$t)$p[$t]=0;$s['policies']['a1']=$p;zfsmProtectionWriteStore($s);
- try{$j=nativeJob('policy','a1');$out=$j['verification'];nativeExpect($out['outcome']==='completed_with_warnings',json_encode($out));nativeExpect(!empty($out['snapshots_pruned']),'No owned snapshot was pruned');nativeExpect(zfsmReadIdentity($name)['guid']===$guid,'Manual snapshot was changed or destroyed');return $out;}finally{$s=zfsmProtectionReadStore();$s['policies']['a1']=$original;zfsmProtectionWriteStore($s);}
+ try{$j=nativeJob('policy','a1');$out=$j['verification'];
+ // Sanoid 2.2.0 proposes the manual snapshot for pruning and Director keeps it with a warning;
+ // Sanoid 2.3.0 no longer proposes it. Either way the manual snapshot must survive.
+ $proposed=in_array($name,array_column($out['retention']['protected']??[],'name'),true);
+ nativeExpect($out['outcome']===($proposed?'completed_with_warnings':'completed'),json_encode($out));nativeExpect(!empty($out['snapshots_pruned']),'No owned snapshot was pruned');nativeExpect(zfsmReadIdentity($name)['guid']===$guid,'Manual snapshot was changed or destroyed');return $out;}finally{$s=zfsmProtectionReadStore();$s['policies']['a1']=$original;zfsmProtectionWriteStore($s);}
 });
 file_put_contents($base.'/'.(getenv('RESULT_LABEL')?:'results').'.json',json_encode(['provenance'=>'Real ZFS and installed engine binaries; Unraid manifest/scan roots are explicit isolated fixtures. No test-host.','results'=>$results],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES)."\n");
 exit(array_filter($results,fn($r)=>$r['status']!=='PASS')?1:0);

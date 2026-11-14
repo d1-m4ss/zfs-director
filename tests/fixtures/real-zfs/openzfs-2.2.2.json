@@ -1,0 +1,375 @@
+{
+ "source": "tests/native-linux/real-zfs-capture.php in a disposable Ubuntu 24.04 arm64 VM (QEMU/HVF)",
+ "openzfs": "zfs-2.2.2-0ubuntu9.5",
+ "kernel": "6.8.0-147-generic",
+ "pool": "zfsmreal",
+ "live_checks": [
+  {
+   "name": "a new pool that was never scrubbed is healthy, scan idle",
+   "status": "PASS"
+  },
+  {
+   "name": "a running scrub is reported as in progress",
+   "status": "PASS"
+  },
+  {
+   "name": "a paused scrub is reported as paused",
+   "status": "PASS"
+  },
+  {
+   "name": "a finished scrub is reported as finished",
+   "status": "PASS"
+  },
+  {
+   "name": "an offline mirror side makes the pool DEGRADED with an error",
+   "status": "PASS"
+  },
+  {
+   "name": "a resilver is reported as in progress",
+   "status": "PASS"
+  },
+  {
+   "name": "a finished resilver returns the pool to ONLINE",
+   "status": "PASS"
+  },
+  {
+   "name": "checksum errors repaired by a scrub are reported",
+   "status": "PASS"
+  },
+  {
+   "name": "cleared errors return the pool to healthy",
+   "status": "PASS"
+  },
+  {
+   "name": "inventory lists unusual dataset and snapshot names exactly",
+   "status": "PASS"
+  },
+  {
+   "name": "a held snapshot is listed as a destroy blocker",
+   "status": "PASS"
+  }
+ ],
+ "inventory_seconds": {
+  "1000": {
+   "with_snapshots": 0.143,
+   "lazy": 0.011
+  },
+  "10000": {
+   "with_snapshots": 1.248,
+   "lazy": 0.01
+  }
+ },
+ "fixtures": {
+  "never_scrubbed": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE   ALLOC        FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  137728  1006495232        -         -      0      0   1.00    ONLINE  -\n  mirror-0                                 1006632960  137728  1006495232        -         -      0      0      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "ok",
+    "scan_state": "idle",
+    "scan_kind": null,
+    "reasons": []
+   }
+  },
+  "scrub_in_progress": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\n  scan: scrub in progress since Sat Nov 14 01:42:00 2026\n\t0B / 200M scanned, 0B / 200M issued\n\t0B repaired, 0.00% done, no estimated completion time\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  210078208  796554752        -         -      0     20   1.00    ONLINE  -\n  mirror-0                                 1006632960  210078208  796554752        -         -      0     20      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "ok",
+    "scan_state": "running",
+    "scan_kind": "scrub",
+    "reasons": []
+   }
+  },
+  "scrub_paused": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\n  scan: scrub paused since Sat Nov 14 01:42:01 2026\n\tscrub started on Sat Nov 14 01:42:00 2026\n\t0B / 200M scanned, 0B / 200M issued\n\t0B repaired, 0.00% done\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  210105856  796527104        -         -      0     20   1.00    ONLINE  -\n  mirror-0                                 1006632960  210105856  796527104        -         -      0     20      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "ok",
+    "scan_state": "paused",
+    "scan_kind": "scrub",
+    "reasons": []
+   }
+  },
+  "scrub_finished": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\n  scan: scrub repaired 0B in 00:00:01 with 0 errors on Sat Nov 14 01:42:01 2026\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  210128896  796504064        -         -      0     20   1.00    ONLINE  -\n  mirror-0                                 1006632960  210128896  796504064        -         -      0     20      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "ok",
+    "scan_state": "finished",
+    "scan_kind": "scrub",
+    "reasons": []
+   }
+  },
+  "degraded": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: DEGRADED\nstatus: One or more devices has been taken offline by the administrator.\n\tSufficient replicas exist for the pool to continue functioning in a\n\tdegraded state.\naction: Online the device using 'zpool online' or replace the device with\n\t'zpool replace'.\n  scan: scrub repaired 0B in 00:00:01 with 0 errors on Sat Nov 14 01:42:01 2026\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   DEGRADED     0     0     0\n\t  mirror-0                                 DEGRADED     0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  OFFLINE      0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  210045952  796587008        -         -      0     20   1.00  DEGRADED  -\n  mirror-0                                 1006632960  210045952  796587008        -         -      0     20      -  DEGRADED\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -   OFFLINE"
+    }
+   ],
+   "expected": {
+    "health": "DEGRADED",
+    "severity": "error",
+    "scan_state": "finished",
+    "scan_kind": "scrub",
+    "reasons": [
+     "Pool native state is DEGRADED",
+     "Device zfsmreal is DEGRADED",
+     "Device mirror-0 is DEGRADED",
+     "Device /var/lib/zfs-director-real/vdev-b.img is OFFLINE",
+     "Status: One or more devices has been taken offline by the administrator.\nSufficient replicas exist for the pool to continue functioning in a\ndegraded state.",
+     "Action: Online the device using 'zpool online' or replace the device with\n'zpool replace'."
+    ]
+   }
+  },
+  "resilver_in_progress": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\nstatus: One or more devices is currently being resilvered.  The pool will\n\tcontinue to function, possibly in a degraded state.\naction: Wait for the resilver to complete.\n  scan: resilver in progress since Sat Nov 14 01:42:01 2026\n\t0B / 300M scanned, 0B / 300M issued\n\t0B resilvered, 0.00% done, no estimated completion time\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  315085312  691547648        -         -      0     31   1.00    ONLINE  -\n  mirror-0                                 1006632960  315085312  691547648        -         -      0     31      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "warning",
+    "scan_state": "resilvering",
+    "scan_kind": "resilver",
+    "reasons": [
+     "Status: One or more devices is currently being resilvered.  The pool will\ncontinue to function, possibly in a degraded state.",
+     "Action: Wait for the resilver to complete."
+    ]
+   }
+  },
+  "resilvered": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\n  scan: resilvered 100M in 00:00:01 with 0 errors on Sat Nov 14 01:42:02 2026\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  315080704  691552256        -         -      0     31   1.00    ONLINE  -\n  mirror-0                                 1006632960  315080704  691552256        -         -      0     31      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "ok",
+    "scan_state": "finished",
+    "scan_kind": "resilver",
+    "reasons": []
+   }
+  },
+  "scrub_repaired_errors": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\nstatus: One or more devices has experienced an unrecoverable error.  An\n\tattempt was made to correct the error.  Applications are unaffected.\naction: Determine if the device needs to be replaced, and clear the errors\n\tusing 'zpool clear' or replace the device with 'zpool replace'.\n   see: https://openzfs.github.io/openzfs-docs/msg/ZFS-8000-9P\n  scan: scrub repaired 300M in 00:00:00 with 0 errors on Sat Nov 14 01:42:04 2026\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0  2542  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  315092992  691539968        -         -      0     31   1.00    ONLINE  -\n  mirror-0                                 1006632960  315092992  691539968        -         -      0     31      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "error",
+    "scan_state": "finished",
+    "scan_kind": "scrub",
+    "reasons": [
+     "/var/lib/zfs-director-real/vdev-b.img has CKSUM errors: 2542",
+     "Status: One or more devices has experienced an unrecoverable error.  An\nattempt was made to correct the error.  Applications are unaffected.",
+     "Action: Determine if the device needs to be replaced, and clear the errors\nusing 'zpool clear' or replace the device with 'zpool replace'."
+    ]
+   }
+  },
+  "cleared": {
+   "commands": [
+    {
+     "binary": "zpool",
+     "args": [
+      "status",
+      "-p",
+      "-t",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "pool: zfsmreal\n state: ONLINE\n  scan: scrub repaired 300M in 00:00:00 with 0 errors on Sat Nov 14 01:42:04 2026\nconfig:\n\n\tNAME                                       STATE     READ WRITE CKSUM\n\tzfsmreal                                   ONLINE       0     0     0\n\t  mirror-0                                 ONLINE       0     0     0\n\t    /var/lib/zfs-director-real/vdev-a.img  ONLINE       0     0     0  (untrimmed)\n\t    /var/lib/zfs-director-real/vdev-b.img  ONLINE       0     0     0  (untrimmed)\n\nerrors: No known data errors"
+    },
+    {
+     "binary": "zpool",
+     "args": [
+      "list",
+      "-v",
+      "-p",
+      "zfsmreal"
+     ],
+     "code": 0,
+     "output": "NAME                                             SIZE      ALLOC       FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT\nzfsmreal                                   1006632960  314983936  691649024        -         -      0     31   1.00    ONLINE  -\n  mirror-0                                 1006632960  314983936  691649024        -         -      0     31      -    ONLINE\n    /var/lib/zfs-director-real/vdev-a.img  1073741824      -      -        -         -      -      -      -    ONLINE\n    /var/lib/zfs-director-real/vdev-b.img  1073741824      -      -        -         -      -      -      -    ONLINE"
+    }
+   ],
+   "expected": {
+    "health": "ONLINE",
+    "severity": "ok",
+    "scan_state": "finished",
+    "scan_kind": "scrub",
+    "reasons": []
+   }
+  }
+ }
+}
