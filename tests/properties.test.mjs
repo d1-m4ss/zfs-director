@@ -22,3 +22,12 @@ test('space property confirmation waits for signed native scope instead of trust
  const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window,root=w.document.querySelector('main'),calls=[];w.eval(readFileSync('src/frontend/ZFSMForms.js','utf8'));const forms=w.zfsmCreateInlineForms({request:async data=>{calls.push(data);return data.cmd==='previewspaceproperty'?{preview_id:'b'.repeat(32),token:'a'.repeat(64),review:{kind:'space_property',name:'cache/data',guid:'2',property:'quota',requested:'1G',previous:'0',expected:'1073741824',source:'default',can_proceed:true}}:{type:'filesystem',guid:'2',quota:0};}});
  try{await forms.render(root,'editdatasetproperty',{dataset:'cache/data',node:{guid:'2'}});root.querySelector('[name=quota]').value='1G';root.querySelector('[data-save-property=quota]').click();await settle();assert.equal(calls.at(-1).cmd,'previewspaceproperty');assert.match(root.querySelector('.zfsm-confirmation').textContent,/1073741824/);}finally{forms.dispose();w.close();}
 });
+test('a property whose source is not known shows no Source line, a known one shows it',async()=>{
+ const dom=new JSDOM('<main></main>',{runScripts:'outside-only'}),w=dom.window,root=w.document.querySelector('main');w.eval(readFileSync('src/frontend/ZFSMForms.js','utf8'));
+ const forms=w.zfsmCreateInlineForms({request:async()=>({name:'cache/data',type:'filesystem',guid:'2',compression:'off',quota:0,atime:'off',_sources:{compression:'inherited from cache'}})});
+ try{await forms.render(root,'editdatasetproperty',{pool:'cache',dataset:'cache/data',node:{guid:'2'}});
+  assert.equal(root.querySelector('[data-field=compression]').textContent.includes('Source: inherited from cache'),true);
+  assert.equal(root.querySelector('[data-field=atime]').textContent.includes('Source'),false);
+  assert.equal(root.textContent.includes('Source: Unknown'),false);
+ }finally{forms.dispose();w.close();}
+});

@@ -550,7 +550,7 @@ function zfsmCreateWorkspace(options) {
         if(answer?.job?.id&&!['convertdirectory','cancelconversion','resumeconversion','publishconversion','cancelrestore','deletedirectory','destroydataset'].includes(action))loadJobs();
         if(action==='saveconfig'&&metadata&&metadata.settings&&answer&&answer.succeeded&&Object.keys(answer.succeeded).length&&answer.failed&&!Object.keys(answer.failed).length){
             const acknowledged=metadata.settings;
-            config=Object.assign({},config,acknowledged,{dataset_exclusion:acknowledged.exclusion||'',directory_listing:String(acknowledged.directory_listing||'').split(/\r\n|\r|\n/).filter(Boolean)});
+            config=Object.assign({},config,acknowledged,{dataset_exclusion:acknowledged.exclusion||'',...(typeof acknowledged.directory_listing==='string'?{directory_listing:acknowledged.directory_listing.split(/\r\n|\r|\n/).filter(Boolean)}:{})});
             inventory.updateConfig(config);
             if(activeForm)forms.render(activeForm.host,activeForm.action,activeForm.context);
             if(snapshotHost)renderSnapshots();

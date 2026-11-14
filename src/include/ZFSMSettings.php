@@ -7,6 +7,11 @@ function zfsmSettingsFields() {
 // Settings > Sanoid / Syncoid Integration (protectionsettings). An older client may still send
 // it, so it is accepted; when absent, the stored value is kept as it is.
 function zfsmSettingsKeepIntegration($settings) {
+    // UX-016: the folder listing is set from the dataset menu only; Settings no longer sends it and keeps what is stored.
+    if (is_array($settings) && !array_key_exists('directory_listing',$settings)) {
+        $file=$GLOBALS['plugin_config']??null;$stored=is_string($file)&&is_file($file)?@parse_ini_file($file,true,INI_SCANNER_NORMAL):null;
+        $settings['directory_listing']=is_array($stored)&&is_string($stored['general']['directory_listing']??null)?$stored['general']['directory_listing']:'';
+    }
     if (!is_array($settings) || array_key_exists('sanoid_integration',$settings)) return $settings;
     // Same source zfsmSaveSettings merges into: the stored .cfg, else Unraid's defaults.
     $file=$GLOBALS['plugin_config']??null;$stored=is_string($file)&&is_file($file)?@parse_ini_file($file,true,INI_SCANNER_NORMAL):null;

@@ -596,8 +596,6 @@
       field(state, 'job_retention_days', 'Keep finished jobs for', values.job_retention_days, [['1', '1 day'], ['7', '7 days'], ['30', '30 days'], ['0', 'Always']]);
       field(state, 'refresh_interval', 'Refresh interval', values.refresh_interval, [['0', 'No refresh'], ['30', '30 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['300', '5 minutes'], ['900', '15 minutes'], ['1800', '30 minutes']]);
       for (const [key, label] of [['lazy_load', 'Load snapshots only when a pool is opened'], ['destructive_mode', 'Destructive Mode']]) field(state, key, label, values[key], [['0', 'No'], ['1', 'Yes']]);
-      const listing = field(state, 'directory_listing', 'Show folders in the tree for these datasets', values.directory_listing, null, { type: 'textarea', rows: 5, maxLength: 16384 });
-      if (state.context && Array.isArray(state.context.datasets) && typeof global.zfsmDatasetChecklist === 'function') global.zfsmDatasetChecklist(listing, () => state.context.datasets, { label: 'Show folders in the tree for these datasets' });
       field(state, 'snap_max_days_alert', 'Snapshot age warning (days)', values.snap_max_days_alert, null, { type: 'number', min: 0, max: 36500, step: 1, required: true });
       field(state,'space_warning_percent','Space warning threshold (%)',values.space_warning_percent,null,{type:'number',min:1,max:99,step:1,required:true});
       field(state,'space_critical_percent','Space critical threshold (%)',values.space_critical_percent,null,{type:'number',min:2,max:100,step:1,required:true});
@@ -675,7 +673,7 @@
             if (!control.reportValidity()) return;
             reviewMutation(state, property);
           });
-          const source=element('small','Source: '+(properties._sources?.[property]||'Unknown'),'zfsm-property-help'),feedback=element('span','','zfsm-property-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');control.parentNode.append(save,help,source,feedback);state.propertyFeedback[property]=feedback;state.propertySources[property]=source;
+          const source=element('small',properties._sources?.[property]?'Source: '+properties._sources[property]:'','zfsm-property-help'),feedback=element('span','','zfsm-property-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');control.parentNode.append(save,help,source,feedback);state.propertyFeedback[property]=feedback;state.propertySources[property]=source;
           const group=['quota','refquota','reservation','refreservation'].includes(property)?'Space':['mountpoint','atime','readonly'].includes(property)?'General':'Performance';groups.get(group).append(control.parentNode);
         }
         const readOnly = {
@@ -691,7 +689,7 @@
             if(property==='compressratio'&&properties[property]!==null&&Number.isFinite(Number(properties[property])))value=Number(properties[property])/100+'x';
             if(property==='creation'&&typeof global.zfsmFormatDateTime==='function')value=global.zfsmFormatDateTime(properties[property]);
             const answer=element('dd');answer.dataset.readonlyProperty=property;
-            answer.append(element('span',value),element('small',' · Source: '+(properties._sources?.[property]||'Unknown'),'zfsm-property-help'));
+            answer.append(element('span',value));if(properties._sources?.[property])answer.append(element('small',' · Source: '+properties._sources[property],'zfsm-property-help'));
             list.append(element('dt',label),answer);
           }
           if(list.children.length)groups.get(title).append(element('p','Read-only details — these properties have no Save action here.','zfsm-muted'),list);
@@ -952,7 +950,7 @@
       try {
         const answer = await request(data);
         if (!usableAnswer(answer)) throw new Error('Invalid server response');
-        if(data.cmd==='editdatasetproperty'&&current(state)){const feedback=state.propertyFeedback[data.property];if(Object.keys(answer.succeeded).length&&!Object.keys(answer.failed).length){try{const actual=await request({cmd:'getdatasetproperties',zdataset:state.context.dataset});if(!actual||actual.failed||actual._error||actual[data.property]===undefined||(state.context.node.guid&&String(actual.guid)!==String(state.context.node.guid)))throw Error('Effective value or object identity could not be confirmed');if(current(state)){state.propertyValues[data.property]=actual[data.property];state.fields[data.property].value=String(actual[data.property]);state.propertySources[data.property].textContent='Source: '+(actual._sources?.[data.property]||'Unknown');feedback.textContent='Saved — '+actual[data.property];feedback.className='zfsm-property-feedback zfsm-success';}}catch(error){if(current(state)){feedback.textContent='Applied; readback unavailable. '+error.message;feedback.className='zfsm-property-feedback zfsm-error';}}}else{feedback.textContent='Failed — '+failureText(answer);feedback.className='zfsm-property-feedback zfsm-error';}}
+        if(data.cmd==='editdatasetproperty'&&current(state)){const feedback=state.propertyFeedback[data.property];if(Object.keys(answer.succeeded).length&&!Object.keys(answer.failed).length){try{const actual=await request({cmd:'getdatasetproperties',zdataset:state.context.dataset});if(!actual||actual.failed||actual._error||actual[data.property]===undefined||(state.context.node.guid&&String(actual.guid)!==String(state.context.node.guid)))throw Error('Effective value or object identity could not be confirmed');if(current(state)){state.propertyValues[data.property]=actual[data.property];state.fields[data.property].value=String(actual[data.property]);state.propertySources[data.property].textContent=actual._sources?.[data.property]?'Source: '+actual._sources[data.property]:'';feedback.textContent='Saved — '+actual[data.property];feedback.className='zfsm-property-feedback zfsm-success';}}catch(error){if(current(state)){feedback.textContent='Applied; readback unavailable. '+error.message;feedback.className='zfsm-property-feedback zfsm-error';}}}else{feedback.textContent='Failed — '+failureText(answer);feedback.className='zfsm-property-feedback zfsm-error';}}
         if (Object.keys(answer.succeeded).length && !Object.keys(answer.failed).length && ['renamesnapshot', 'renamedataset', 'destroydataset', 'movedirectory', 'deletedirectory', 'cleanupmutation'].includes(state.action)) state.completed = true;
         let completionMetadata;
         if (state.action === 'saveconfig') {
