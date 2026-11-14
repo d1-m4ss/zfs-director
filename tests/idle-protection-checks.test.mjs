@@ -7,7 +7,7 @@ async function fixture(t){
  const s=await startIntegration({protection:true});t.after(()=>s.close());
  const file='/acceptance/system.php',text=s.php.readFileAsText(file),marker='function integrationProcess($command,$args,$stdin=null) {';assert.ok(text.includes(marker));
  s.php.writeFile(file,text.replace(marker,marker+`
- if($command==='/usr/sbin/sanoid'&&in_array('--take-snapshots',$args,true)&&!in_array('--readonly',$args,true))return ['code'=>$GLOBALS['fake_sanoid_code']??0,'output'=>'SYNTHETIC nothing due'];
+ if($command==='/usr/sbin/sanoid'&&in_array('--take-snapshots',$args,true)&&!in_array('--readonly',$args,true)){$GLOBALS['lock_owner_seen']=json_decode((string)@file_get_contents($GLOBALS['plugin_runtime'].'/lock-owner.json'),true);return ['code'=>$GLOBALS['fake_sanoid_code']??0,'output'=>'SYNTHETIC nothing due'];}
 `));return s;
 }
 const prelude=`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';
@@ -197,4 +197,12 @@ test('a promotion completing between the durable and runtime scans is still list
  echo json_encode(['count'=>count($matches),'durable'=>is_file(zfsmJobDirectory($GLOBALS['plugin_state']).'/'.$id.'.json'),'group'=>$matches[0]['group']??null]);`});
  assert.equal(r.errors,'',r.text);const out=JSON.parse(r.text.slice(r.text.indexOf('{')));
  assert.deepEqual(out,{count:1,durable:true,group:'active'},'the job is listed exactly once even though it was promoted mid-scan, after the durable scan already ran');
+});
+test('the Running now bar links to Jobs only for a manual policy run, not for a scheduled check',async t=>{
+ const s=await fixture(t);
+ const r=await s.run({code:prelude+`
+ $manual=runJob(true);$seenManual=$GLOBALS['lock_owner_seen'];$scheduled=runJob(false);$seenScheduled=$GLOBALS['lock_owner_seen'];
+ echo json_encode(['manual'=>[$seenManual['label'],$seenManual['job']===$manual],'scheduled'=>[$seenScheduled['label'],$seenScheduled['job']]]);`});
+ assert.equal(r.errors,'',r.text);
+ assert.deepEqual(JSON.parse(r.text.slice(r.text.indexOf('{'))),{manual:['Snapshot policy',true],scheduled:['Snapshot policy',null]});
 });
