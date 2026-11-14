@@ -9,9 +9,9 @@ function zfsmRequestJobCommands() {
 }
 // Only these synchronous requests keep a journal from the start: their outcome is
 // observed over time (scrub progress, download transfer). Every other synchronous
-// command is recorded in the audit log, and in Jobs only when it fails.
+// command is recorded in the audit log only; a failure or a partial result is shown in the dialog.
 function zfsmRequestJobObservedCommands() { return array_keys(array_filter(zfsmCommandRegistry(),fn($c)=>$c['observed'])); }
-function zfsmRequestJobQueuedCommands() { return ['convertdirectory','deletedirectory','destroydataset','restoresnapshotfiles','archivesnapshotfiles','protectionrun']; }
+function zfsmRequestJobQueuedCommands() { return ['convertdirectory','deletedirectory','destroydataset']; }
 function zfsmRequestJobCategory($job) {
     $categories=['snapshotdataset'=>'snapshot','renamesnapshot'=>'snapshot','holdsnapshot'=>'snapshot','releasesnapshot'=>'snapshot','clonesnapshot'=>'snapshot','protectionpolicysave'=>'policy','protectionimport'=>'policy','protectionexternaltransfer'=>'policy','protectionreplicationsave'=>'replication','restoresnapshotfiles'=>'restore','rollbacksnapshot'=>'restore','archivesnapshotfiles'=>'archive','convertdirectory'=>'conversion','cancelconversion'=>'conversion','resumeconversion'=>'conversion','publishconversion'=>'conversion','cancelrestore'=>'restore','deletedirectory'=>'deletion','destroydataset'=>'deletion','destroysnapshot'=>'deletion'];
     $type=is_string($job['type']??null)?$job['type']:'unknown';$command=is_string($job['command']??null)?$job['command']:'';
@@ -115,12 +115,6 @@ function zfsmRequestJobAnswer($answer) {
         $answer['job']=zfsmReadJob(zfsmRequestGet('request_published_job'));
     }elseif(empty($answer['job'])&&!empty($answer['failed'])&&in_array($command,zfsmRequestJobQueuedCommands(),true)&&empty(zfsmRequestGet('conversion_journal_started'))&&empty(zfsmRequestGet('deletion_journal_started'))){
         zfsmRequestJobBegin($command,$_POST,zfsmRequestGet('job_request_audit',null));$answer['job']=zfsmRequestJobFinish('failed',zfsmRequestJobFailure($answer['failed']),'preflight_rejected');
-    }elseif(empty($answer['job'])&&!empty($answer['failed'])&&isset(zfsmRequestJobCommands()[$command])&&!in_array($command,zfsmRequestJobObservedCommands(),true)){
-        // A failed synchronous action is still shown in Jobs, written once; a partial
-        // success needs inspection rather than a retry.
-        $partial=!empty($answer['succeeded'])||isset($answer['failed']['audit']);
-        zfsmRequestJobBegin($command,$_POST,zfsmRequestGet('job_request_audit',null));$context=zfsmRequestGet('job_failure_context',[]);
-        $answer['job']=zfsmRequestJobFinish($partial?'recovery_required':'failed',$partial?'The operation may have completed partly. Inspect the actual state before retrying.':zfsmRequestJobFailure($answer['failed']),null,['succeeded_count'=>count($answer['succeeded']??[]),'failed_count'=>count($answer['failed']),'failure'=>array_intersect_key($context,array_flip(['stage','exit_code','error_code','tool']))]);
     }
     return $answer;
 }

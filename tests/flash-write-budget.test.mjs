@@ -258,3 +258,22 @@ test('saveconfig writes no job journal and 2 audit appends', async () => {
         assert.deepEqual(counts, {jobs: 0, audit: 2, store: 0});
     } finally { await s.close(); }
 });
+
+test('a failed snapshot and a refused restore write no job journal, only their audit records', async () => {
+    const s = await startIntegration({dependencyUsage: true});
+    try {
+        instrumentWrites(s.php);
+        const target = 'cache/__mock__/project';
+        const post = fields => fetch(s.url + '/plugins/zfs.master.ui/backend/ZFSMAdmin.php', {method: 'POST', body: new URLSearchParams({csrf_token: 'integration-token', ...fields})}).then(r => r.json());
+        resetCounts(s.php);
+        const failed = await post({cmd: 'snapshotdataset', zdataset: target, recursive: '0', expected_guid: '999999'});
+        assert.equal(Object.keys(failed.failed).length > 0, true);
+        assert.equal(failed.job, undefined);
+        assert.deepEqual(readCounts(s.php), {jobs: 0, audit: 2, store: 0});
+        resetCounts(s.php);
+        const refused = await post({cmd: 'restoresnapshotfiles', preview_id: 'invalid', preview_token: 'x', confirmed: '1'});
+        assert.equal(Object.keys(refused.failed).length > 0, true);
+        assert.equal(refused.job, undefined);
+        assert.equal(readCounts(s.php).jobs, 0);
+    } finally { await s.close(); }
+});
