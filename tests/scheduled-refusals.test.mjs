@@ -136,3 +136,10 @@ test('Delete keeps deletion journals that own recovery data, saves the newest ve
  assert.deepEqual(out.left,out.expected.sort(),'a deletion that kept a recovery container or was interrupted stays; the others go');
  assert.equal(out.newest,out.newest_id);assert.equal(out.verified,out.verified_id,'the newest verified run is saved next to the newest run');assert.equal(out.merged,2);
 });
+test('Jobs hands the card the definition name and the destination, with user@host for a remote replication',async t=>{
+ const out=await run(t,`$mk=function($n,$extra)use(&$mk){$def=['id'=>'a'.$n,'owner'=>'managed','name'=>'Immich '.$n,'source'=>'cache/test','source_guid'=>'123','target'=>'backup/test','mode'=>'local'];$def=array_replace($def,$extra);$j=['schema'=>4,'id'=>sprintf('20261113-25%02d00-%012x',$n,$n),'type'=>'replication','definition_id'=>$def['id'],'definition'=>$def,'definition_hash'=>hash('sha256',json_encode($def,JSON_THROW_ON_ERROR)),'state'=>'completed','stage'=>'finished','verified_outcome'=>'completed','source'=>'cache/test','source_guid'=>'123','target'=>'backup/test','cancel_requested'=>false,'trigger'=>'manual','created'=>gmdate('c',1794600000+$n),'updated'=>gmdate('c',1794600000+$n),'verification'=>['outcome'=>'completed','verified'=>true]];zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);return $j['id'];};
+ $local=$mk(1,[]);$remote=$mk(2,['mode'=>'remote','user'=>'backup','host'=>'nas.lan']);
+ $jobs=[];foreach(zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['jobs']as$j)$jobs[$j['id']]=[$j['definition_name']??null,$j['destination']??null];
+ echo json_encode(['local'=>$jobs[$local]??null,'remote'=>$jobs[$remote]??null]);`);
+ assert.deepEqual(out,{local:['Immich 1','backup/test'],remote:['Immich 2','backup@nas.lan:backup/test']});
+});

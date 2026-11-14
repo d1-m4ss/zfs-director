@@ -195,6 +195,7 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
 #zfsm-workspace details {margin:14px 0} #zfsm-workspace summary {cursor:pointer;color:var(--zfsm-accent)}
 #zfsm-workspace .zfsm-job {padding:14px 0;border-bottom:1px solid var(--zfsm-border);overflow-wrap:anywhere}
 #zfsm-workspace .zfsm-job strong {display:block;margin-bottom:5px}
+#zfsm-workspace .zfsm-job-subtitle {display:block;margin-top:2px;font-size:12px;font-weight:400;color:var(--zfsm-muted)}
 #zfsm-workspace .zfsm-job progress {display:block;width:100%;height:9px;margin:9px 0;accent-color:var(--zfsm-accent);border:0;background:var(--zfsm-track)}
 #zfsm-workspace .zfsm-form progress {display:block;width:100%;height:9px;margin:9px 0;accent-color:var(--zfsm-accent)}
 #zfsm-workspace .zfsm-job-feedback {grid-column:1 / -1;display:block;min-width:0;overflow-wrap:anywhere}

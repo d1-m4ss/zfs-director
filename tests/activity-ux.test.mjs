@@ -77,3 +77,35 @@ test('Jobs defaults to ten records and remembers a user-selected page size',asyn
 test('Jobs says in one short line how long finished jobs are kept',async()=>{
  const x=await workspace();try{await x.poll();const line=x.root.querySelector('[data-jobs-retention]');assert.ok(line);assert.equal(line.textContent,'Finished jobs are deleted after 7 days. Change it in Settings.');assert.equal(x.root.querySelector('.zfsm-history-storage'),null,'the long storage explanation is gone');}finally{x.close();}
 });
+test('every job card names the process, where it went and how it ended, in words',async()=>{
+ const base=n=>({id:'20261114-1300'+String(n).padStart(2,'0')+'-00000000000'+n,created:'2026-11-14T13:00:00Z',actions:{}});
+ const rep=(n,state,stage,extra={})=>({...base(n),schema:4,type:'replication',definition_id:'a1',definition_name:'immich-daily',trigger:'manual',source:'cache/immich',target:'backup/immich',destination:'backup/immich',state,stage,verified_outcome:state==='completed'?'completed':state,...extra});
+ const jobs=[
+  rep(1,'running','transferring'),
+  rep(2,'failed','finished',{trigger:'schedule',error:'Both trusted Sanoid and Syncoid executables are required.'}),
+  rep(3,'recovery_required','finished',{destination:'user@nas:tank/immich'}),
+  {...base(4),schema:4,type:'policy',definition_id:'b2',definition_name:'keep-7-days',trigger:'manual',source:'cache/immich',target:null,state:'completed',stage:'finished',verified_outcome:'completed'},
+  {...base(5),schema:1,type:'conversion',state:'running',stage:'copying',source:'/mnt/cache/photos',dataset:'cache/photos'},
+  {...base(6),schema:2,type:'restore',state:'running',stage:'copying',snapshot:'cache/immich@daily',source:'cache/immich@daily',target:'/mnt/user/photos'},
+  {...base(7),schema:2,type:'archive',state:'completed',stage:'completed',snapshot:'cache/immich@daily',source:'cache/immich@daily',archive_removed:true},
+  {...base(8),schema:6,type:'deletion',kind:'dataset',rejected:false,state:'running',stage:'deleting',source:'cache/old'},
+  {...base(9),schema:5,type:'conversion',state:'failed',stage:'preflight_rejected',source:'/mnt/cache/photos'},
+  {...base(10),schema:4,type:'replication',definition_id:'a1',source:'cache/immich',destination:'backup/immich',state:'recovery_required',stage:'invalid_journal',diagnostics:{issue:'invalid_journal'}},
+  {...base(11),schema:9,type:'unknown',state:'recovery_required',stage:'unsupported_schema',source:'journal.json',diagnostics:{issue:'unsupported_schema'}},
+  rep(12,'running','inspecting',{trigger:undefined,definition_name:undefined}),
+ ];
+ const x=await workspace(jobs);
+ try{
+  const card=n=>x.root.querySelector('[data-job-id="'+base(n).id+'"]'),title=n=>card(n).querySelector('summary>strong'),sub=n=>title(n).querySelector('small')?.textContent??null,main=n=>title(n).firstChild.textContent,status=n=>card(n).querySelector('summary>div').textContent;
+  assert.deepEqual([1,2,3,4,5,6,7,9].map(main),['Replication · cache/immich → backup/immich','Replication · cache/immich → backup/immich','Replication · cache/immich → user@nas:tank/immich','Snapshot policy · cache/immich','Conversion · /mnt/cache/photos → cache/photos','Restore · cache/immich@daily → /mnt/user/photos','ZIP · cache/immich@daily','Refused: conversion · /mnt/cache/photos']);
+  assert.equal(main(8),'Delete dataset · cache/old');
+  assert.deepEqual([1,2,3,4].map(sub),['immich-daily · manual run','immich-daily · scheduled','immich-daily · manual run','keep-7-days · manual run']);
+  assert.deepEqual([5,6,7,8,9].map(sub),[null,null,null,null,null],'only protection cards have a second line');
+  assert.deepEqual([1,2,3,4].map(status),['Running: sending data','Failed','Interrupted: check the destination','✓ Done']);
+  assert.deepEqual([10,11].map(main),['Unreadable job · cache/immich','Unreadable job · journal.json'],'a journal that cannot be read is not called a replication or a conversion');
+  assert.equal(status(10),'Needs inspection: the job record cannot be read');assert.equal(sub(12),null,'no trigger recorded: no claim about how it started');assert.equal(status(12),'Running: checking');
+  assert.equal(card(1).querySelector('summary').textContent.includes('percentage unavailable'),false,'a running protection card shows the bar and the status, not a second stage line');
+  assert.equal(card(2).querySelector('[role=alert]').textContent,'Both trusted Sanoid and Syncoid executables are required.','the cause is shown without an Error prefix');
+  for(const n of [1,2,3,4])assert.doesNotMatch(card(n).querySelector('summary').textContent,/recovery_required|finished|failed ·|running ·|transferring|inspecting|invalid_journal/);
+ }finally{x.close();}
+});

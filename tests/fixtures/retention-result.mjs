@@ -21,7 +21,7 @@ export async function retentionResult({eligible=true,protectedSnapshots=true,inv
    $p=zfsmSanoidPolicy(['id'=>'ace','dataset'=>'${source}','autosnap'=>false,'autoprune'=>true]);$p['source_guid']='${guid}';
    $s=zfsmProtectionReadStore();$s['policies']['ace']=$p;
    foreach(${JSON.stringify(names.filter(n=>n!==manual))}as$name)$s['owned_snapshots'][$name]=['guid'=>integrationModel()['snapshots'][$name]['guid'],'dataset_guid'=>'${guid}','policy_id'=>'ace'];
-   zfsmProtectionWriteStore($s);$j=zfsmNewProtectionJob('policy',$p);zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);zfsmRunProtectionJob($j);
+   zfsmProtectionWriteStore($s);$j=zfsmNewProtectionJob('policy',$p);$j['trigger']='manual';zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);zfsmRunProtectionJob($j);
    echo json_encode(['job'=>zfsmReadJob($j['id']),'page'=>zfsmJobPage(1,200),'audit'=>zfsmAuditList(100)]);`});
   assert.equal(result.errors,'',result.text);assert.equal(result.exitCode,0,result.text);
   return {stand,source,owned,manual,held,second,before:model,...JSON.parse(result.text)};
