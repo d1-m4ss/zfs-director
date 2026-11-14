@@ -32,4 +32,3 @@ cat > "$base/native-plugin-fixture.plg" <<'EOF'
 <!DOCTYPE PLUGIN [<!ENTITY name "unRAID6-Sanoid"><!ENTITY version "2.2.0">]><PLUGIN name="&name;"/>
 EOF
 chmod 600 "$base/director.cfg" "$base/native-plugin-fixture.plg"
-php /home/poc/director-full/tests/native-linux/protection.php > "$base/run.jsonl" 2> "$base/run.err"

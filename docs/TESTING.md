@@ -53,7 +53,27 @@ sh tests/native-linux/protection-setup.sh
 
 `real-zfs-capture.php` creates its own file-backed mirror pool and checks pool diagnostics for a never-scrubbed pool, a running, paused and finished scrub, a degraded mirror, a running and finished resilver, checksum errors repaired by a scrub and a cleared pool; it also checks inventory with unusual dataset and snapshot names, a hold that blocks deletion, and times the inventory read. Its captured `zpool` output is kept in `tests/fixtures/real-zfs/` and `tests/real-zfs-fixtures.test.mjs` replays it through the same parser on every `npm test`. `protection-setup.sh` runs `protection.php`: real Sanoid snapshots and retention, local Syncoid replication (initial, incremental, recursive), checkpoint hashes and a foreign receiver snapshot.
 
-Last run: OpenZFS 2.2.2 (Ubuntu), Sanoid/Syncoid 2.3.0, all checks passed. Inventory with snapshots took 0.14 s for 1 000 and 1.25 s for 10 000 snapshots (0.01 s with lazy loading). Unraid 7.3.3 ships OpenZFS 2.4.4; its output was not captured here.
+Earlier run: OpenZFS 2.2.2 (Ubuntu), Sanoid/Syncoid 2.3.0, all checks passed. Inventory with snapshots took 0.14 s for 1 000 and 1.25 s for 10 000 snapshots (0.01 s with lazy loading). 
+
+### One-command stand (TEST-011)
+
+`tests/real-zfs/setup.sh` is the single entry point on a **disposable** Linux VM with real ZFS. It refuses to run (exit 2, nothing touched) unless the marker `/etc/zfsm-disposable-vm` exists. It then creates its own file-backed pools and runs, through the plugin's PHP:
+
+- pool diagnostics capture (`tests/native-linux/real-zfs-capture.php`: scrub, resilver, degraded mirror, checksum errors, unusual names, held snapshot, inventory timing);
+- Sanoid and Syncoid on the loopback (`protection.php`, `protection-setup.sh`) and SSH replication to `127.0.0.1` inside the VM (`protection-ssh.php`: trusted host key, unknown host refused, unreachable port bounded);
+- restoring a file from a snapshot over a changed file, the retained `.zfsm-restore-<id>` folder describing itself and its deletion by a deletion job, and a reviewed dataset deletion (`tests/real-zfs/scenarios.php`; the deleted dataset is `canmount=noauto` because systemd services in the VM keep private copies of new mounts and the plugin correctly refuses to destroy a mounted dataset another mount namespace holds).
+
+The report (`report.json`, with the ZFS, Sanoid, Syncoid, kernel, OS, PHP, rsync and OpenSSH versions) and the raw results go to `$ZFSM_REAL_ZFS_OUT` (default `/var/lib/zfs-director-real-out`).
+
+`tests/real-zfs/vm.sh` is the host side: it boots a throwaway VM with QEMU from an Ubuntu cloud image (`ZFSM_VM_IMAGE`; Ubuntu 26.04 "resolute" arm64 ships OpenZFS 2.4.1 and Sanoid 2.3.0, Ubuntu 24.04 ships OpenZFS 2.2.2), installs `zfsutils-linux sanoid php-cli rsync perl openssh-server` with cloud-init, copies `src` and `tests`, runs `setup.sh`, copies the results to `evidence/real-zfs` and deletes the VM. It talks to the VM through one forwarded loopback port with a throwaway key.
+
+```sh
+ZFSM_VM_IMAGE=$HOME/resolute-server-cloudimg-arm64.img sh tests/real-zfs/vm.sh
+python3 tests/real-zfs/fixture.py evidence/real-zfs   # writes tests/fixtures/real-zfs/openzfs-<version>.json
+npm test                                               # tests/real-zfs-fixtures.test.mjs replays every fixture
+```
+
+`fixture.py` refuses a run with failed checks and invents nothing: the fixture holds the exact `zpool` output of the run and what the plugin concluded from it. Fixtures exist for OpenZFS 2.2.2 (Ubuntu 24.04) and 2.4.1 (Ubuntu 26.04, kernel 7.0). Unraid 7.3.3 ships OpenZFS 2.4.4; no 2.4.4 output has been captured, only 2.4.1.
 
 ## Backend comparison
 
