@@ -25,7 +25,7 @@ function zfsmCleanupTerminalJob($job) {
     return $state==='failed'&&$stage==='preflight_rejected'&&($schema===5||$schema===7||($schema===6&&$job['rejected']===true));
 }
 function zfsmCleanupRequireIdle($directory=null) {
-    $files=glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[];
+    $files=array_merge(glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[],glob(zfsmRequestRuntimeJobDirectory().'/*.json')?:[]);
     if(count($files)>5000)throw new RuntimeException('Jobs inventory exceeds cleanup safety limit.');
     foreach($files as$file){
         if(is_link($file)||!is_file($file)||filesize($file)>131072)throw new RuntimeException('Jobs require recovery review before cleanup.');

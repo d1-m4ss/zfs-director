@@ -277,3 +277,52 @@ test('a failed snapshot and a refused restore write no job journal, only their a
         assert.equal(readCounts(s.php).jobs, 0);
     } finally { await s.close(); }
 });
+
+const requestJob = `<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';`;
+test('scrub and download progress is written to the runtime directory and nothing under the boot flash', async () => {
+    const s = await startIntegration({dependencyUsage: true});
+    try {
+        instrumentDurableJobWrites(s.php);
+        resetDurableCount(s.php);
+        const before = await snapshotFlashTree(s, '/boot/config/plugins/zfs.master.ui/jobs');
+        const r = await s.run({code: requestJob + `
+$scrub=zfsmRequestJobBegin('scrubpool',['pool'=>'cache']);zfsmRequestJobStage('scrubbing');zfsmRequestJobFinish('completed','Scrub requested');
+$download=zfsmRequestJobBegin('downloadsnapshotfile',['snapshot'=>'cache/__mock__/project@base']);zfsmRequestJobProgress(3,6);zfsmRequestJobFinish('completed','Transfer finished');
+echo json_encode(['runtime'=>$GLOBALS['plugin_runtime'],'ids'=>[$scrub['id'],$download['id']],'files'=>array_map('basename',glob($GLOBALS['plugin_runtime'].'/requests/*.json')),'found'=>[zfsmJobFile($scrub['id']),zfsmJobFile($download['id'])],'progress'=>zfsmReadJob($download['id'])['progress']]);`});
+        assert.equal(r.errors, '', r.text);
+        const out = JSON.parse(r.text);
+        assert.equal(readDurableCount(s.php), 0, 'no journal write reaches plugin_state');
+        const withoutGate = tree => Object.fromEntries(Object.entries(tree).filter(([name]) => !name.endsWith('/history.lock')));
+        assert.deepEqual(withoutGate(await snapshotFlashTree(s, '/boot/config/plugins/zfs.master.ui/jobs')), withoutGate(before), 'the jobs directory on the flash holds no new record');
+        assert.deepEqual(out.files.sort(), out.ids.map(id => id + '.json').sort());
+        assert.deepEqual(out.found, out.ids.map(id => out.runtime + '/requests/' + id + '.json'));
+        assert.deepEqual(out.progress, {stage: 'transferring', bytes: 3, total: 6, percent: 100});
+    } finally { await s.close(); }
+});
+
+test('request progress is read back from the runtime directory while the request is running', async () => {
+    const s = await startIntegration({dependencyUsage: true});
+    try {
+        const r = await s.run({code: requestJob + `
+$job=zfsmRequestJobBegin('downloadsnapshotfile',['snapshot'=>'cache/__mock__/project@base']);zfsmRequestJobProgress(2,8);
+$read=zfsmReadJob($job['id']);$page=zfsmJobPage(1,50,['filter'=>'all']);$ids=array_column($page['jobs'],'id');$listed=array_values(array_filter($page['jobs'],fn($j)=>$j['id']===$job['id']))[0]??[];
+echo json_encode(['state'=>$read['state'],'progress'=>$listed['progress']['percent']??null,'pending'=>array_column(zfsmPendingJobs(),'id')===[$job['id']],'in_page'=>in_array($job['id'],$ids,true),'runtime'=>$GLOBALS['plugin_runtime'].'/requests/'.$job['id'].'.json','file'=>zfsmJobFile($job['id'])]);`});
+        assert.equal(r.errors, '', r.text);
+        const out = JSON.parse(r.text);
+        assert.deepEqual({state: out.state, progress: out.progress, pending: out.pending, in_page: out.in_page, file: out.file}, {state: 'running', progress: 25, pending: true, in_page: true, file: out.runtime});
+    } finally { await s.close(); }
+});
+
+test('after a reboot the runtime directory is gone: nothing fails and the operation no longer exists', async () => {
+    const s = await startIntegration({dependencyUsage: true});
+    try {
+        const r = await s.run({code: requestJob + `
+$job=zfsmRequestJobBegin('downloadsnapshotfile',['snapshot'=>'cache/__mock__/project@base']);zfsmRequestJobFinish('completed','Done');
+$dir=$GLOBALS['plugin_runtime'].'/requests';foreach(glob($dir.'/*')?:[] as$f)unlink($f);rmdir($dir);
+$missing=null;try{zfsmReadJob($job['id']);}catch(Throwable$e){$missing=$e->getMessage();}
+zfsmRequestRuntimeSweep();
+echo json_encode(['missing'=>$missing,'pending'=>zfsmPendingJobs(),'page'=>zfsmJobPage(1,50,['filter'=>'all'])['jobs'],'recreated'=>is_dir($dir)]);`});
+        assert.equal(r.errors, '', r.text);
+        assert.deepEqual(JSON.parse(r.text), {missing: 'Job not found', pending: [], page: [], recreated: true});
+    } finally { await s.close(); }
+});

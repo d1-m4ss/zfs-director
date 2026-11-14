@@ -45,7 +45,7 @@ function zfsmRequestJobBegin($command,$request,$audit_id=null) {
     if(is_string($request['snapshot']??null)&&zfsmValidSnapshotName($request['snapshot']))$job['snapshot']=$request['snapshot'];
     if($parent!==null){$job['parent_job_id']=$parent['id'];$job['source']=$parent['source']??$parent['id'];if($command==='protectioncancel'&&in_array($parent['type']??null,['policy','replication'],true))$job['category']=$parent['type'];}
     if($command==='downloadsnapshotarchive'&&is_string($request['job_id']??null)&&preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$request['job_id']))$job['parent_job_id']=$request['job_id'];
-    zfsmJobAtomicWrite(zfsmJobFile($id),$job);$GLOBALS['zfsm_request_job']=['id'=>$id,'lease'=>$lease,'last_progress'=>0.0];$job=zfsmJobUpdate($id,['state'=>'running','stage'=>'validating_request','started_at'=>$now]);}
+    zfsmJobAtomicWrite(zfsmRequestRuntimeJobFile($id),$job);$GLOBALS['zfsm_request_job']=['id'=>$id,'lease'=>$lease,'last_progress'=>0.0];$job=zfsmJobUpdate($id,['state'=>'running','stage'=>'validating_request','started_at'=>$now]);}
     catch(Throwable$error){fclose($lease);unset($GLOBALS['zfsm_request_job']);throw $error;}
     register_shutdown_function(function(){if(isset($GLOBALS['zfsm_request_job']))try{zfsmRequestJobFinish('recovery_required','Request ended before a final result was recorded. Inspect actual state; this operation will not be replayed.','interrupted');}catch(Throwable$error){error_log('ZFS Director: request journal requires inspection');}});
     return $job;
@@ -134,4 +134,16 @@ function zfsmObserveRequestJob($id) {
     if($job['command']==='scrubpool'&&isset($job['pool_guid'])&&$job['state']==='running'&&in_array($job['stage'],['awaiting_scan','scrubbing','scrub_paused'],true))return zfsmObserveScrubJob($job);
     // Never turn an abandoned HTTP request into an executable worker job.
     return zfsmJobUpdate($id,function($live){if(!in_array($live['state'],['queued','running'],true)||zfsmRequestJobActive($live))return [];return ['state'=>'recovery_required','stage'=>'interrupted','finished_at'=>gmdate('c'),'error'=>'Request ended without a verified result. Inspect actual state; automatic retry is disabled.'];});
+}
+// A finished request journal only lives in tmpfs; remove it after a day so memory stays bounded.
+// An active one (its lease is held) is never touched.
+function zfsmRequestRuntimeSweep(): void {
+    $directory=zfsmRequestRuntimeJobDirectory();
+    foreach(glob($directory.'/*.json')?:[] as $file){
+        if(is_link($file)||!is_file($file))continue;
+        $id=basename($file,'.json');if(!preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$id))continue;
+        $mtime=@filemtime($file);if($mtime===false||time()-$mtime<86400)continue;
+        try{$job=zfsmReadJob($id);if(in_array($job['state']??'',['queued','running'],true)&&zfsmRequestJobActive($job))continue;}catch(Throwable$error){}
+        @unlink($file);@unlink($file.'.lock');@unlink(zfsmRequestJobLease($id));
+    }
 }

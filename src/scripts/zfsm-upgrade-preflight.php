@@ -39,6 +39,8 @@ try{
     // idle-capable; an update must refuse to proceed while one is in flight there too.
     $runtimeJobs='/var/tmp/'.basename($root).'/jobs/protection-queue';if(is_link($runtimeJobs))throw new RuntimeException('Jobs path requires inspection');
     $scanJobs($runtimeJobs,$jobs);
+    $requestJobs='/var/tmp/'.basename($root).'/jobs/requests';if(is_link($requestJobs))throw new RuntimeException('Jobs path requires inspection');
+    $scanJobs($requestJobs,$jobs);
     if($pendingJobs){
         $shown=implode('; ',array_slice($pendingJobs,0,3)).(count($pendingJobs)>3?'; and '.(count($pendingJobs)-3).' more':'');
         $requireRecovery('Update paused: '.count($pendingJobs).' job(s) still queued or running: '.$shown.'. Nothing was changed and the installed version keeps running. Next: open Main > ZFS Director > Jobs, wait for these jobs to finish or cancel them, then run Plugins > Check for Updates again.');

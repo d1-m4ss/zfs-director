@@ -33,6 +33,15 @@ function zfsmProtectionRuntimeJobDirectory(): string {
 function zfsmProtectionRuntimeJobFile(string $id): string {
     return zfsmProtectionRuntimeJobDirectory().'/'.zfsmJobId($id).'.json';
 }
+// JOBS-005: progress journals of observed requests (scrub, downloads; schema 7) live in the tmpfs
+// runtime directory only, next to the request leases. Nothing about them is written to the boot
+// flash; after a reboot the directory is empty and every such operation simply no longer exists.
+function zfsmRequestRuntimeJobDirectory(): string {
+    return zfsmJobDirectory(($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/requests');
+}
+function zfsmRequestRuntimeJobFile(string $id): string {
+    return zfsmRequestRuntimeJobDirectory().'/'.zfsmJobId($id).'.json';
+}
 // Single place deciding where a job id currently lives. Every job type is durable from the
 // start except a scheduled policy check (REL-002), which is first queued in the tmpfs runtime
 // directory above and promoted here the moment a durable copy exists (zfsmProtectionPromoteJob,
@@ -42,6 +51,8 @@ function zfsmJobFile($id) {
     if (is_file($durable)) return $durable;
     $runtime=zfsmProtectionRuntimeJobFile($id);
     if (!is_link($runtime) && is_file($runtime)) return $runtime;
+    $request=zfsmRequestRuntimeJobFile($id);
+    if (!is_link($request) && is_file($request)) return $request;
     return $durable;
 }
 function zfsmJobAtomicWrite($file,$data) {
@@ -168,7 +179,7 @@ function zfsmPendingJobs(?string $lane=null) {
     // id is only skipped here if the durable scan above already saw and processed it; any id
     // the durable scan's glob() missed (because it was not yet promoted when that glob ran) is
     // read fresh, which transparently picks up a promotion that finished in between.
-    foreach (glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[] as $file) {
+    foreach (array_merge(glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[],glob(zfsmRequestRuntimeJobDirectory().'/*.json')?:[]) as $file) {
         $name=basename($file,'.json');
         if (isset($seen[$name])) continue;
         try { $job=zfsmReadJobForQueue($file); } catch (Throwable $error) { continue; }
@@ -363,7 +374,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
     // scan above already saw it; any id that scan's glob() missed (not yet promoted when that
     // ran) is read fresh via zfsmReadJob, which transparently picks up a promotion that
     // completed in between -- never counted from neither scan.
-    foreach (glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[] as $runtimeFile) {
+    foreach (array_merge(glob(zfsmProtectionRuntimeJobDirectory().'/*.json')?:[],glob(zfsmRequestRuntimeJobDirectory().'/*.json')?:[]) as $runtimeFile) {
         $name=basename($runtimeFile);
         if (isset($seenIds[$name])) continue;
         try {
@@ -375,7 +386,14 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
         if (!$problem && ($job['state']??'')==='completed' && zfsmProtectionIdleCheck($job,$job['verification']??[]) && empty($job['cancel_requested'])) continue;
         if(!empty($options['listed'])&&!zfsmJobListed($job))continue;
         $job=zfsmJobPresentation($job,$runtimeFile,$worker_running,$problem);
-        if (!$problem && !in_array($job['state'],['queued','running'],true)) $job['group']='needs_attention';
+        if (!$problem&&($job['schema']??null)===7&&in_array($job['state'],['queued','running'],true)) try {
+            $live=($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/'.$job['id'].'.json';
+            if (!is_link($live) && is_file($live)) {
+                $progress=json_decode(@file_get_contents($live,false,null,0,131073),true);
+                if (is_array($progress)) $job['progress']=zfsmRedactJobData($progress);
+            }
+        } catch (Throwable $error) { $job['diagnostics']['detail']='Live progress is unavailable; the durable job journal remains available.'; }
+        if (!$problem && ($job['schema']??null)!==7 && !in_array($job['state'],['queued','running'],true)) $job['group']='needs_attention';
         $groups[$job['group']][]=$job;
     }
     if($filterOptions){
