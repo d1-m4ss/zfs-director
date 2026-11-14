@@ -136,3 +136,11 @@ test('the Jobs listing shows only functional work; quick-action refusals stay in
  assert.equal((await post({cmd:'conversionjobs'})).jobs.length,0,'a failed quick action is not listed in Jobs');
  assert.deepEqual((await post({cmd:'conversionjobs',listed:'0'})).jobs.map(j=>j.id),[bad.job.id],'the journal itself exists for diagnostics');
 }));
+
+test('journals of the removed Clean job history entry stay valid until they expire; the unfiltered page still carries every active job',async()=>fixture(async({s,post,model,target})=>{
+ const seeded=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';zfsmRequestJobBegin('jobhistorycleanup',['cmd'=>'jobhistorycleanup']);$j=zfsmRequestJobFinish('completed','Removed 3 expired log records.','completed',['removed'=>3]);echo json_encode(['id'=>$j['id'],'problem'=>zfsmJobProblem(zfsmReadJob($j['id']))]);`});
+ assert.equal(seeded.errors,'');assert.equal(JSON.parse(seeded.text).problem,null,'a journal written by an older version is not "invalid"');
+ // One queued deletion that is older than twelve newer refusals must still be reachable without filters.
+ const queued=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';$j=zfsmQueueDeletion('dataset','cache/__mock__/project',false,zfsmDestroyScope('cache/__mock__/project',false))['job'];echo json_encode(['id'=>$j['id'],'problem'=>zfsmJobProblem(zfsmReadJob($j['id']))]);`});
+ const queuedId=JSON.parse(queued.text).id;assert.equal(JSON.parse(queued.text).problem,null,'fixture deletion journal is valid');{for(let i=0;i<12;i++)await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:'999999'});const page=await post({cmd:'conversionjobs',page_size:'10'});assert.ok(page.jobs.some(j=>j.id===queuedId),'the active job is on the unfiltered page');}
+}));

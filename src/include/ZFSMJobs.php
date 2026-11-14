@@ -320,6 +320,7 @@ function zfsmJobListed($job) {
     return true;
 }
 function zfsmJobPage($page=1,$page_size=25,$options=null) {
+    $filterOptions=is_array($options)?array_diff_key($options,['listed'=>1]):[];
     if ($options!==null) {
         if(!is_array($options))throw new InvalidArgumentException('Invalid jobs options');
         $types=['all','snapshot','restore','archive','conversion','deletion','policy','replication','operation','download','maintenance'];
@@ -374,7 +375,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
         if (!$problem && !in_array($job['state'],['queued','running'],true)) $job['group']='needs_attention';
         $groups[$job['group']][]=$job;
     }
-    if($options!==null){
+    if($filterOptions){
         $all=array_merge(...array_values($groups));$filter=$options['filter']??'all';$type=$options['type']??'all';$sort=$options['sort']??'newest';$view=$options['view']??'working';
         foreach($all as&$item){$item['archived']=zfsmActivityJobArchived($item);$item['archive_eligible']=zfsmActivityJobEligible($item);}unset($item);
         // UX-003: "filter" is the status (older clients may still send a type there); "type" narrows by kind.

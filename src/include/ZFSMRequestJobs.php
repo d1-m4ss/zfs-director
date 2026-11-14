@@ -1,10 +1,11 @@
 <?php
 // Request-owned journals are observations, never executable/replayable payloads.
 require_once __DIR__.'/ZFSMCommands.php';
-// Labels of every audited command (ARCH-002 registry) plus internal worker maintenance.
+// Labels of every audited command (ARCH-002 registry) plus one legacy command that is no longer written.
 function zfsmRequestJobCommands() {
     $labels=[];foreach(zfsmCommandRegistry()as$name=>$c)if($c['label']!==null)$labels[$name]=$c['label'];
-    return $labels;
+    // Never written any more; journals written by 2026.11.14.2 and earlier must stay valid until they expire.
+    return $labels+['jobhistorycleanup'=>'Clean job history'];
 }
 // Only these synchronous requests keep a journal from the start: their outcome is
 // observed over time (scrub progress, download transfer). Every other synchronous

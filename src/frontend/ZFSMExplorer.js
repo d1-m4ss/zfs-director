@@ -51,7 +51,7 @@
   const jobStatus=el('section',undefined,'zfsm-explorer-jobs'),jobLine=el('div',undefined,'zfsm-explorer-job-summary'),jobMessage=el('span'),jobProgress=el('progress'),jobAlert=button('Operation errors',()=>{jobDetails.open=true;syncContent();markErrorsViewed();},undefined,undefined,'');
   const jobDetails=el('details'),jobToggle=el('summary','Details'),jobList=el('div',undefined,'zfsm-explorer-job-list'),viewedErrors=new Set();let downloadJob=null,downloadBusy=false;
   const jobAlertMessage=el('span');jobAlert.replaceChildren(jobAlertMessage);jobMessage.setAttribute('role','status');jobMessage.setAttribute('aria-live','polite');jobProgress.max=100;jobProgress.setAttribute('aria-label','Operation progress');jobAlert.className='zfsm-error';jobAlert.hidden=true;
-  const downloadZip=button('Download ZIP',async()=>{if(downloadBusy||!downloadJob)return;const id=downloadJob.id;downloadBusy=true;downloadZip.disabled=true;try{await options.download({cmd:'downloadsnapshotarchive',job_id:id},text=>status(text,true));if(!disposed)status('Download requested. Transfer progress appears in Jobs; check browser Downloads for the saved file.');}catch(error){if(!disposed)status(error.message,true);}finally{downloadBusy=false;downloadZip.disabled=false;}},'download','The browser saves the ready ZIP. Temporary ZIPs expire after one hour.','Download');
+  const downloadZip=button('Download ZIP',async()=>{if(downloadBusy||!downloadJob)return;const id=downloadJob.id;downloadBusy=true;downloadZip.disabled=true;try{await options.download({cmd:'downloadsnapshotarchive',job_id:id},text=>status(text,true));if(!disposed)status('Download requested. Check browser Downloads for the saved file.');}catch(error){if(!disposed)status(error.message,true);}finally{downloadBusy=false;downloadZip.disabled=false;}},'download','The browser saves the ready ZIP. Temporary ZIPs expire after one hour.','Download');
   jobDetails.append(jobToggle);jobDetails.addEventListener('toggle',()=>{syncContent();if(jobDetails.open)markErrorsViewed();},{signal:events.signal});jobLine.append(jobMessage,jobProgress,downloadZip,jobAlert,jobDetails);jobStatus.append(jobLine);jobStatus.hidden=true;host.append(jobStatus);
   const bar=el('div',undefined,'zfsm-explorer-toolbar'),crumbs=el('nav',undefined,'zfsm-explorer-path');crumbs.setAttribute('aria-label','Snapshot path');
   const filter=el('input');filter.type='search';filter.placeholder='Filter names…';filter.setAttribute('aria-label','Filter names');filter.autocomplete='off';
@@ -144,7 +144,7 @@
     if(disposed||!ready||!available||mine!==generation||expectedGuid!==guid)return;
     if(info.ready!==true||!Number.isSafeInteger(info.size)||info.size!==entry.size)throw Error('The file changed or is unavailable. Refresh files before downloading.');
     await options.download({cmd:'downloadsnapshotfile',snapshot,snapshot_guid:expectedGuid,path:entry.path},message=>{if(!disposed)status(message,true);});
-    if(!disposed)status('Download requested. Transfer progress appears in Jobs; check browser Downloads for the saved file.');
+    if(!disposed)status('Download requested. Check browser Downloads for the saved file.');
    }catch(error){if(!disposed)status(error.message,true);}
    finally{downloading.delete(entry.path);if(!disposed)syncAvailability();}
   }

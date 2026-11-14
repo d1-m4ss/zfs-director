@@ -826,7 +826,7 @@
         const conversion=['convertdirectory','resumeconversion'].includes(state.action);
         if(queued){state.completed=true;heading.textContent=deletion?'Deletion queued':conversion?'Conversion queued':'Operation in progress';state.result.append(element('span',' The operation has not finished. Follow its stage and progress in Jobs.'));}
         const jobs=element('button',queued?(deletion?'View deletion progress':conversion?'View conversion progress':'View progress in Jobs'):answer.job.state==='completed'?'View result in Jobs':'View failed attempt in Jobs');jobs.type='button';jobs.dataset.viewJob=answer.job.id;
-        jobs.addEventListener('click',()=>options.onViewJob?.(answer.job.id));state.result.append(jobs);
+        jobs.addEventListener('click',()=>options.onViewJob?.(answer.job.id));if(answer.job.schema!==7)state.result.append(jobs);
       }
     }
     function notify(answer, state, metadata) {

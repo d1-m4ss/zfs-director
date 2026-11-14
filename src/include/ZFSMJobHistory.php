@@ -128,16 +128,16 @@ function zfsmJobHistoryCleanup($now=null) {
         $storeFile=zfsmProtectionDirectory().'/config.json';if(file_exists($storeFile)||is_link($storeFile))zfsmJobHistoryRegular($storeFile);$store=zfsmProtectionReadStore();$pins=[];zfsmJobHistoryReferences($store,$pins);
         $records=[];$bytes=0;$seen=0;$directory=zfsmJobDirectory($GLOBALS['plugin_state']);$scan=opendir($directory);
         try{while(($name=readdir($scan))!==false){if(++$seen>40000)throw new RuntimeException('History scan limit reached; no records removed.');if(!preg_match('/^([0-9]{8}-[0-9]{6}-[a-f0-9]{12})\.json$/D',$name,$match)){if(str_ends_with($name,'.json'))throw new RuntimeException('Unknown job journal; history retained for inspection.');continue;}
-            $file=$directory.'/'.$name;$stat=zfsmJobHistoryRegular($file);if($stat['size']>131072||count($records)>=20000||$bytes+$stat['size']>256*1024*1024)throw new RuntimeException('History scan limit reached; no records removed.');
-            $job=zfsmReadJob($match[1]);if(zfsmJobProblem($job)){$report['protected']++;continue;}$bytes+=$stat['size'];$records[$job['id']]=['job'=>$job,'stat'=>$stat,'hash'=>hash_file('sha256',$file),'time'=>zfsmJobHistoryTime($job)??PHP_INT_MAX];
+            $file=$directory.'/'.$name;$stat=zfsmJobHistoryRegular($file);if($stat['size']>131072||count($records)>=20000||$bytes+$stat['size']>64*1024*1024)throw new RuntimeException('History scan limit reached; no records removed.');
+            $job=zfsmReadJob($match[1]);if(zfsmJobProblem($job)){$report['protected']++;continue;}$bytes+=$stat['size'];$refusal=zfsmProtectionBlockedBeforeStart($job);$records[$job['id']]=['stat'=>$stat,'hash'=>hash_file('sha256',$file),'time'=>zfsmJobHistoryTime($job)??PHP_INT_MAX,'keep'=>zfsmJobKeepOnDelete($job,false),'latest'=>($job['schema']??null)===4?($job['type'].':'.$job['definition_id']):null,'verified'=>($job['verification']['verified']??false)===true,'refusal'=>$refusal?($job['type'].':'.$job['definition_id'].':'.hash('sha256',(string)($job['error']??''))):null];
             zfsmJobHistoryReferences($job,$pins,$job['id']);
         }}finally{closedir($scan);}
-        uasort($records,fn($a,$b)=>($b['time']<=>$a['time'])?:strcmp($b['job']['id'],$a['job']['id']));
-        $latest=[];foreach($records as$id=>$r)if($r['job']['schema']===4){$key=$r['job']['type'].':'.$r['job']['definition_id'];if(!isset($latest[$key])){$pins[$id]=true;$latest[$key]=true;}if(($r['job']['verification']['verified']??false)===true&&!isset($latest[$key.':verified'])){$pins[$id]=true;$latest[$key.':verified']=true;}}
+        uksort($records,fn($ka,$kb)=>($records[$kb]['time']<=>$records[$ka]['time'])?:strcmp($kb,$ka));
+        $latest=[];foreach($records as$id=>$r)if($r['latest']!==null){$key=$r['latest'];if(!isset($latest[$key])){$pins[$id]=true;$latest[$key]=true;}if($r['verified']&&!isset($latest[$key.':verified'])){$pins[$id]=true;$latest[$key.':verified']=true;}}
         // A scheduled launch refused before anything ran used to write a new failed record every
         // minute. Of each run of identical refusals only the newest is kept, whatever its age.
-        $duplicates=[];$firstRefusal=[];foreach($records as$id=>$r){if(!zfsmProtectionBlockedBeforeStart($r['job']))continue;$key=$r['job']['type'].':'.$r['job']['definition_id'].':'.hash('sha256',(string)($r['job']['error']??''));if(!isset($firstRefusal[$key])){$firstRefusal[$key]=true;continue;}if(!isset($pins[$id]))$duplicates[$id]=$r;}
-        $eligible=[];foreach($records as$id=>$r){if(isset($duplicates[$id]))continue;if(isset($pins[$id])||zfsmJobKeepOnDelete($r['job'],false)!==null)$report['protected']++;else$eligible[$id]=$r;}
+        $duplicates=[];$firstRefusal=[];foreach($records as$id=>$r){if($r['refusal']===null)continue;$key=$r['refusal'];if(!isset($firstRefusal[$key])){$firstRefusal[$key]=true;continue;}if(!isset($pins[$id]))$duplicates[$id]=$r;}
+        $eligible=[];foreach($records as$id=>$r){if(isset($duplicates[$id]))continue;if(isset($pins[$id])||$r['keep']!==null)$report['protected']++;else$eligible[$id]=$r;}
         $count=count($records);
         $duplicateRemoved=0;
         foreach(array_reverse($duplicates,true)+array_reverse($eligible,true)as$id=>$r){

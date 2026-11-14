@@ -6,8 +6,8 @@
     "src/frontend/ZFSMAdminDatasetSnaps.php": "e5602619dc038dd48ce64a878189bdba1ce51634e96c7f61900a82357d7f4549",
     "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
-    "src/frontend/ZFSMExplorer.js": "ecbe4f064ca99fe8c6313ecbe8a6ccc1feb976b742377cd9160f8e8ea7cd1ad5",
-    "src/frontend/ZFSMForms.js": "ed243b4b89180de242045540803831b8aab1633103cdb5fe32828c8d23073784",
+    "src/frontend/ZFSMExplorer.js": "9aa9ac3793ae1d37273f9363674e7fadf094735ebbc307d2935153659bc9a748",
+    "src/frontend/ZFSMForms.js": "0dfd4a0dcf65d8f8174de2ef2dd59af9c03ca050bde60b323af96819df4b2b49",
     "src/frontend/ZFSMInventory.js": "04d6f24cf3bd00986aacaf300f7918e3825df1da2fd51f2b30caaa7d6f7b1038",
     "src/frontend/ZFSMOverview.js": "fce0218a833ce698d308072206e7cc3a42161f4fa38dd821694baf6d374d2f69",
     "src/frontend/ZFSMPoolView.js": "3e12f339d474213fcaed5642e01978be63c61380d92296c0e4c7c46050f3f22b",
@@ -15,7 +15,7 @@
     "src/frontend/ZFSMProtection.js": "a43afcf091b70a26744cab77687905e03bde55223ad34da7bbd9fada665d9400",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "0f442b7a51e0db85be4808bd0e6e6d8ae5479218c539ca4b5f27671c3f39c65d",
-    "src/frontend/ZFSMWorkspace.js": "f4568c9b599dd24a82e8d6ad9d395c152a5948d5f86fb5e5e73e1920491f7878",
+    "src/frontend/ZFSMWorkspace.js": "3144d610c2957b647b0345bbf0d3b6369594b1c6b4b2b57c6b0ca307b6d5c9a4",
     "docs/preview/data.mjs": "061c3bff5a32b57435da0e7bd1fdbbcf0ee3a8a94a4ed5d44e0c43cf6f0ec480",
     "docs/preview/server.mjs": "6caf468e0ad279159c66b531ac48df76741d83ad8e1bef8c453acac4a0454dca",
     "docs/preview/capture.mjs": "4c4d60d2c9781ee86d699813acda3302be36966c74311f2b64168bdc1bc0acbe"
@@ -32,7 +32,7 @@
   "screenshots": [
     {
       "file": "overview.png",
-      "sha256": "8265e945ca86bca38849c693b45b8dfb1bec83d329aafcab53c5650eb95c2097",
+      "sha256": "2f2a47248237ff95b01bb945be55f838d98a953fcadf9a02d2e0061a5e353efe",
       "bytes": 74575,
       "viewport": {
         "width": 1440,
@@ -41,7 +41,7 @@
     },
     {
       "file": "datasets.png",
-      "sha256": "6f8b98b360c47b9c113fa95702b2b578fca4f2398622f2e2dc38fd6fb8be02f8",
+      "sha256": "cc5569470221f35cb74558f5b185fe1a52ea579cb962aabd973a59bae4da8055",
       "bytes": 207995,
       "viewport": {
         "width": 1440,
@@ -50,7 +50,7 @@
     },
     {
       "file": "snapshots.png",
-      "sha256": "29f736bfe11baecb683d72faa91c545bdcc0f1a1b7a2ff42dfa53f95379f7aca",
+      "sha256": "102f845790fe4c7f592acbb38193d4b7d87603f7a7fc064a6f7fd91e44351913",
       "bytes": 154821,
       "viewport": {
         "width": 1440,
@@ -131,8 +131,8 @@
     },
     {
       "file": "jobs.png",
-      "sha256": "3e83079cae52c397a5e46b68f284d501e810e4eb9dffe6be953c553ddb92232d",
-      "bytes": 111707,
+      "sha256": "c60f9e911675fcc5db5519edefe6048e79dd2a59e7efb9993dd078ddf4f5807f",
+      "bytes": 111743,
       "viewport": {
         "width": 1440,
         "height": 980
