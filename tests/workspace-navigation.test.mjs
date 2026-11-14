@@ -6,7 +6,7 @@ import {JSDOM} from 'jsdom';
 const settle=async()=>{for(let i=0;i<80;i++)await Promise.resolve();};
 const mutation='/mnt/cache/a/.zfsm-mutation-'+'a'.repeat(48),maintenance='/mnt/cache/a/.zfsm-maintenance',archive='/mnt/cache/a/.zfsm-archive-20261020-130405-0123456789ab',restore='/mnt/cache/a/.zfsm-restore-20261020-130405-0123456789ab';
 const findButton=(root,label)=>[...root.querySelectorAll('button')].find(b=>b.textContent===label);
-async function mount(jobs=[],savedSelection=''){
+async function mount(jobs=[],savedSelection='',counts=null){
  const dom=new JSDOM('<main id="zfsm-workspace"></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main'),calls=[];
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.zfsmFormatDateTime=String;w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};
  w.setTimeout=()=>1;w.clearTimeout=()=>{};
@@ -17,7 +17,7 @@ async function mount(jobs=[],savedSelection=''){
  tree.child['cache/a']._directory_identities=Object.fromEntries(tree.child['cache/a'].directories.map((name,i)=>[name,{dev:'1',ino:String(100+i)}]));
  const inventory={op:'getAll',data:{pools:{cache:{Health:'ONLINE',Size:1000,Used:100,Snapshots:0}},datasets:{cache:tree},devices:{cache:''},errors:{}}};
  if(savedSelection)w.localStorage.setItem('zfsm-workspace-preferences-v1',JSON.stringify({pool:'cache',selection:savedSelection}));
- const app=w.zfsmCreateWorkspace({root,config:{refresh_interval:0,destructive_mode:1,directory_listing:['cache/a']},request:async fields=>{calls.push(fields);if(fields.cmd==='inventory'||fields.cmd==='inventorysnapshots')return inventory;if(fields.cmd==='conversionjobs')return {jobs,worker_running:false};if(fields.cmd==='getdatasetproperties')return tree.child[fields.zdataset]||tree;if(fields.cmd==='pooldiagnostics')throw Error('Synthetic unavailable diagnostics');throw Error('Unexpected '+fields.cmd);}});
+ const app=w.zfsmCreateWorkspace({root,config:{refresh_interval:0,destructive_mode:1,directory_listing:['cache/a']},request:async fields=>{calls.push(fields);if(fields.cmd==='inventory'||fields.cmd==='inventorysnapshots')return inventory;if(fields.cmd==='conversionjobs')return {jobs,worker_running:false,...(counts?{counts}:{})};if(fields.cmd==='getdatasetproperties')return tree.child[fields.zdataset]||tree;if(fields.cmd==='pooldiagnostics')throw Error('Synthetic unavailable diagnostics');throw Error('Unexpected '+fields.cmd);}});
  await app.refresh();await settle();
  return {w,root,app,calls,async select(name){root.querySelector('[data-node="'+name+'"]').click();await settle();},async tab(key){root.querySelector('.zfsm-tabs [data-tab="'+key+'"]').click();await settle();},close(){app.stop();w.close();}};
 }
@@ -52,4 +52,9 @@ test('a saved service-directory selection returns to its owner until recovery fi
 });
 test('internal restore and ZIP spools share the deliberate recovery view while saved originals remain ordinary directories',async()=>{
  const t=await mount();try{for(const path of [archive,restore,restore+'/replaced'])assert.equal(t.root.querySelector('[data-node="'+path+'"]'),null);assert.ok(t.root.querySelector('[data-node="/mnt/cache/a/SampleProject_archived_20261020-130405"]'));t.root.querySelector('[data-section=jobs]').click();await settle();findButton(t.root,'Show recovery files').click();await settle();for(const path of [archive,restore,restore+'/replaced']){await t.select(path);assert.equal(t.root.querySelector('[aria-label="Delete directory"]'),null);assert.equal(t.root.querySelector('[aria-label="Clean completed recovery"]'),null);}}finally{t.close();}
+});
+test('the Jobs badge shows the number of active jobs and nothing when none are active',async()=>{
+ for(const [counts,label] of [[{active:2,needs_attention:5},'Jobs · 2'],[{active:0,needs_attention:5},'Jobs']]){
+  const t=await mount([],'',counts);try{assert.equal(t.root.querySelector('[data-section=jobs]').textContent,label);}finally{t.close();}
+ }
 });

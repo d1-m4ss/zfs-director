@@ -134,3 +134,22 @@ test('journals of the removed Clean job history entry stay valid until they expi
  const queued=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';$j=zfsmQueueDeletion('dataset','cache/__mock__/project',false,zfsmDestroyScope('cache/__mock__/project',false))['job'];echo json_encode(['id'=>$j['id'],'problem'=>zfsmJobProblem(zfsmReadJob($j['id']))]);`});
  const queuedId=JSON.parse(queued.text).id;assert.equal(JSON.parse(queued.text).problem,null,'fixture deletion journal is valid');{for(let i=0;i<12;i++)await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';zfsmRequestJobBegin('downloadsnapshotfile',['snapshot'=>'cache/__mock__/project@base']);zfsmRequestJobFinish('failed','Synthetic');`});const page=await post({cmd:'conversionjobs',page_size:'10'});assert.ok(page.jobs.some(j=>j.id===queuedId),'the active job is on the unfiltered page');}
 }));
+
+test('the Jobs list shows replication, manual policy runs and refusals of schemas 5 and 6, and hides scrub, downloads and scheduled checks',async()=>fixture(async({s})=>{
+ const r=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';
+$def=['id'=>'abc','owner'=>'managed','dataset'=>'cache/__mock__/project','source'=>'cache/__mock__/project','target'=>'backup/project','source_guid'=>'123'];
+$job=function($type,$trigger)use($def){$j=zfsmNewProtectionJob($type,$def);$j['trigger']=$trigger;return $j;};
+$scrub=zfsmRequestJobBegin('scrubpool',['pool'=>'cache']);zfsmRequestJobFinish('completed','Done');
+$download=zfsmRequestJobBegin('downloadsnapshotfile',['snapshot'=>'cache/__mock__/project@base']);zfsmRequestJobFinish('completed','Done');
+zfsmRecordRejectedConversion('/mnt/cache/__mock__/project/photos',['directory'=>'Destructive Mode is disabled'],str_repeat('a',32));$deletion=zfsmQueueDeletion('dataset','cache/__mock__/project',false,zfsmDestroyScope('cache/__mock__/project',false))['job'];
+$conversion=null;foreach(zfsmJobPage(1,50,['listed'=>true])['jobs']as$j)if($j['schema']===5)$conversion=$j;
+$rows=['refused conversion'=>$conversion,'deletion'=>zfsmReadJob($deletion['id']),'replication'=>$job('replication','manual'),'manual policy'=>$job('policy','manual'),'scheduled policy'=>$job('policy','schedule'),'scrub'=>zfsmReadJob($scrub['id']),'download'=>zfsmReadJob($download['id'])];
+$out=[];foreach($rows as$name=>$j)$out[$name]=zfsmJobListed($j);
+echo json_encode($out);`});
+ assert.equal(r.errors,'');assert.deepEqual(JSON.parse(r.text),{'refused conversion':true,deletion:true,replication:true,'manual policy':true,'scheduled policy':false,scrub:false,download:false});
+}));
+
+test('the repeat counter of a refused scheduled launch lives under the runtime directory, not on the flash',async()=>fixture(async({s})=>{
+ const r=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';echo json_encode(['file'=>zfsmProtectionBlockedFile('policy','abc'),'runtime'=>$GLOBALS['plugin_runtime'],'state'=>$GLOBALS['plugin_state']]);`});
+ assert.equal(r.errors,'');const out=JSON.parse(r.text);assert.equal(out.file.startsWith(out.runtime+'/'),true);assert.equal(out.file.startsWith(out.state+'/'),false);
+}));
