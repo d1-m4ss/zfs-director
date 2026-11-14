@@ -33,14 +33,16 @@ try{
    // Jobs toolbar: the Clear button shares the baseline of the selects.
    if(width>=1280){await page.locator('[data-section=jobs]').click();await page.waitForTimeout(200);const row=await page.evaluate(()=>{const bar=document.querySelector('.zfsm-jobs-toolbar');const select=bar.querySelector('select').getBoundingClientRect(),clear=[...bar.querySelectorAll('button')].find(b=>/Clear completed/.test(b.textContent)).getBoundingClientRect();return {selectBottom:Math.round(select.bottom),clearBottom:Math.round(clear.bottom)};});assert.ok(Math.abs(row.selectBottom-row.clearBottom)<=3,'Clear button is level with the selects @'+width+' '+JSON.stringify(row));await page.locator('[data-section=datasets]').click();await page.locator('[data-node="'+project+'"]').click();}
    for(const tab of ['overview','details','properties','snapshots','actions']){
-    await page.locator('[data-tab='+tab+']').click();await page.waitForTimeout(120);
+    // UX-001: Dataset information is the All properties block on Overview.
+    await page.locator('[data-tab='+(tab==='details'?'overview':tab)+']').click();await page.waitForTimeout(120);
+    if(tab==='details'){await page.locator('.zfsm-all-properties > summary').click();await page.waitForTimeout(120);}
     const found=await scrollers(page);
     assert.deepEqual(found.nested,[],tab+' @'+width+': scroll inside scroll '+JSON.stringify(found));assert.ok(found.page<=1,tab+' @'+width+': the page must not scroll '+JSON.stringify(found));
     if(width>=1280)assert.ok(found.names.length<=2,tab+' @'+width+': at most the tree and the detail pane scroll '+JSON.stringify(found));
     if(tab==='snapshots'&&width>=1280){assert.equal(await page.locator('.zfsm-snapshot-table tbody tr').count(),50,'the first page of 50 snapshots is listed');assert.match(await page.locator('.zfsm-snapshot-count').first().textContent(),/302|1[-–]50/,'the list knows it has 302 snapshots');}
     if(tab==='details'){
-     const groups=await page.locator('.zfsm-subtabs button').allTextContents();assert.ok(groups.length>=2,'dataset information is split into groups @'+width+' '+groups.join('|'));
-     const first=await page.locator('.zfsm-properties dt').allTextContents();await page.locator('.zfsm-subtabs button').nth(1).click();const second=await page.locator('.zfsm-properties dt').allTextContents();
+     const groups=await page.locator('.zfsm-all-properties .zfsm-subtabs button').allTextContents();assert.ok(groups.length>=2,'dataset information is split into groups @'+width+' '+groups.join('|'));
+     const first=await page.locator('.zfsm-all-properties .zfsm-properties dt').allTextContents();await page.locator('.zfsm-all-properties .zfsm-subtabs button').nth(1).click();const second=await page.locator('.zfsm-all-properties .zfsm-properties dt').allTextContents();
      assert.notDeepEqual(first,second,'another group shows other properties');assert.ok(second.length>0);
      assert.ok(first.length<18,'one group is a short list ('+first.length+')');
     }

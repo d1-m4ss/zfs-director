@@ -79,7 +79,7 @@ async function legacyBeforeChecks(page,key){
 }
 async function legacyChecks(page,key){
  await navigate(page,'datasets');await page.locator('[data-node="cache/a"]').click();
- for(const [tab,label]of [['overview','dataset-overview'],['details','dataset-information'],['properties','dataset-properties']]){await page.locator('[data-tab='+tab+']').click();if(tab==='properties')await page.locator('.zfsm-form-group').first().waitFor();await capture(page,key+'-'+label);}
+ for(const [tab,label]of [['overview','dataset-overview'],['details','dataset-information'],['properties','dataset-properties']]){await page.locator('[data-tab='+(tab==='details'?'overview':tab)+']').click();if(tab==='details')await page.locator('.zfsm-all-properties > summary').click();if(tab==='properties')await page.locator('.zfsm-form-group').first().waitFor();await capture(page,key+'-'+label);}
  await page.getByRole('button',{name:'Pool & Scrub',exact:true}).click();for(const tab of ['status','information','devices']){await page.locator('.zfsm-pool-tabs [data-tab='+tab+']').click();await capture(page,key+'-pool-'+tab);}await navigate(page,'datasets');
  await page.getByRole('button',{name:'Create Dataset',exact:true}).click();await page.locator('.zfsm-create-form').waitFor();await capture(page,key+'-create-dataset');await page.keyboard.press('Escape');await navigate(page,'datasets');await page.locator('[data-node="cache/a"]').click();
  for(const tab of ['properties','snapshots','files','actions']){check(await page.locator('[data-tab='+tab+']').count()===1,key+' missing '+tab+' tab');}
