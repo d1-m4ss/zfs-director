@@ -3,7 +3,7 @@ require_once __DIR__.'/ZFSMActivityVisibility.php';
 require_once __DIR__.'/ZFSMJobHistory.php';
 
 // ARCH-005: state that one admin request passes between modules (which command runs, its
-// audit id, whether a queue journal was written, which job it published, restore context).
+// audit id, whether a queue journal was written, which job it published).
 // One explicit store with a fixed set of keys instead of scattered $GLOBALS entries; the
 // endpoint resets it at the start of every request.
 function zfsmRequestContextKeys(): array { return ['job_request_command','request_published_job','job_request_audit','job_failure_context','request_audit','conversion_journal_started','deletion_journal_started']; }

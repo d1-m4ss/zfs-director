@@ -97,3 +97,10 @@ test('names destroyed by an earlier attempt are counted and listed with the late
   assert.deepEqual(buttons(x.host),['Close']);
  }finally{x.close();}
 });
+test('a cancel request is titled Cancellation requested, not Started, and does not repeat itself',async()=>{
+ const x=await setup([],()=>({succeeded:{'20261114-120000-aaaaaaaaaaaa':'Cancellation requested; partial data retained'},failed:{},job:{id:'20261114-120000-aaaaaaaaaaaa',schema:1,state:'running'}}),'cancelconversion',{job:{id:'20261114-120000-aaaaaaaaaaaa'}});
+ try{
+  assert.equal(resultText(x.host),'✓Cancellation requested20261114-120000-aaaaaaaaaaaa: Partial data retained The operation has not finished. Follow its stage and progress in Jobs.View progress in Jobs');
+  assert.equal(controls(x.host),0);
+ }finally{x.close();}
+});

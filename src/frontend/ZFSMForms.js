@@ -795,15 +795,17 @@
       const result = failures ? (successes ? 'partial' : 'error') : !successes ? 'unknown' : answer.worker_warning ? 'warning' : 'success';
       const finished = result === 'success' && state.modal && state.action !== 'editdatasetproperty';
       const queuedJob = ['queued', 'running'].includes(answer.job?.state);
+      const cancelling = ['cancelconversion', 'cancelrestore'].includes(state.action);
       const completed = state.completed && !finished ? 'Select the updated object to perform another action.' : '';
       if (state.batchRows) state.deletedNames = [...(state.deletedNames || []), ...Object.keys(answer.succeeded)];
       const deleted = state.batchRows ? state.deletedNames : [];
+      const shown = finished && cancelling ? Object.entries(answer.succeeded).map(([name, text]) => name + ': ' + String(text).replace(/^Cancellation requested;?\s*/, '').replace(/^./, c => c.toUpperCase())).filter(line => !line.endsWith(': ')).join('\n') : successes;
       const details = state.batchRows
         ? (finished ? '' : 'Deleted: ' + Object.keys(answer.succeeded).length + '. Failed or not attempted: ' + Object.keys(answer.failed).length + '.\nSee each snapshot above for details.')
-        : [successes, failures, answer.worker_warning, completed].filter(Boolean).join('\n');
+        : [shown, failures, answer.worker_warning, completed].filter(Boolean).join('\n');
       note(state, details || (finished && state.batchRows ? '' : 'The operation returned no result. Inspect actual state before retrying.'), !!failures);
       const titles = {success:'Operation successful',partial:'Partially completed',error:'Operation failed',unknown:'Result not confirmed',warning:'Completed with warnings'};
-      if (finished && queuedJob) titles.success = 'Started';
+      if (finished && queuedJob) titles.success = cancelling ? 'Cancellation requested' : ['deletedirectory', 'destroydataset', 'convertdirectory', 'resumeconversion'].includes(state.action) ? 'Started' : 'Operation in progress';
       if (finished && state.batchRows) titles.success = 'Destroyed ' + deleted.length + (deleted.length === 1 ? ' snapshot' : ' snapshots');
       state.result.dataset.result = result;
       const heading = element('strong', titles[result], 'zfsm-result-heading');
