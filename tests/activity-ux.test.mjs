@@ -3,12 +3,13 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 async function workspace(suppliedJobs){
+ const behaviour={deleteFails:false};
  const dom=new JSDOM('<main></main>',{url:'http://fixture.local/?section=jobs',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main'),requests=[];let poll;
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};w.zfsmFormatDateTime=x=>String(x);w.setTimeout=(fn,ms)=>{if(ms===2500)poll=fn;return 1;};w.clearTimeout=()=>{};
  for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
  const jobs=suppliedJobs||[{id:'20261017-120000-000000000001',schema:2,type:'archive',state:'completed',stage:'complete',source:'ZIP fixture',archive_eligible:true,actions:{},metadata:{password:'[redacted]'}}];
- const app=w.zfsmCreateWorkspace({root,config:{refresh_interval:0},request:async fields=>{requests.push(fields);if(fields.cmd==='conversionjobs')return {jobs,worker_running:false};if(fields.cmd==='inventory')return {op:'getAll',data:{pools:{},datasets:{},devices:{},errors:{}}};if(fields.cmd==='activityvisibility')return {succeeded:{ok:'hidden'},failed:{}};if(fields.cmd==='deletefinishedjobs')return {succeeded:{jobs:'Deleted 1 finished job record(s).'},failed:{}};throw Error(fields.cmd);}});
- for(let i=0;i<80;i++)await Promise.resolve();return {w,root,requests,poll:async()=>{await poll();for(let i=0;i<50;i++)await Promise.resolve();},close(){app.stop();w.close();}};
+ const app=w.zfsmCreateWorkspace({root,config:{refresh_interval:0},request:async fields=>{requests.push(fields);if(fields.cmd==='conversionjobs')return {jobs,worker_running:false};if(fields.cmd==='inventory')return {op:'getAll',data:{pools:{},datasets:{},devices:{},errors:{}}};if(fields.cmd==='activityvisibility')return {succeeded:{ok:'hidden'},failed:{}};if(fields.cmd==='deletefinishedjobs'&&behaviour.deleteFails)return {succeeded:{},failed:{jobs:'Disk is read-only'}};if(fields.cmd==='deletefinishedjobs')return {succeeded:{jobs:'Deleted 1 finished job record(s).'},failed:{}};throw Error(fields.cmd);}});
+ for(let i=0;i<80;i++)await Promise.resolve();return {w,root,requests,behaviour,poll:async()=>{await poll();for(let i=0;i<50;i++)await Promise.resolve();},close(){app.stop();w.close();}};
 }
 test('Jobs requests global timeline, preserves expanded inspection across polling, offers all filters and bounded clear confirmation',async()=>{
  const x=await workspace();try{assert.equal(x.requests.find(r=>r.cmd==='conversionjobs').sort,'newest');const details=x.root.querySelector('[data-job-id] details');details.open=true;await x.poll();assert.equal(x.root.querySelector('[data-job-id] details').open,true);const status=x.root.querySelector('[aria-label="Job status"]'),type=x.root.querySelector('[aria-label="Job type"]');assert.deepEqual([...status.options].map(o=>o.value),['all','active','needs_attention','completed']);assert.deepEqual([...type.options].map(o=>o.value),['all','restore','archive','conversion','deletion','policy','replication']);assert.ok(x.root.querySelector('[aria-label="Everything, ignore the filters"]'),'one checkbox widens the delete to everything');assert.ok([...x.root.querySelectorAll('button')].find(b=>b.textContent==='Delete finished jobs'),'one delete button');for(const gone of ['Clear finished on this page','Restore archived on this page'])assert.equal([...x.root.querySelectorAll('button')].some(b=>b.textContent===gone),false,gone+' is gone');assert.equal(x.requests.some(r=>r.cmd==='deletefinishedjobs'),false,'nothing is deleted just by opening Jobs');}finally{x.close();}
@@ -107,5 +108,36 @@ test('every job card names the process, where it went and how it ended, in words
   assert.equal(card(1).querySelector('summary').textContent.includes('percentage unavailable'),false,'a running protection card shows the bar and the status, not a second stage line');
   assert.equal(card(2).querySelector('[role=alert]').textContent,'Both trusted Sanoid and Syncoid executables are required.','the cause is shown without an Error prefix');
   for(const n of [1,2,3,4])assert.doesNotMatch(card(n).querySelector('summary').textContent,/recovery_required|finished|failed ·|running ·|transferring|inspecting|invalid_journal/);
+ }finally{x.close();}
+});
+async function settle(n=300){for(let i=0;i<n;i++)await Promise.resolve();}
+const clickButton=(x,text)=>[...x.root.querySelectorAll('button')].find(b=>b.textContent===text).click();
+const notice=x=>x.root.querySelector('[data-jobs-deleted]')?.textContent??null;
+const deleteError=x=>[...x.root.querySelectorAll('.zfsm-error')].map(n=>n.textContent).find(t=>t.startsWith('Unable to delete'))??null;
+async function everything(x,on){const box=x.root.querySelector('[aria-label="Everything, ignore the filters"]');box.checked=on;box.dispatchEvent(new x.w.Event('change'));await settle();}
+test('the Everything switch and the delete result reset when a filter changes or the user leaves Jobs',async()=>{
+ const x=await workspace();try{
+  await everything(x,true);clickButton(x,'Delete finished jobs');await settle();
+  assert.equal(notice(x),'Deleted 1 finished job record(s).');assert.equal(x.root.querySelector('[aria-label="Everything, ignore the filters"]').checked,true);
+  const type=x.root.querySelector('[aria-label="Job type"]');type.value='archive';type.dispatchEvent(new x.w.Event('change'));await settle();
+  assert.equal(x.root.querySelector('[aria-label="Everything, ignore the filters"]').checked,false,'a type change resets Everything');assert.equal(notice(x),null);
+  await everything(x,true);clickButton(x,'Delete finished jobs');await settle();assert.equal(notice(x),'Deleted 1 finished job record(s).');
+  const status=x.root.querySelector('[aria-label="Job status"]');status.value='completed';status.dispatchEvent(new x.w.Event('change'));await settle();
+  assert.equal(x.root.querySelector('[aria-label="Everything, ignore the filters"]').checked,false,'a status change resets Everything');assert.equal(notice(x),null);
+  await everything(x,true);clickButton(x,'Delete finished jobs');await settle();
+  x.root.querySelector('[data-section=overview]').click();await settle();x.root.querySelector('[data-section=jobs]').click();await settle();
+  assert.equal(x.root.querySelector('[aria-label="Everything, ignore the filters"]').checked,false,'leaving Jobs resets Everything');assert.equal(notice(x),null);
+ }finally{x.close();}
+});
+test('a delete failure survives the poll and clears on the next click, a filter change or leaving Jobs',async()=>{
+ const x=await workspace();try{
+  x.behaviour.deleteFails=true;clickButton(x,'Delete finished jobs');await settle();
+  assert.equal(deleteError(x),'Unable to delete job records: Disk is read-only');
+  await x.poll();assert.equal(deleteError(x),'Unable to delete job records: Disk is read-only','the 2.5 s poll does not clear it');
+  x.behaviour.deleteFails=false;clickButton(x,'Delete finished jobs');await settle();assert.equal(deleteError(x),null,'the next Delete click clears it');assert.equal(notice(x),'Deleted 1 finished job record(s).');
+  x.behaviour.deleteFails=true;clickButton(x,'Delete finished jobs');await settle();assert.equal(deleteError(x),'Unable to delete job records: Disk is read-only');
+  const type=x.root.querySelector('[aria-label="Job type"]');type.value='archive';type.dispatchEvent(new x.w.Event('change'));await settle();assert.equal(deleteError(x),null,'a filter change clears it');
+  clickButton(x,'Delete finished jobs');await settle();assert.equal(deleteError(x),'Unable to delete job records: Disk is read-only');
+  x.root.querySelector('[data-section=overview]').click();await settle();x.root.querySelector('[data-section=jobs]').click();await settle();assert.equal(deleteError(x),null,'leaving Jobs clears it');
  }finally{x.close();}
 });

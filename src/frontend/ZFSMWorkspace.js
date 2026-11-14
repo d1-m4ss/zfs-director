@@ -32,7 +32,7 @@ function zfsmCreateWorkspace(options) {
     const inventoryJobs=new Set();
     let stopped=false,config=Object.assign({},options.config),data=null,lastInventory=null,inventoryFresh=false,lastSuccessfulRefresh='',section='datasets',tab='overview',pool='',selection='';
     let layout='tree',theme='auto',viewGeneration=0,activeForm=null,snapshotHost=null,detailBody=null,browserHost=null,detailHeading=null;
-    let jobsPage=1,jobsPageSize=10,jobsFilter='all',jobsType='all',jobsSort='newest',jobsView='all',jobsEverything=false,jobsNotice='',jobsVisibilityBusy=false;const jobsExpanded=new Set(),jobsDiagnosticsExpanded=new Set();let jobs={jobs:[],worker_running:false},jobsError='',jobsBusy=false,jobsPending=false,jobsScope='',jobsTimer=null,jobsHost=null;
+    let jobsPage=1,jobsPageSize=10,jobsFilter='all',jobsType='all',jobsSort='newest',jobsView='all',jobsEverything=false,jobsNotice='',jobsDeleteError='',jobsVisibilityBusy=false;const jobsExpanded=new Set(),jobsDiagnosticsExpanded=new Set();let jobs={jobs:[],worker_running:false},jobsError='',jobsBusy=false,jobsPending=false,jobsScope='',jobsTimer=null,jobsHost=null;
     let diagnosticBusy=false,diagnosticPending=false,inventoryError='',datasetTab='overview',showRecoveryFiles=false,explorer=null,explorerDialog=null,actionDialog=null;
     let selectionChanged=false,selectionIdentity='';let diagnosticTimer=null,scrubReview='',browserQuery='',browserFilter='all',browserPage=1;
     const scrubBusy=new Set();
@@ -201,10 +201,13 @@ function zfsmCreateWorkspace(options) {
     function invalidateForm(){forms.dispose();activeForm=null;if(actionDialog){const dialog=actionDialog;actionDialog=null;if(dialog.open)dialog.close();dialog.remove();}}
     function disposeSnapshots(){if(snapshotHost)zfsmDisposeSnapshots(snapshotHost);}
     function disposeExplorer(){if(explorer){explorer.dispose();explorer=null;}if(explorerDialog){explorerDialog.remove();explorerDialog=null;}}
+    // The delete scope and its result belong to one visit of Jobs and to one set of filters.
+    function resetJobsDelete(){jobsEverything=false;jobsNotice='';jobsDeleteError='';}
     function navigate(next){if(next==='datasets'){recoveryFiles(false);return;}section=next;renderSection();}
     function updateNavigation(){root.dataset.screen=section;const poolView=section==='datasets'&&poolTabs.has(tab);for(const [key,item]of sectionButtons){item.setAttribute('aria-pressed',String(section===key));item.setAttribute('aria-current',section===key?'page':'false');}poolToolsButton.setAttribute('aria-pressed',String(poolView));const datasetView=section==='datasets';datasetTools.hidden=!datasetView;poolHost.hidden=!datasetView;status.hidden=!datasetView&&status.dataset.error!=='true';screenTitle.textContent=({overview:'Overview',datasets:'Datasets',protection:'Snapshot Policies',replication:'Replication',jobs:'Jobs',settings:'Settings','protection-settings':'Settings',create:'Create Dataset'})[section]||'Datasets';}
     function renderSection(){
         protection?.leave();
+        if(section!=='jobs')resetJobsDelete();
         clearTimeout(diagnosticTimer);scrubReview='';
         invalidateForm();disposeSnapshots();disposeExplorer();viewGeneration++;snapshotHost=null;detailBody=null;browserHost=null;jobsHost=null;content.replaceChildren();
         updateNavigation();
@@ -685,12 +688,13 @@ function zfsmCreateWorkspace(options) {
         const toolbar=node('div',undefined,'zfsm-buttons zfsm-jobs-toolbar');
         function choice(label,values,current,change){const wrap=node('label'),select=node('select');select.setAttribute('aria-label',label);for(const [value,caption]of values){const option=node('option',caption);option.value=value;select.append(option);}select.value=current;select.addEventListener('change',()=>{change(select.value);jobsPage=1;loadJobs();});wrap.append(node('span',label+' '),select);toolbar.append(wrap);}
         // UX-003: status and type are separate; together they reach every former category.
-        choice('Job status',[['all','All'],['active','Active'],['needs_attention','Needs attention'],['completed','Completed']],['all','active','needs_attention','completed'].includes(jobsFilter)?jobsFilter:'all',value=>jobsFilter=value);
-        choice('Job type',[['all','All types'],['restore','Restore'],['archive','ZIP'],['conversion','Conversion'],['deletion','Deletion'],['policy','Snapshot policies'],['replication','Replication']],jobsType,value=>jobsType=value);
+        choice('Job status',[['all','All'],['active','Active'],['needs_attention','Needs attention'],['completed','Completed']],['all','active','needs_attention','completed'].includes(jobsFilter)?jobsFilter:'all',value=>{jobsFilter=value;resetJobsDelete();});
+        choice('Job type',[['all','All types'],['restore','Restore'],['archive','ZIP'],['conversion','Conversion'],['deletion','Deletion'],['policy','Snapshot policies'],['replication','Replication']],jobsType,value=>{jobsType=value;resetJobsDelete();});
         choice('Sort jobs',[['newest','Newest first'],['oldest','Oldest first'],['attention','Attention first']],jobsSort,value=>jobsSort=value);
         choice('Jobs per page',[[10,'10'],[25,'25'],[50,'50'],[100,'100']],jobsPageSize,value=>{jobsPageSize=Number(value);savePreferences();});
         {const wrap=node('label',undefined,'zfsm-jobs-archive-toggle'),box=node('input');box.type='checkbox';box.checked=jobsEverything;box.setAttribute('aria-label','Everything, ignore the filters');box.addEventListener('change',()=>{jobsEverything=box.checked;renderJobs();});wrap.append(box,node('span','Everything, ignore the filters'));toolbar.append(wrap);}
-        const drop=button('Delete finished jobs',async()=>{if(jobsVisibilityBusy)return;jobsVisibilityBusy=true;jobsNotice='';try{const answer=await request({cmd:'deletefinishedjobs',filter:jobsFilter,type:jobsType,everything:jobsEverything?'1':'0'});if(!answer.succeeded||Object.keys(answer.failed||{}).length)throw new Error(Object.values(answer.failed||{}).join('; ')||'Invalid response');jobsNotice=answer.succeeded.jobs||'';jobsPage=1;await loadJobs();}catch(error){jobsError='Unable to delete job records: '+error.message;renderJobs();}finally{jobsVisibilityBusy=false;}});drop.disabled=!!jobsError||jobsVisibilityBusy;toolbar.append(drop);jobsHost.append(toolbar);
+        const drop=button('Delete finished jobs',async()=>{if(jobsVisibilityBusy)return;jobsVisibilityBusy=true;jobsNotice='';jobsDeleteError='';try{const answer=await request({cmd:'deletefinishedjobs',filter:jobsFilter,type:jobsType,everything:jobsEverything?'1':'0'});if(!answer.succeeded||Object.keys(answer.failed||{}).length)throw new Error(Object.values(answer.failed||{}).join('; ')||'Invalid response');jobsNotice=answer.succeeded.jobs||'';jobsPage=1;await loadJobs();}catch(error){jobsDeleteError='Unable to delete job records: '+error.message;renderJobs();}finally{jobsVisibilityBusy=false;renderJobs();}});drop.disabled=!!jobsError||jobsVisibilityBusy;toolbar.append(drop);jobsHost.append(toolbar);
+        if(jobsDeleteError){const failed=node('p',jobsDeleteError,'zfsm-error');failed.setAttribute('role','alert');jobsHost.append(failed);}
         if(jobsNotice){const done=node('p',jobsNotice,'zfsm-notice');done.setAttribute('role','status');done.dataset.jobsDeleted='';jobsHost.append(done);}
 
         {const days=jobs.history?.policy?.days??7,keep=days===0?'Finished jobs are kept until you delete them.':'Finished jobs are deleted after '+days+(days===1?' day':' days')+'.',line=node('p',keep+' Change it in Settings.'+(jobs.history?.last_cleanup?.blocked&&jobs.history.last_cleanup.warning?' Cleanup is blocked: '+jobs.history.last_cleanup.warning:''),'zfsm-muted');line.dataset.jobsRetention='';jobsHost.append(line);}
