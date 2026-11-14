@@ -143,3 +143,13 @@ test('Jobs hands the card the definition name and the destination, with user@hos
  echo json_encode(['local'=>$jobs[$local]??null,'remote'=>$jobs[$remote]??null]);`);
  assert.deepEqual(out,{local:['Immich 1','backup/test'],remote:['Immich 2','backup@nas.lan:backup/test']});
 });
+test('opening Jobs runs the retention pass, so an 8-day-old finished manual policy job is gone after one conversionjobs request',async t=>{
+ const s=await startIntegration({protection:true});t.after(()=>s.close());
+ const seeded=await s.run({code:prelude+`$old=time()-8*86400;$j=zfsmNewProtectionJob('policy',zfsmProtectionReadStore()['policies']['abc']);$j['id']=gmdate('Ymd-His',$old).'-0000000000a1';$j['trigger']='manual';$j['state']='completed';$j['stage']='finished';$j['verified_outcome']='completed';$j['verification']=['outcome'=>'completed'];$j['created']=$j['updated']=gmdate('c',$old);zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);echo json_encode(['id'=>$j['id'],'before'=>count(journals())]);`});
+ assert.equal(seeded.errors,'',seeded.text);const seed=JSON.parse(seeded.text.slice(seeded.text.indexOf('{')));
+ assert.equal(seed.before,1);
+ const page=await fetch(s.url+'/plugins/zfs.master.ui/backend/ZFSMAdmin.php',{method:'POST',body:new URLSearchParams({csrf_token:'integration-token',cmd:'conversionjobs'})}).then(r=>r.json());
+ assert.deepEqual(page.jobs,[],'the expired job is not listed');
+ const after=await s.run({code:prelude+`echo json_encode(['left'=>count(journals()),'report'=>json_decode(file_get_contents($GLOBALS['plugin_runtime'].'/history-cleanup.json'),true)['removed']]);`});
+ assert.deepEqual(JSON.parse(after.text.slice(after.text.indexOf('{'))),{left:0,report:1});
+});

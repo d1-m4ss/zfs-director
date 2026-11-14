@@ -5,18 +5,42 @@ async function run(code){const php=await runtime();try{const r=await php.run({co
 function record($n,$state='completed'){$id='20260101-120000-'.str_pad(dechex($n),12,'0',STR_PAD_LEFT);$j=['schema'=>7,'id'=>$id,'type'=>'operation','command'=>'snapshotdataset','label'=>'Create snapshots','source'=>'cache/test','state'=>$state,'stage'=>$state==='completed'?'completed':'interrupted','created'=>'2026-01-01T12:00:00Z','updated'=>'2026-01-01T12:00:00Z','finished_at'=>'2026-01-01T12:00:00Z','owner_boot'=>'history-test-boot','result'=>['summary'=>'Successful test operation']];zfsmJobAtomicWrite(zfsmJobFile($id),$j);file_put_contents(zfsmJobFile($id).'.lock','');return $j;}
 ${code}`});assert.equal(r.errors,'');assert.equal(r.exitCode,0,r.text);return JSON.parse(r.text);}finally{php.exit();}}
 
-for(const kind of ['malformed','symlink','store'])test('history cleanup fails closed for '+kind+' uncertainty',async()=>{
- const x=await run(`for($i=1;$i<=105;$i++)record($i);${kind==='malformed'?"file_put_contents(zfsmJobFile('20260101-120000-ffffffffffff'),'{broken');":kind==='symlink'?"symlink('/outside',zfsmJobFile('20260101-120000-ffffffffffff'));":"zfsmJobDirectory('/history/protection');file_put_contents('/history/protection/config.json','{broken');"} $before=file_get_contents(zfsmJobFile('20260101-120000-000000000001'));$r=zfsmJobHistoryCleanup(1792497600);echo json_encode(['result'=>$r,'unchanged'=>file_get_contents(zfsmJobFile('20260101-120000-000000000001'))===$before]);`);assert.equal(x.result.removed,0);assert.equal(x.result.blocked,true);assert.equal(x.unchanged,true);
+for(const kind of ['malformed','symlink'])test('one '+kind+' journal is skipped and counted; the hourly pass still deletes the old valid records',async()=>{
+ const x=await run(`for($i=1;$i<=105;$i++)record($i);$bad=zfsmJobFile('20260101-120000-ffffffffffff');${kind==='malformed'?"file_put_contents($bad,'{broken');":"symlink('/outside',$bad);"} $r=zfsmJobHistoryCleanup(1792497600);echo json_encode(['result'=>$r,'bad'=>is_link($bad)?'link:'.readlink($bad):file_get_contents($bad),'valid_left'=>count(glob($GLOBALS['plugin_state'].'/2026*-*.json'))-1]);`);
+ assert.equal(x.result.blocked,false);assert.equal(x.result.removed,105);assert.equal(x.result.skipped_unsafe,1);
+ assert.equal(x.bad,kind==='malformed'?'{broken':'link:/outside','the bad entry is never touched');assert.equal(x.valid_left,0);
+});
+test('history cleanup fails closed when the protection store is unreadable',async()=>{
+ const x=await run(`for($i=1;$i<=105;$i++)record($i);zfsmJobDirectory('/history/protection');file_put_contents('/history/protection/config.json','{broken');$before=file_get_contents(zfsmJobFile('20260101-120000-000000000001'));$r=zfsmJobHistoryCleanup(1792497600);echo json_encode(['result'=>$r,'unchanged'=>file_get_contents(zfsmJobFile('20260101-120000-000000000001'))===$before]);`);assert.equal(x.result.removed,0);assert.equal(x.result.blocked,true);assert.equal(x.unchanged,true);
 });
 
 test('history metadata symlink ancestors never redirect deletion outside the log tree',async()=>{
  const x=await run(`for($i=1;$i<=105;$i++)record($i);zfsmJobDirectory('/outside/jobs');$outside='/outside/jobs/20260101-120000-000000000001.marker';file_put_contents($outside,'KEEP');symlink('/outside',$GLOBALS['plugin_state'].'/visibility');$r=zfsmJobHistoryCleanup(1792497600);echo json_encode(['result'=>$r,'outside'=>file_exists($outside)?file_get_contents($outside):null]);`);assert.equal(x.outside,'KEEP');assert.equal(x.result.blocked,true);
 });
 
-test('unrecognized JSON and keyed references cannot be bypassed by log cleanup',async()=>{
- const x=await run(`for($i=1;$i<=105;$i++)record($i);file_put_contents($GLOBALS['plugin_state'].'/broken.json','{}');$r=zfsmJobHistoryCleanup(1792497600);unlink($GLOBALS['plugin_state'].'/broken.json');unlink($GLOBALS['plugin_runtime'].'/history-cleanup.json');$id='20260101-120000-000000000001';$store=['version'=>1,'policies'=>[],'replications'=>[],'owned_snapshots'=>[$id=>['guid'=>'123']]];zfsmJobAtomicWrite('/history/protection/config.json',$store);$next=zfsmJobHistoryCleanup(1792497600);echo json_encode(['first'=>$r,'kept'=>is_file(zfsmJobFile($id))]);`);assert.equal(x.first.blocked,true);assert.equal(x.first.removed,0);assert.equal(x.kept,true);
+test('an unrecognized JSON file is skipped and kept; keyed references still protect a journal',async()=>{
+ const x=await run(`for($i=1;$i<=105;$i++)record($i);$broken=$GLOBALS['plugin_state'].'/broken.json';file_put_contents($broken,'{}');$r=zfsmJobHistoryCleanup(1792497600);$stays=file_get_contents($broken);unlink($broken);unlink($GLOBALS['plugin_runtime'].'/history-cleanup.json');for($i=1;$i<=105;$i++)record($i);$id='20260101-120000-000000000001';$store=['version'=>1,'policies'=>[],'replications'=>[],'owned_snapshots'=>[$id=>['guid'=>'123']]];zfsmJobAtomicWrite('/history/protection/config.json',$store);$next=zfsmJobHistoryCleanup(1792497600);echo json_encode(['first'=>$r,'stays'=>$stays,'next'=>$next,'kept'=>is_file(zfsmJobFile($id)),'left'=>count(glob($GLOBALS['plugin_state'].'/*.json'))]);`);
+ assert.equal(x.first.blocked,false);assert.equal(x.first.removed,105);assert.equal(x.first.skipped_unsafe,1);assert.equal(x.stays,'{}');
+ assert.equal(x.next.blocked,false);assert.equal(x.next.removed,104);assert.equal(x.kept,true);assert.equal(x.left,1);
 });
-
+test('an unreadable settings file stops deletion; a missing key still means 7 days',async()=>{
+ const x=await run(`zfsmJobDirectory('/history');for($i=1;$i<=3;$i++)record($i);file_put_contents($GLOBALS['plugin_config'],'job_retention_days="7'.PHP_EOL.'[broken');$days=zfsmJobRetentionDays();$r=zfsmJobHistoryCleanup(1792497600);$left=count(glob($GLOBALS['plugin_state'].'/*.json'));
+ file_put_contents($GLOBALS['plugin_config'],'[general]'.PHP_EOL.'other="1"'.PHP_EOL);$missing=zfsmJobRetentionDays();$r2=zfsmJobHistoryCleanup(1792497600);echo json_encode(['days'=>$days,'result'=>$r,'left'=>$left,'missing'=>$missing,'removed'=>$r2['removed']]);`);
+ assert.equal(x.days,null);assert.deepEqual(x.result,{skipped:'settings_unreadable'});assert.equal(x.left,3);assert.equal(x.missing,7);assert.equal(x.removed,3);
+});
+test('Delete with Everything also removes a journal that cannot be validated, unless it is a symlink; filters keep it (a held lock is covered by the native test)',async()=>{
+ const x=await run(`zfsmJobDirectory('/history');for($i=1;$i<=2;$i++)record($i);$d=$GLOBALS['plugin_state'];
+ $bad=zfsmJobFile('20260101-120000-aaaaaaaaaaaa');file_put_contents($bad,'{broken');file_put_contents($bad.'.lock','');
+ $link=zfsmJobFile('20260101-120000-cccccccccccc');symlink('/outside',$link);
+ $filtered=zfsmJobDeleteFinished(['20260101-120000-000000000001'=>true]);$afterFilter=count(glob($d.'/*.json'));
+ $all=zfsmJobDeleteFinished();$left=array_map('basename',glob($d.'/2026*.json'));sort($left);
+ echo json_encode(['filtered'=>[$filtered['deleted'],$filtered['kept']],'after_filter'=>$afterFilter,'all'=>[$all['deleted'],$all['kept']],'left'=>$left]);`);
+ assert.deepEqual(x.filtered,[1,[]]);
+ assert.equal(x.after_filter,3,'with a filter the unreadable journals stay (1 valid + 2 unreadable)');
+ assert.equal(x.all[0],2,'the last valid record and the unreadable plain file');
+ assert.deepEqual(x.all[1],{'needs inspection':1});
+ assert.deepEqual(x.left,['20260101-120000-cccccccccccc.json']);
+});
 test('the newest result of a replication is saved before its journals are deleted; results of removed definitions are dropped',async()=>{
  const x=await run(`for($i=1;$i<=105;$i++)record($i);$def=['id'=>'abc','owner'=>'managed','source'=>'cache/test','source_guid'=>'123','target'=>'backup/test'];foreach([1,2,3]as$n){$j=record($n);$j=['schema'=>4,'id'=>$j['id'],'type'=>'replication','definition_id'=>'abc','definition'=>$def,'definition_hash'=>hash('sha256',json_encode($def,JSON_THROW_ON_ERROR)),'state'=>$n===3?'failed':'completed','stage'=>'finished','verified_outcome'=>$n===3?'failed':'completed','source'=>'cache/test','source_guid'=>'123','target'=>'backup/test','cancel_requested'=>false,'created'=>'2026-01-0'.$n.'T12:00:00Z','updated'=>'2026-01-0'.$n.'T12:00:00Z','verification'=>['outcome'=>$n===3?'failed':'completed','verified'=>$n===1]];zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);}
  zfsmJobDirectory('/history/protection');file_put_contents('/history/protection/config.json',json_encode(['version'=>1,'policies'=>new stdClass,'replications'=>['abc'=>$def],'owned_snapshots'=>new stdClass]));

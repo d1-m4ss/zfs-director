@@ -225,6 +225,8 @@ try {
 			break;
 		case 'conversionjobs':
 			foreach(['page','page_size','filter','type','sort','view']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');
+			// Retention also runs when the worker is stopped; it returns at once when not due.
+			try{zfsmJobHistoryCleanup();}catch(Throwable$error){error_log('ZFS Director: job history maintenance unavailable');}
 			$job_options=array_intersect_key($_POST,array_flip(['filter','type','sort','view']))+['listed'=>($_POST['listed']??'1')!=='0'];
 			echo json_encode(zfsmJobPage(zfsmPostString('page','1'),zfsmPostString('page_size','25'),$job_options?:null)+['worker_running'=>zfsmWorkerRunning(),'history'=>zfsmJobHistoryStatus(),'operation'=>zfsmOperationLockStatus()],JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
