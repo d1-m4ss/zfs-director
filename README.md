@@ -200,7 +200,7 @@ Jobs lists only functional work: directory conversion, file restore and ZIP prep
 
 Snapshot policies, replication and file jobs run in three separate background lanes, so a long replication does not delay scheduled snapshots, restores or ZIP downloads. A snapshot policy still waits while a local replication is receiving into its dataset.
 
-- Each card names the process, its source and destination, how it started and how it ended, in plain words (for example **Running: copying files** or **Failed: <reason>**).
+- Each card names the process, its source and destination, how it started and how it ended, in plain words (for example **Running: copying files** or **Failed:** followed by the reason).
 - A failed quick action (for example a refused snapshot) is not kept as a job: its error is shown in the action dialog and recorded in the audit log.
 - After a successful action the dialog shows only its result and a Close button.
 - Progress is numeric when a meaningful measure is available; otherwise the current stage is shown without inventing a percentage.

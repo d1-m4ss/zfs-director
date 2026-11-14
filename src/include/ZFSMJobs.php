@@ -6,7 +6,7 @@ require_once __DIR__.'/ZFSMJobHistory.php';
 // audit id, whether a queue journal was written, which job it published, restore context).
 // One explicit store with a fixed set of keys instead of scattered $GLOBALS entries; the
 // endpoint resets it at the start of every request.
-function zfsmRequestContextKeys(): array { return ['job_request_command','request_published_job','job_request_audit','job_failure_context','request_audit','conversion_journal_started','deletion_journal_started','request_restore_context']; }
+function zfsmRequestContextKeys(): array { return ['job_request_command','request_published_job','job_request_audit','job_failure_context','request_audit','conversion_journal_started','deletion_journal_started']; }
 function zfsmRequestKey(string $key): string { if(!in_array($key,zfsmRequestContextKeys(),true))throw new LogicException('Unknown request context key '.$key); return $key; }
 function zfsmRequestGet(string $key,$default=null) { return $GLOBALS['zfsm_request_context'][zfsmRequestKey($key)]??$default; }
 function zfsmRequestSet(string $key,$value): void { $GLOBALS['zfsm_request_context'][zfsmRequestKey($key)]=$value; }

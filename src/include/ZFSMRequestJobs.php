@@ -17,15 +17,6 @@ function zfsmRequestJobCategory($job) {
     $type=is_string($job['type']??null)?$job['type']:'unknown';$command=is_string($job['command']??null)?$job['command']:'';
     return ($job['schema']??null)===7?($job['category']??$categories[$command]??$type):$type;
 }
-// Called only after preview signature verification; retain display context, never a replay payload.
-function zfsmRequestJobRestoreContext($document) {
-    $ctx=$document['context']??[];$plan=$document['plan']??[];
-    if(!is_array($ctx)||!is_array($plan)||!zfsmValidSnapshotName($ctx['snapshot']??null)||!zfsmValidDatasetName($ctx['dataset']??null)||explode('@',$ctx['snapshot'],2)[0]!==$ctx['dataset'])return;
-    $mount=$ctx['destination']??null;if(!is_string($mount)||!str_starts_with($mount,'/')||$mount==='/'||strlen($mount)>4096||preg_match('/[\x00-\x1f\x7f]/',$mount)||preg_match('#(?:^|/)\.\.?(/|$)#',$mount))return;
-    try{$target=zfsmExplorerPath($plan['target']??null);}catch(Throwable$error){return;}
-    if(preg_match('/[\x00-\x1f\x7f]/',$target))return;
-    zfsmRequestSet('request_restore_context',['snapshot'=>$ctx['snapshot'],'dataset'=>$ctx['dataset'],'target'=>$mount.($target===''?'':'/'.$target)]);
-}
 // Context comes from a successfully verified, server-owned protection review.
 function zfsmRequestJobReviewContext($review) {
     if(!isset($GLOBALS['zfsm_request_job'])||!is_array($review))return;
@@ -47,14 +38,11 @@ function zfsmRequestJobSubject($request) {
 function zfsmRequestJobBegin($command,$request,$audit_id=null) {
     $history_gate=zfsmJobHistoryGate();try{
     $labels=zfsmRequestJobCommands();if(!isset($labels[$command]))throw new InvalidArgumentException('Unsupported request job');
-    $context=$command==='restoresnapshotfiles'?(zfsmRequestGet('request_restore_context',[])):[];
-    if($command==='restoresnapshotfiles')$request=['cmd'=>$command]+$context;
     $parent=null;if(in_array($command,['cancelconversion','resumeconversion','publishconversion','cancelrestore','protectioncancel','downloadsnapshotarchive'],true)&&is_string($request['job_id']??null)&&preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$request['job_id']))try{$candidate=zfsmReadJob($request['job_id']);if(!zfsmJobProblem($candidate))$parent=$candidate;}catch(Throwable$error){}
     $id=gmdate('Ymd-His').'-'.bin2hex(random_bytes(6));$now=gmdate('c');$path=zfsmRequestJobLease($id);
     if(is_link($path))throw new RuntimeException('Untrusted request journal lock');$lease=fopen($path,'xce');if(!$lease)throw new RuntimeException('Unable to open request journal lock');if(!flock($lease,LOCK_EX|LOCK_NB)){fclose($lease);throw new RuntimeException('Unable to own request journal');}
     try{$job=zfsmJobInitializeHistory(['schema'=>7,'id'=>$id,'type'=>str_starts_with($command,'download')?'download':($command==='scrubpool'?'maintenance':'operation'),'command'=>$command,'label'=>$labels[$command],'source'=>zfsmRequestJobSubject($request),'state'=>'queued','stage'=>'planned','created'=>$now,'updated'=>$now,'started_at'=>null,'finished_at'=>null,'owner_boot'=>zfsmBootId(),'audit_id'=>$audit_id]);
     if(is_string($request['snapshot']??null)&&zfsmValidSnapshotName($request['snapshot']))$job['snapshot']=$request['snapshot'];
-    $job+=$context;
     if($parent!==null){$job['parent_job_id']=$parent['id'];$job['source']=$parent['source']??$parent['id'];if($command==='protectioncancel'&&in_array($parent['type']??null,['policy','replication'],true))$job['category']=$parent['type'];}
     if($command==='downloadsnapshotarchive'&&is_string($request['job_id']??null)&&preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$request['job_id']))$job['parent_job_id']=$request['job_id'];
     zfsmJobAtomicWrite(zfsmJobFile($id),$job);$GLOBALS['zfsm_request_job']=['id'=>$id,'lease'=>$lease,'last_progress'=>0.0];$job=zfsmJobUpdate($id,['state'=>'running','stage'=>'validating_request','started_at'=>$now]);}

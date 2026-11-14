@@ -125,13 +125,11 @@ function zfsmCleanupArchive($job) {
     return 'removed';
 }
 function zfsmQueueRestore($id,$token,$secret,$confirmed) {
-    zfsmRequestUnset('request_restore_context');
     if($confirmed!=='1')throw new InvalidArgumentException('Review the restore summary and confirm explicitly');
     $file=zfsmRestorePreviewFile($id);
     if(is_link($file)||!is_file($file)||filesize($file)>64*1024*1024)throw new InvalidArgumentException('Restore preview expired; review the selection again');
     $document=json_decode(file_get_contents($file),true,160,JSON_THROW_ON_ERROR);
     if(!is_array($document)||($document['id']??'')!==$id||!is_string($token)||!hash_equals(zfsmRestoreSignature($document,$secret),$token))throw new InvalidArgumentException('Restore preview does not match the reviewed selection');
-    zfsmRequestJobRestoreContext($document);
     $queue=zfsmJobDirectory($GLOBALS['plugin_state']).'/restore-queue.lock';if(is_link($queue))throw new RuntimeException('Invalid restore queue lock');
     $lock=fopen($queue,'c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Restore queue unavailable');
     try {
