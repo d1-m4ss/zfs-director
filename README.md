@@ -53,7 +53,7 @@ The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/202
 
 Open **Datasets → choose a filesystem dataset → File Manager**, select a snapshot and click **Open File Manager**. You can also open files from the snapshot list.
 
-The Snapshot File Manager browses a selected snapshot, not the current writable directory. It supports directory navigation, filtering, sorting, pagination and multiple selection. Files and folders can be prepared as a ZIP archive; preparation and the server-side transfer appear in Jobs.
+The Snapshot File Manager browses a selected snapshot, not the current writable directory. It supports directory navigation, filtering, sorting, pagination and multiple selection. Files and folders can be prepared as a ZIP archive; preparation appears in Jobs; the file download itself does not.
 
 ![Snapshot File Manager with generated example files](docs/images/file-manager.png)
 
@@ -200,6 +200,9 @@ Jobs lists only functional work: directory conversion, file restore and ZIP prep
 
 Snapshot policies, replication and file jobs run in three separate background lanes, so a long replication does not delay scheduled snapshots, restores or ZIP downloads. A snapshot policy still waits while a local replication is receiving into its dataset.
 
+- Each card names the process, its source and destination, how it started and how it ended, in plain words (for example **Running: copying files** or **Failed: <reason>**).
+- A failed quick action (for example a refused snapshot) is not kept as a job: its error is shown in the action dialog and recorded in the audit log.
+- After a successful action the dialog shows only its result and a Close button.
 - Progress is numeric when a meaningful measure is available; otherwise the current stage is shown without inventing a percentage.
 - Errors show the affected operation and available safe context.
 - Stage history helps distinguish copying, verification, publication and recovery.
