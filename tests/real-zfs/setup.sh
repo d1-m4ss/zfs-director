@@ -4,8 +4,8 @@
 # loopback, SSH replication to 127.0.0.1, restoring a file from a snapshot, deleting a dataset)
 # and writes a report with the ZFS, Sanoid and kernel versions to $ZFSM_REAL_ZFS_OUT.
 #   sudo sh tests/real-zfs/setup.sh          (from a checkout copied to the VM)
-# Refuses to run unless /etc/zfsm-disposable-vm exists: it destroys pools named zfsmreal and
-# director_*_1018 and writes under /var/lib. Never run it on a machine that matters.
+# Refuses to run unless /etc/zfsm-disposable-vm exists: it destroys pools named zfsmreal,
+# zfsmscn and director_*_1018 and writes under /var/lib. Never run it on a machine that matters.
 set -eu
 marker=/etc/zfsm-disposable-vm
 if [ ! -f "$marker" ]; then echo "refusing to run: $marker is missing. This stand destroys pools and must only run on a disposable VM." >&2; exit 2; fi
@@ -15,7 +15,9 @@ for tool in zfs zpool php perl rsync ssh sshd sanoid syncoid; do
 done
 root=$(cd "$(dirname "$0")/../.." && pwd)
 out=${ZFSM_REAL_ZFS_OUT:-/var/lib/zfs-director-real-out}
-rm -rf "$out"; mkdir -p "$out"; chmod 700 "$out"
+# An existing, non-empty result directory is only cleaned when an earlier run of this script made it.
+if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ] && [ ! -f "$out/.zfsm-real-zfs-out" ]; then echo "refusing to clear $out: it is not empty and was not created by this stand" >&2; exit 2; fi
+rm -rf "$out"; mkdir -p "$out"; chmod 700 "$out"; : > "$out/.zfsm-real-zfs-out"
 modprobe zfs 2>/dev/null || true
 zfs version >/dev/null || { echo "ZFS is not usable in this VM" >&2; exit 2; }
 # Loopback SSH inside the VM: its own key, trusted host key of 127.0.0.1 only.

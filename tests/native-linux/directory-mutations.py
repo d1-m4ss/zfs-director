@@ -239,24 +239,31 @@ class DirectoryMutations(unittest.TestCase):
             proc, rows = self.run_helper(self.request(path=relative, identity=identity(container), recursive=True))
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertFalse(container.exists(), relative)
+    def refusal(self, request, message):
+        proc, rows = self.run_helper(request)
+        self.assertNotEqual(proc.returncode, 0, request['path'])
+        self.assertEqual(json.loads(proc.stderr.strip().splitlines()[-1]), {'error': message, 'recovery': None}, request['path'])
     def test_delete_inside_retained_restore_container_or_other_service_folder_is_refused(self):
         container = self.retained()
+        (container / 'data').mkdir(mode=0o700)
         mutation = self.root / ('.zfsm-mutation-' + 'a' * 48)
         mutation.mkdir(mode=0o700)
-        for path, target in (('.zfsm-restore-20261114-093000-0123456789ab/replaced', container / 'replaced'),
-                             ('.zfsm-restore-20261114-093000-0123456789ab/replaced/old.txt', container / 'replaced' / 'old.txt'),
-                             ('.zfsm-restore-20261114-093000-0123456789ab/data', container / 'replaced'),
-                             ('.zfsm-mutation-' + 'a' * 48, mutation),
-                             ('.zfsm-restore-x', container)):
-            proc, rows = self.run_helper(self.request(path=path, identity=identity(target), recursive=True))
-            self.assertNotEqual(proc.returncode, 0, path)
+        lookalike = self.root / '.zfsm-restore-x'
+        lookalike.mkdir(mode=0o700)
+        name = container.name
+        for path, target in ((name + '/replaced', container / 'replaced'),
+                             (name + '/replaced/old.txt', container / 'replaced' / 'old.txt'),
+                             (name + '/data', container / 'data'),
+                             (mutation.name, mutation),
+                             (lookalike.name, lookalike)):
+            self.refusal(self.request(path=path, identity=identity(target), recursive=True), 'Invalid directory path')
+            self.assertTrue(target.exists(), path)
         self.assertEqual((container / 'replaced' / 'old.txt').read_text(), 'replaced by a restore')
-        self.assertTrue(mutation.exists())
     def test_retained_restore_container_cannot_be_moved(self):
         container = self.retained()
-        proc, rows = self.run_helper(self.request(op='move', destination='elsewhere', path=container.name, identity=identity(container)))
-        self.assertNotEqual(proc.returncode, 0)
+        self.refusal(self.request(op='move', destination='elsewhere', path=container.name, identity=identity(container)), 'Invalid directory path')
         self.assertTrue(container.exists())
+        self.assertFalse((self.root / 'elsewhere').exists())
 
     def test_helper_process_is_named_zfs_director(self):
         proc = subprocess.Popen(['perl', HELPER], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

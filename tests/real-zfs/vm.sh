@@ -1,15 +1,16 @@
 #!/bin/sh
 # Host side of the real ZFS stand (TEST-011). Boots a DISPOSABLE VM from an Ubuntu cloud image with
 # QEMU, runs tests/real-zfs/setup.sh inside it, copies the report and the fixtures back and deletes
-# the VM disk. Needs: qemu-system-aarch64 (or x86_64 with ZFSM_VM_ARCH=x86_64), ssh, python3, and the
+# the VM disk. It removes only what it created. Needs: qemu-system-aarch64 (or x86_64 with ZFSM_VM_ARCH=x86_64), ssh, python3, and the
 # image: ZFSM_VM_IMAGE=/path/to/<release>-server-cloudimg-arm64.img (Ubuntu 26.04 "resolute" ships
-# OpenZFS 2.4.x; 24.04 ships 2.2.2). The VM only ever talks to this host through one forwarded
-# loopback port, and its own SSH replication test runs on the VM's loopback.
+# OpenZFS 2.4.x; 24.04 ships 2.2.2). The host side opens one forwarded loopback port (SSH to the
+# VM) and one loopback HTTP port that serves the cloud-init seed; the VM reaches the Ubuntu
+# mirrors through QEMU's NAT to install packages. Its own SSH replication test runs on the VM's loopback.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd); root=$(cd "$here/../.." && pwd)
 name=${ZFSM_VM_NAME:-zfsm-test-$(date +%Y%m%d)}
 image=${ZFSM_VM_IMAGE:?set ZFSM_VM_IMAGE to the Ubuntu cloud image (qcow2)}
-work=${ZFSM_VM_WORK:-$(mktemp -d "${TMPDIR:-/tmp}/$name.XXXXXX")}
+if [ -n "${ZFSM_VM_WORK:-}" ]; then work=$ZFSM_VM_WORK; own_work=; else work=$(mktemp -d "${TMPDIR:-/tmp}/$name.XXXXXX"); own_work=1; fi
 arch=${ZFSM_VM_ARCH:-aarch64}; port=${ZFSM_VM_SSH_PORT:-22022}; seed=${ZFSM_VM_SEED_PORT:-22080}
 out=${ZFSM_REAL_ZFS_RESULT:-$root/evidence/real-zfs}
 mkdir -p "$work" "$out"; mkdir -p "$work/seed"
@@ -48,13 +49,20 @@ write_files:
 USER
 : > "$work/seed/vendor-data"
 qemu-img create -q -f qcow2 -b "$image" -F qcow2 "$work/disk.qcow2" 40G
-( cd "$work/seed" && python3 -m http.server "$seed" --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > "$work/seed.pid" )
 cleanup() {
   [ -f "$work/qemu.pid" ] && kill "$(cat "$work/qemu.pid")" 2>/dev/null || true
   [ -f "$work/seed.pid" ] && kill "$(cat "$work/seed.pid")" 2>/dev/null || true
-  [ -z "${ZFSM_VM_KEEP:-}" ] && rm -rf "$work"
+  [ -n "${ZFSM_VM_KEEP:-}" ] && return 0
+  # Only a directory this script created is removed recursively; a given ZFSM_VM_WORK loses just our own files.
+  if [ -n "$own_work" ]; then rm -rf "$work"; else
+    rm -rf "$work/seed"; rm -f "$work/disk.qcow2" "$work/vars.fd" "$work/key" "$work/key.pub" "$work/qemu.pid" "$work/seed.pid" "$work/console.log"
+  fi
 }
 trap cleanup EXIT INT TERM
+( cd "$work/seed" && exec python3 -m http.server "$seed" --bind 127.0.0.1 ) >/dev/null 2>&1 &
+echo $! > "$work/seed.pid"
+sleep 1
+kill -0 "$(cat "$work/seed.pid")" 2>/dev/null || { echo "the seed server could not start: is port $seed in use? (ZFSM_VM_SEED_PORT)" >&2; exit 1; }
 # shellcheck disable=SC2086
 $qemu $machine -accel $accel -smp 4 -m 4096 $fw \
   -drive file="$work/disk.qcow2",if=virtio,format=qcow2 \

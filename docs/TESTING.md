@@ -44,11 +44,11 @@ RC1 installation was evaluated in an isolated VM running Unraid 7.3.3 / OpenZFS 
 
 ## Real ZFS stand
 
-A disposable Ubuntu 24.04 arm64 VM (QEMU with HVF) runs the plugin's PHP against real OpenZFS, Sanoid and Syncoid. Install `zfsutils-linux`, `php-cli` and the Sanoid release in the VM, copy `src` and `tests` there, create the marker `/etc/zfsm-disposable-vm`, then run as root:
+A disposable Ubuntu arm64 VM (QEMU with HVF; 26.04 for OpenZFS 2.4.x, 24.04 for 2.2.2) runs the plugin's PHP against real OpenZFS, Sanoid and Syncoid. The one-command way is `tests/real-zfs/vm.sh` below. By hand: in the VM install `zfsutils-linux sanoid php-cli rsync perl openssh-server mbuffer lzop pv acl attr python3`, copy `src` and `tests` there, create the marker `/etc/zfsm-disposable-vm`, then run as root `sh tests/real-zfs/setup.sh`. That script runs, among others, the older pieces:
 
 ```sh
 php tests/native-linux/real-zfs-capture.php > capture.json
-sh tests/native-linux/protection-setup.sh
+sh tests/native-linux/protection-setup.sh   # creates the director_*_1018 pools; tests/native-linux/protection.php then uses them
 ```
 
 `real-zfs-capture.php` creates its own file-backed mirror pool and checks pool diagnostics for a never-scrubbed pool, a running, paused and finished scrub, a degraded mirror, a running and finished resilver, checksum errors repaired by a scrub and a cleared pool; it also checks inventory with unusual dataset and snapshot names, a hold that blocks deletion, and times the inventory read. Its captured `zpool` output is kept in `tests/fixtures/real-zfs/` and `tests/real-zfs-fixtures.test.mjs` replays it through the same parser on every `npm test`. `protection-setup.sh` runs `protection.php`: real Sanoid snapshots and retention, local Syncoid replication (initial, incremental, recursive), checkpoint hashes and a foreign receiver snapshot.
