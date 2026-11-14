@@ -153,3 +153,19 @@ test('opening Jobs runs the retention pass, so an 8-day-old finished manual poli
  const after=await s.run({code:prelude+`echo json_encode(['left'=>count(journals()),'report'=>json_decode(file_get_contents($GLOBALS['plugin_runtime'].'/history-cleanup.json'),true)['removed']]);`});
  assert.deepEqual(JSON.parse(after.text.slice(after.text.indexOf('{'))),{left:0,report:1});
 });
+test('a failing scheduled check is reported for its policy with the count and first time, and clears after a passing check',async t=>{
+ const out=await run(t,`integration(false);$ids=[];for($i=0;$i<3;$i++)$ids[]=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false)['job']['id'];
+ $one=zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['policy_failures'];integration(true);$data=zfsmProtectionData();$policy=array_values(array_filter($data['policies'],fn($p)=>$p['id']==='abc'))[0];
+ $created=zfsmReadJob($ids[0])['created'];
+ integration(true);$ok=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false);zfsmProtectionCancel($ok['job']['id']);zfsmProtectionNoteCheckOk('abc');
+ $after=zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['policy_failures'];$data2=zfsmProtectionData();$policy2=array_values(array_filter($data2['policies'],fn($p)=>$p['id']==='abc'))[0];
+ echo json_encode(['created'=>$created,'page'=>$one,'policy'=>$policy['last_check_failure'],'after_page'=>$after,'after_policy'=>$policy2['last_check_failure']]);`);
+ const failure={since:out.created,times:3,reason:'Sanoid / Syncoid integration is disabled; managed execution is blocked. Existing schedules are unchanged.'};
+ assert.deepEqual(out.page,[{id:'abc',dataset:'cache/__mock__/project',...failure}]);
+ assert.deepEqual(out.policy,failure);
+ assert.deepEqual(out.after_page,[]);assert.equal(out.after_policy,null);
+});
+test('one scheduled refusal counts once', async t=>{
+ const out=await run(t,`integration(false);zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false);echo json_encode(['f'=>zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['policy_failures']]);`);
+ assert.equal(out.f[0].times,1);
+});

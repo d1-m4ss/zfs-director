@@ -196,6 +196,23 @@ function zfsmProtectionBlockedFile(string $type,string $id): string {
 function zfsmProtectionBlockedBeforeStart(array $job): bool {
     return ($job['schema']??null)===4&&($job['trigger']??'')==='schedule'&&($job['state']??'')==='failed'&&($job['verified_outcome']??'')==='blocked'&&($job['verification']['outcome']??'')==='blocked'&&empty($job['started_at'])&&empty($job['cancel_requested']);
 }
+// JOBS-009: a scheduled snapshot check passed (even when it was idle and left no record). Kept in
+// tmpfs only; after a reboot a failure simply shows until the next check passes.
+function zfsmProtectionCheckOkFile(string $id): string {
+    return zfsmJobDirectory(($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/protection-ok').'/policy-'.preg_replace('/[^a-f0-9]/','',$id).'.ok';
+}
+function zfsmProtectionNoteCheckOk(string $id): void {
+    try{$file=zfsmProtectionCheckOkFile($id);if(!is_link($file))file_put_contents($file,(string)time());}catch(Throwable$error){}
+}
+// The failure to show for a policy whose newest check is $job, or null when it is not failing.
+function zfsmProtectionCheckFailure(array $job): ?array {
+    if(($job['schema']??null)!==4||($job['type']??null)!=='policy'||($job['trigger']??'')!=='schedule'||($job['state']??'')!=='failed'||!is_string($job['definition_id']??null)||!is_string($job['created']??null))return null;
+    $since=strtotime($job['created']);if($since===false)return null;
+    try{$ok=zfsmProtectionCheckOkFile($job['definition_id']);if(!is_link($ok)&&is_file($ok)&&(int)file_get_contents($ok)>=$since)return null;}catch(Throwable$error){}
+    $marker=zfsmProtectionBlockedMarker('policy',$job['definition_id']);
+    $reason=is_string($job['error']??null)&&$job['error']!==''?$job['error']:(is_string($job['verification']['reason']??null)?$job['verification']['reason']:'The check did not complete');
+    return ['since'=>$job['created'],'times'=>$marker!==null&&$marker['job_id']===$job['id']?$marker['repeats']+1:1,'reason'=>$reason];
+}
 function zfsmProtectionBlockedMarker(string $type,string $id): ?array {
     $file=zfsmProtectionBlockedFile($type,$id);if(is_link($file)||!is_file($file)||filesize($file)>4096)return null;
     $marker=json_decode((string)file_get_contents($file),true);
@@ -337,7 +354,7 @@ function zfsmRunProtectionJob(array $job): void {
         // requested meanwhile also keeps the job visible even if sanoid still reports idle.
         if($quiet&&(!zfsmProtectionIdleCheck($job,$out)||!empty(zfsmReadJob($job['id'])['cancel_requested'])))zfsmProtectionPromoteJob($job['id']);
         zfsmProtectionFinish($job['id'],$out);$auditResult=['status'=>in_array($out['outcome'],['completed','completed_with_warnings','up_to_date','skipped'],true)?'succeeded':'failed','reason'=>$out['reason']??'Verified protection outcome recorded.'];
-        if($quiet){if(zfsmProtectionIdleCheck($job,$out)){zfsmProtectionDropIdleCheck($job['id']);}else{$audit=zfsmAuditBegin('protectionexecute',$auditFields);zfsmAuditFinish($audit,$auditResult);}}else zfsmAuditFinish($audit,$auditResult);$audit=null;
+        if($quiet){if(zfsmProtectionIdleCheck($job,$out)){zfsmProtectionDropIdleCheck($job['id']);zfsmProtectionNoteCheckOk($job['definition_id']);}else{$audit=zfsmAuditBegin('protectionexecute',$auditFields);zfsmAuditFinish($audit,$auditResult);}}else zfsmAuditFinish($audit,$auditResult);$audit=null;
     }catch(Throwable$e){
         // If the native execution itself already produced a verified outcome (e.g. the
         // exception came from the promotion write to flash failing, after a real result),
@@ -399,7 +416,7 @@ function zfsmProtectionData(): array {
     // The newest result of a definition survives the deletion of its journal (ZFSMLastResults.php).
     foreach(zfsmLastResults()as$remembered){$id=$remembered['definition_id'];if(!isset($last[$id])||strcmp($remembered['created'],$last[$id]['created'])>0){if($remembered['type']==='replication')$remembered['verification']=zfsmProtectionCurrentVerification($remembered['verification']??[]);$last[$id]=$remembered;}}
     $present=array_fill_keys(array_column($datasets,'name'),true);$snapshotDefaults=zfsmSanoidSnapshotDefaults();
-    foreach($native['policies']as&$p){$p['last_job']=$last[$p['id']]??null;$p['dataset_present']=isset($present[$p['dataset']]);if(($p['owner']??'')!=='external')$p['snapshot_effective']=zfsmSanoidSnapshotEffective($p,$native['templates'],$snapshotDefaults);}unset($p);
+    foreach($native['policies']as&$p){$p['last_job']=$last[$p['id']]??null;$p['last_check_failure']=$p['last_job']?zfsmProtectionCheckFailure($p['last_job']):null;$p['dataset_present']=isset($present[$p['dataset']]);if(($p['owner']??'')!=='external')$p['snapshot_effective']=zfsmSanoidSnapshotEffective($p,$native['templates'],$snapshotDefaults);}unset($p);
     $replications=array_values($s['replications']);foreach($replications as&$r)$r['last_job']=$last[$r['id']]??null;unset($r);
     $credentials=[];$file=zfsmSyncoidCredentialFile();if(zfsmProtectionTrustedFile($file)&&filesize($file)<=65536){$refs=json_decode(file_get_contents($file),true,8,JSON_THROW_ON_ERROR);if(is_array($refs))foreach($refs as$id=>$entry)if(zfsmSyncoidCredentialNameValid($id))$credentials[]=$id;}
     return ['detection'=>$d,'datasets'=>$datasets,'policies'=>$native['policies'],'templates'=>$native['templates'],'replications'=>$replications,'jobs'=>$jobs,'scheduler'=>zfsmProtectionSchedules(),'issues'=>$native['issues'],'credentials'=>$credentials,'snapshot_naming'=>$native['snapshot_naming'],'snapshot_defaults'=>$snapshotDefaults];

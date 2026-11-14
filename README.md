@@ -196,7 +196,7 @@ New retained originals use a recognizable name such as `incoming_archived_<date-
 
 ## Jobs: activity, progress and recovery
 
-Jobs lists only functional work: directory conversion, file restore and ZIP preparation, dataset or directory deletion, requests refused before they started, replication runs (scheduled or manual) and manual snapshot-policy runs (**Run now**). Quick actions, scrub, downloads and scheduled snapshot checks are not listed.
+Jobs lists only functional work: directory conversion, file restore and ZIP preparation, dataset or directory deletion, requests refused before they started, replication runs (scheduled or manual) and manual snapshot-policy runs (**Run now**). Quick actions, scrub, downloads and scheduled snapshot checks are not listed. A scheduled snapshot check that keeps failing is shown on its policy in **Snapshot Policies** and in the Overview status summary instead.
 
 Snapshot policies, replication and file jobs run in three separate background lanes, so a long replication does not delay scheduled snapshots, restores or ZIP downloads. A snapshot policy still waits while a local replication is receiving into its dataset.
 

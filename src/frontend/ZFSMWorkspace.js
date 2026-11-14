@@ -252,6 +252,7 @@ function zfsmCreateWorkspace(options) {
             if(severity==='ok')checked.push(name);else if(severity==='unknown')continue;else{problems++;add(severity,'Pool '+name+': '+((d?.reasons||[])[0]||(severity==='error'?'Error':'Warning')),'Open pool',()=>{pool=name;selection=name;selectionIdentity=selectionFingerprint();navigate('datasets');});}}
         const attention=Number(jobs.counts?.needs_attention),active=Number(jobs.counts?.active);
         if(Number.isFinite(attention)&&attention>0){problems++;add('warning',attention+(attention===1?' job needs':' jobs need')+' attention','Open Jobs',()=>{jobsFilter='needs_attention';jobsType='all';jobsPage=1;navigate('jobs');});}
+        for(const failure of Array.isArray(jobs.policy_failures)?jobs.policy_failures:[]){problems++;add('warning','Snapshot policy '+failure.dataset+': last check failed','Open policy',()=>{protection?.select('policy',failure.id);navigate('protection');});}
         if(!problems){
             const unknown=pools.length-checked.length;
             if(!data||!pools.length)add('unknown','No current inventory. Refresh to check pools.');

@@ -333,6 +333,14 @@ function zfsmJobListed($job) {
     if($schema===4)return ($job['type']??'')==='replication'||($job['trigger']??'')==='manual';
     return true;
 }
+// JOBS-009: the policies whose newest scheduled check failed. A scheduled check is not listed in
+// Jobs, so the Overview and the policy row read this instead.
+function zfsmJobPolicyFailures(array $newestPolicy): array {
+    if(!function_exists('zfsmProtectionCheckFailure')||!function_exists('zfsmLastResults'))return [];
+    foreach(zfsmLastResults()as$remembered)if(($remembered['type']??null)==='policy'&&strcmp((string)$remembered['created'],(string)($newestPolicy[$remembered['definition_id']]['created']??''))>0)$newestPolicy[$remembered['definition_id']]=$remembered;
+    $out=[];foreach($newestPolicy as$id=>$job){$failure=zfsmProtectionCheckFailure($job);if($failure!==null)$out[]=['id'=>$id,'dataset'=>$job['source']??null]+$failure;}
+    return $out;
+}
 function zfsmJobPage($page=1,$page_size=25,$options=null) {
     $filterOptions=is_array($options)?array_diff_key($options,['listed'=>1]):[];
     if ($options!==null) {
@@ -343,7 +351,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
     $directory=zfsmJobDirectory($GLOBALS['plugin_state']); $files=@scandir($directory);
     if ($files===false) throw new RuntimeException('Job storage is unavailable');
     $files=array_values(array_filter($files,function($file){return str_ends_with($file,'.json');})); rsort($files,SORT_STRING);
-    $groups=['active'=>[],'needs_attention'=>[],'completed'=>[]]; $worker_running=zfsmWorkerRunning(); $seenIds=[];
+    $groups=['active'=>[],'needs_attention'=>[],'completed'=>[]]; $worker_running=zfsmWorkerRunning(); $seenIds=[]; $newestPolicy=[];
     foreach ($files as $name) {
         $seenIds[$name]=true;
         $file=$directory.'/'.$name;
@@ -353,6 +361,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
             $job=['id'=>basename($name,'.json'),'schema'=>null,'type'=>'unknown','state'=>'recovery_required'];
             $problem=['invalid_journal','Journal cannot be read safely: '.$error->getMessage().'. Inspect retained data manually.'];
         }
+        if(!$problem&&($job['schema']??null)===4&&($job['type']??null)==='policy'&&is_string($job['definition_id']??null)&&strcmp((string)($job['created']??''),(string)($newestPolicy[$job['definition_id']]['created']??''))>0)$newestPolicy[$job['definition_id']]=$job;
         if(!empty($options['listed'])&&!zfsmJobListed($job))continue;
         $job=zfsmJobPresentation($job,$file,$worker_running,$problem);
         // Runtime progress is disposable. Its failure must not hide a valid journal.
@@ -384,6 +393,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
             $problem=['invalid_journal','Journal cannot be read safely: '.$error->getMessage().'. Inspect retained data manually.'];
         }
         if (!$problem && ($job['state']??'')==='completed' && zfsmProtectionIdleCheck($job,$job['verification']??[]) && empty($job['cancel_requested'])) continue;
+        if(!$problem&&($job['schema']??null)===4&&($job['type']??null)==='policy'&&is_string($job['definition_id']??null)&&strcmp((string)($job['created']??''),(string)($newestPolicy[$job['definition_id']]['created']??''))>0)$newestPolicy[$job['definition_id']]=$job;
         if(!empty($options['listed'])&&!zfsmJobListed($job))continue;
         $job=zfsmJobPresentation($job,$runtimeFile,$worker_running,$problem);
         if (!$problem&&($job['schema']??null)===7&&in_array($job['state'],['queued','running'],true)) try {
@@ -405,10 +415,10 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
         usort($all,function($a,$b)use($sort,$createdTime){if($sort==='attention'){$rank=['needs_attention'=>0,'active'=>1,'completed'=>2];$d=$rank[$a['group']]-$rank[$b['group']];if($d)return $d;}$aTime=$createdTime($a);$bTime=$createdTime($b);$d=($bTime<=>$aTime)?:strcmp($b['id'],$a['id']);return $sort==='oldest'?-$d:$d;});
         if(!empty($options['ids_only']))return ['ids'=>array_column($all,'id')];
         $counts=array_map('count',$groups);$total=count($all);$page_size=max(1,min(200,(int)$page_size));$pages=max(1,(int)ceil($total/$page_size));$page=max(1,min($pages,(int)$page));
-        return ['jobs'=>array_slice($all,($page-1)*$page_size,$page_size),'counts'=>$counts,'pagination'=>['page'=>$page,'page_size'=>$page_size,'total'=>$total,'pages'=>$pages,'has_previous'=>$page>1,'has_next'=>$page<$pages]];
+        return ['jobs'=>array_slice($all,($page-1)*$page_size,$page_size),'policy_failures'=>zfsmJobPolicyFailures($newestPolicy),'counts'=>$counts,'pagination'=>['page'=>$page,'page_size'=>$page_size,'total'=>$total,'pages'=>$pages,'has_previous'=>$page>1,'has_next'=>$page<$pages]];
     }
     $counts=array_map('count',$groups); $page_size=max(1,min(200,(int)$page_size)); $pages=max(1,(int)ceil($counts['completed']/$page_size)); $page=max(1,min($pages,(int)$page));
-    return ['jobs'=>array_merge($groups['active'],$groups['needs_attention'],array_slice($groups['completed'],($page-1)*$page_size,$page_size)),'counts'=>$counts,'pagination'=>['page'=>$page,'page_size'=>$page_size,'total'=>$counts['completed'],'pages'=>$pages,'has_previous'=>$page>1,'has_next'=>$page<$pages]];
+    return ['jobs'=>array_merge($groups['active'],$groups['needs_attention'],array_slice($groups['completed'],($page-1)*$page_size,$page_size)),'policy_failures'=>zfsmJobPolicyFailures($newestPolicy),'counts'=>$counts,'pagination'=>['page'=>$page,'page_size'=>$page_size,'total'=>$counts['completed'],'pages'=>$pages,'has_previous'=>$page>1,'has_next'=>$page<$pages]];
 }
 function zfsmListJobs($limit=100) { return zfsmJobPage(1,$limit)['jobs']; }
 function zfsmQueueConversion($directory,$pool,$offline_confirmed=false) {

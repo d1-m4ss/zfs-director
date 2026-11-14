@@ -422,3 +422,13 @@ test('replication table and inspector show the schedule in plain words instead o
   row.click();const inspector=t.root.querySelector('[data-protection-inspector]');assert.equal(detailValue(inspector,'Schedule'),'Daily at 06:00');
  }finally{t.app.stop();t.w.close();}
 });
+test('a policy row says when its scheduled check failed, once or N times, and nothing when it is fine',async()=>{
+ const failure=f=>(fields,{data})=>fields.cmd==='protectiondata'?{...data,policies:data.policies.map(p=>p.id==='abc'?{...p,last_check_failure:f}:p)}:undefined;
+ for(const [failure_,text] of [[{since:'2026-11-14T18:00:00Z',times:1,reason:'Sanoid is not installed'},'⚠ Last check failed at 2026-11-14T18:00:00Z: Sanoid is not installed'],[{since:'2026-11-14T18:00:00Z',times:12,reason:'Sanoid is not installed'},'⚠ Last check failed 12 times since 2026-11-14T18:00:00Z: Sanoid is not installed'],[null,null]]){
+  const t=await mount(true,failure(failure_));try{await t.app.render('policies');
+   const lines=[...t.root.querySelectorAll('[data-policy-id=abc] [data-check-failure]')].map(n=>n.textContent);
+   assert.deepEqual(lines,text===null?[]:[text]);
+   if(text!==null)assert.equal(t.root.querySelector('[data-policy-id=abc] [data-check-failure]').getAttribute('role'),'alert');
+  }finally{t.app.stop();}
+ }
+});
