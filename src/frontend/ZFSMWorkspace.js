@@ -600,8 +600,13 @@ function zfsmCreateWorkspace(options) {
     }
     function jobRequestFields(){return {cmd:'conversionjobs',page:String(section==='jobs'?jobsPage:1),page_size:String(section==='jobs'?jobsPageSize:10),...(section==='jobs'?{filter:jobsFilter,type:jobsType,sort:jobsSort,view:jobsView}:{})};}
     function operationText(op){return (op.label||'Another operation')+(op.subject?' · '+op.subject:'')+(Number.isInteger(op.minutes)?' · '+(op.minutes<1?'under 1 min':op.minutes+' min'):'');}
+    // A hold must be seen on two polls in a row (about 2.5 s) before the bar appears, so the
+    // second-long lock of a scheduled snapshot check does not flash the bar or redraw actions.
+    let operationSeen='';
     function renderOperation(op){
-        const next=op&&typeof op==='object'&&!Array.isArray(op)?op:null,changed=Boolean(next)!==Boolean(operationNow);operationNow=next;
+        const reported=op&&typeof op==='object'&&!Array.isArray(op)?op:null,key=reported?JSON.stringify([reported.label,reported.subject,reported.job]):'';
+        const next=reported&&(key===operationSeen||operationNow)?reported:null;operationSeen=key;
+        const changed=Boolean(next)!==Boolean(operationNow);operationNow=next;
         if(!next){operationNotice.hidden=true;operationNotice.replaceChildren();}
         else{const parts=[node('span','',"zfsm-operation-pulse"),node('strong','Running now:'),node('span',operationText(next),'zfsm-operation-text'),node('span','Other changes wait until it finishes.','zfsm-muted')];
             if(next.job)parts.push(button('Open in Jobs',()=>{jobsExpanded.add(next.job);navigate('jobs');}));

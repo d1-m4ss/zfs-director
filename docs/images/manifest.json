@@ -13,10 +13,10 @@
     "src/frontend/ZFSMOverview.js": "fce0218a833ce698d308072206e7cc3a42161f4fa38dd821694baf6d374d2f69",
     "src/frontend/ZFSMPoolView.js": "3e12f339d474213fcaed5642e01978be63c61380d92296c0e4c7c46050f3f22b",
     "src/frontend/ZFSMProtection.css": "14e571822601176361a63df3e227d0962365b6ae2bcf41e5559f5a7f5726dde8",
-    "src/frontend/ZFSMProtection.js": "61b3b840f60014e4698130cc5c7fb5681e027c5c810475e45ad0687951f0f9a4",
+    "src/frontend/ZFSMProtection.js": "387fc11df76c1ed7afc77134155acda0b6d94fd863b46253d3ec91224d18d847",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "0f442b7a51e0db85be4808bd0e6e6d8ae5479218c539ca4b5f27671c3f39c65d",
-    "src/frontend/ZFSMWorkspace.js": "4b4ec33607a395aa9e8e5525c14706d18636abdc024358376bb0afe6e4f4bf2e",
+    "src/frontend/ZFSMWorkspace.js": "ad0134ba88810e4a62a944fcd3a36455dac7bb914f7521bd48a08f48dc34aa5d",
     "docs/preview/data.mjs": "061c3bff5a32b57435da0e7bd1fdbbcf0ee3a8a94a4ed5d44e0c43cf6f0ec480",
     "docs/preview/server.mjs": "3931bd9c38da01b024f956ddf8ce6829b76453ca9f3a82c12f8d3ee4667586fb",
     "docs/preview/capture.mjs": "4c4d60d2c9781ee86d699813acda3302be36966c74311f2b64168bdc1bc0acbe"

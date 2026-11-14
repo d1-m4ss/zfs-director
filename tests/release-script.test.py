@@ -41,7 +41,7 @@ class ReleaseScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             for step in ['tests/installer.test.py', 'npm test', 'capture.mjs', 'check-release.py', 'git commit', 'build-installer.py', 'git tag ' + NEW, 'push origin main ' + NEW, 'gh release create ' + NEW, 'plugin/zfs-director.plg', 'publish PLG files for ' + NEW]:
                 self.assertIn(step, result.stdout)
-            order = [result.stdout.index(s) for s in ['installer.test.py', 'npm test', 'git commit', 'build-installer.py', 'git tag', 'gh release create']]
+            order = [result.stdout.index(s) for s in ['installer.test.py', 'npm test', 'capture.mjs', '# write VERSION', 'check-release.py', 'git commit', 'build-installer.py', 'git tag', 'gh release create']]
             self.assertEqual(order, sorted(order), 'steps must run in release order')
             self.assertEqual(self.snapshot(base), before)
             self.assertIn('Dry run: nothing was changed.', result.stdout)

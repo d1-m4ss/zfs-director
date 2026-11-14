@@ -108,7 +108,7 @@ Review передачи ownership создаёт выключенную Managed 
 
 Wizard разделён на **Source → Destination → Schedule → Review**. Поддерживаются локальные pools и SSH-получатель при корректных credentials, правах и native prerequisites.
 
-Для SSH-получателя нужен SSH-ключ. Зарегистрируйте его в **Settings → Sanoid / Syncoid Integration → SSH keys for remote replication**: укажите путь к приватному ключу и к `known_hosts`; Director хранит только эти пути. Оба файла должны принадлежать root, ключ не должен быть доступен другим. Храните их в `/boot` или `/mnt`: `/root` в Unraid находится в RAM и очищается при перезагрузке. Карточка показывает готовые команды `ssh-keygen` и `ssh-keyscan`.
+Для SSH-получателя нужен SSH-ключ. Зарегистрируйте его в **Settings → Sanoid / Syncoid Integration → SSH keys for remote replication**: укажите путь к приватному ключу и к `known_hosts`; Director хранит только эти пути. Оба файла должны принадлежать root, ключ не должен быть доступен другим. Храните их на флешке в `/boot`: `/root` в Unraid находится в RAM и очищается при перезагрузке (общие папки в `/mnt/user` обычно доступны на запись другим и не принимаются). Карточка показывает готовые команды `ssh-keygen` и `ssh-keyscan`.
 
 Просмотр или сохранение definition не запускает передачу. Enable и Run требуют явного действия. Успешный exit code Syncoid не считается достаточным доказательством: результат учитывает identity получателя и checkpoint evidence. Прерванная/resumable операция остаётся видимой для inspection. Автоматический rollback получателя в этот workflow не входит.
 

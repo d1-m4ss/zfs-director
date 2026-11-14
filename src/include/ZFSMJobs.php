@@ -45,7 +45,7 @@ function zfsmJobFile($id) {
     return $durable;
 }
 function zfsmJobAtomicWrite($file,$data) {
-    $history_gate=empty($GLOBALS['zfsm_job_history_gate_held'])&&isset($GLOBALS['plugin_state'],$data['id'])&&$file===rtrim($GLOBALS['plugin_state'],'/').'/'.$data['id'].'.json'?zfsmJobHistoryGate():null;
+    $history_gate=empty($GLOBALS['zfsm_job_history_gate_held'])&&isset($GLOBALS['plugin_state'])&&is_array($data)&&is_string($data['id']??null)&&$file===rtrim($GLOBALS['plugin_state'],'/').'/'.$data['id'].'.json'?zfsmJobHistoryGate():null;
     try {
     zfsmJobDirectory(dirname($file));
     if (is_link($file)) throw new RuntimeException('Job storage cannot be a symlink');
@@ -57,7 +57,7 @@ function zfsmJobAtomicWrite($file,$data) {
         if (fwrite($handle,$bytes)!==strlen($bytes) || !fflush($handle) || (function_exists('fsync')&&!fsync($handle))) throw new RuntimeException('Unable to flush job journal');
         fclose($handle); $handle=null;
         if (!@rename($temp,$file)) throw new RuntimeException('Unable to commit job journal');
-        if(!empty(zfsmRequestGet('job_request_command'))&&in_array($data['schema']??null,[1,2,4,6],true)&&isset($data['id'])&&basename($file)===$data['id'].'.json')zfsmRequestSet('request_published_job',$data['id']);
+        if(!empty(zfsmRequestGet('job_request_command'))&&in_array($data['schema']??null,[1,2,4,6],true)&&is_string($data['id']??null)&&basename($file)===$data['id'].'.json')zfsmRequestSet('request_published_job',$data['id']);
         zfsmAuditSyncDirectory(dirname($file));
     } finally { if (is_resource($handle)) fclose($handle); if (is_file($temp)) @unlink($temp); }
     } finally { if(is_resource($history_gate)){flock($history_gate,LOCK_UN);fclose($history_gate);} }
@@ -73,7 +73,8 @@ function zfsmReadJob($id) {
 }
 // PERF-001: the worker polls the queue every 0.5 s. Journals are only ever replaced by
 // zfsmJobAtomicWrite (a rename, so a new inode), so an unchanged inode, size, mtime and ctime
-// means unchanged content. Only the long-running worker enables this cache
+// almost always means unchanged content. Times have one-second resolution and inodes can be
+// reused, so this only decides what the worker dequeues; every runner rereads the journal. Only the long-running worker enables this cache
 // ($GLOBALS['zfsm_job_read_cache']); request handlers always read the file.
 function zfsmReadJobForQueue(string $file) {
     $id=basename($file,'.json');

@@ -70,11 +70,11 @@ capture > "$work/state-after.json"
 # Healthy installation starts real services without an acceptance token.
 [[ ! -e /var/tmp/zfs.master.ui/jobs/stop ]]
 for attempt in {1..40}; do
-  if pgrep -f '^(/usr/bin/php .*/zfsm-worker.php --daemon|zfs-director worker) *$' >/dev/null && pgrep -f '^(/usr/bin/php .*/zfsm-monitor.php|zfs-director monitor) *$' >/dev/null; then break; fi
+  if pgrep -f '^(/usr/bin/php .*/zfsm-worker.php --daemon( (files|policy|replication))?|zfs-director worker( (policy|replication))?) *$' >/dev/null && pgrep -f '^(/usr/bin/php .*/zfsm-monitor.php|zfs-director monitor) *$' >/dev/null; then break; fi
   sleep 0.5
 done
 pgrep -f '^(/usr/bin/php .*/zfsm-worker.php --service|zfs-director service) *$'
-pgrep -f '^(/usr/bin/php .*/zfsm-worker.php --daemon|zfs-director worker) *$'
+pgrep -f '^(/usr/bin/php .*/zfsm-worker.php --daemon( (files|policy|replication))?|zfs-director worker( (policy|replication))?) *$'
 pgrep -f '^(/usr/bin/php .*/zfsm-monitor.php|zfs-director monitor) *$'
 /usr/bin/php -r '
   $p="/var/lock/zfs.master.ui.lock";

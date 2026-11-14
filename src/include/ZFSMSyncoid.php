@@ -51,7 +51,7 @@ function zfsmSyncoidCredentialList(): array {
     }
     usort($list,fn($a,$b)=>strcmp($a['name'],$b['name']));return $list;
 }
-function zfsmSyncoidCredentialWrite(array $refs): void { ksort($refs,SORT_STRING);zfsmJobAtomicWrite(zfsmSyncoidCredentialFile(),$refs?:new stdClass); }
+function zfsmSyncoidCredentialWrite(array $refs): void { ksort($refs,SORT_STRING);zfsmJobAtomicWrite(zfsmSyncoidCredentialFile(),$refs); }
 function zfsmSyncoidCredentialSave(array $input): array {
     $name=$input['name']??null;if(!zfsmSyncoidCredentialNameValid($name))throw new InvalidArgumentException('Name: use 1 to 64 letters, digits, - or _.');
     $entry=zfsmSyncoidCredentialCheck(['keyfile'=>$input['keyfile']??null,'known_hosts'=>$input['known_hosts']??null]);
@@ -60,7 +60,7 @@ function zfsmSyncoidCredentialSave(array $input): array {
     return zfsmProtectionConfigLock(function()use($name,$entry){
         $refs=zfsmSyncoidCredentialRead();$existing=isset($refs[$name]);$refs[$name]=$entry;zfsmSyncoidCredentialWrite($refs);
         $answer=['succeeded'=>[$name=>$existing?'SSH key reference updated':'SSH key reference added'],'failed'=>[]];
-        if(!zfsmSyncoidCredentialPersistent($entry['keyfile'])||!zfsmSyncoidCredentialPersistent($entry['known_hosts']))$answer['warning']='These files are in RAM on Unraid and are lost at reboot. Keep them under /boot or /mnt.';
+        if(!zfsmSyncoidCredentialPersistent($entry['keyfile'])||!zfsmSyncoidCredentialPersistent($entry['known_hosts']))$answer['warning']='These files are in RAM on Unraid and are lost at reboot. Keep them on the flash drive under /boot.';
         return $answer;
     });
 }

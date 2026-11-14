@@ -282,6 +282,11 @@ function zfsmRunProtectionJob(array $job): void {
         // Administrative requests take mutation then config locks. Publish the
         // running reservation under that same order before releasing mutation.
         $mutation=zfsmAcquireOperationLock($GLOBALS['plugin_lock'],true);if($mutation===null)return;
+        // REL-001: a policy may run while a replication sends from the same dataset (sends hold
+        // their snapshots and Sanoid never prunes replication bases), but not while a local
+        // replication receives into it: a new snapshot there breaks the next incremental
+        // receive. Under the operation lock no replication can newly start; stay queued.
+        if($job['type']==='policy'&&zfsmProtectionReceivingInto($job['source'])!==null)return;
         // Queue publication can precede config unlock. Leave it queued for the
         // next worker pass on contention; invalid storage still fails closed.
         $job=zfsmProtectionConfigLock(function()use($job){if((int)loadConfig(parse_plugin_cfg($GLOBALS['plugin'],true))['sanoid_integration']!==1)throw new RuntimeException('Sanoid / Syncoid integration is disabled; queued execution requires review.');$live=zfsmReadJob($job['id']);if($live['state']!=='queued'||$live['cancel_requested'])return null;$store=zfsmProtectionReadStore();$d=$store[$live['type']==='policy'?'policies':'replications'][$live['definition_id']]??null;if(!$d||!hash_equals($live['definition_hash'],hash('sha256',json_encode($d,JSON_THROW_ON_ERROR))))throw new RuntimeException('Queued definition changed; inspect and queue a fresh run.');zfsmProtectionCheckDefinitionSchedules($live['type'],$d,zfsmProtectionSchedules());return zfsmJobUpdate($live['id'],['state'=>'running','stage'=>'inspecting','verified_outcome'=>'running','started_at'=>gmdate('c')]);},true);
@@ -335,6 +340,10 @@ function zfsmProtectionJobConflict(array $job): ?string {
         if(($running['schema']??null)!==4||$running['state']!=='running')continue;
         foreach($targets as$target)if(zfsmProtectionScopeOverlap($target,$running['source'])||(($running['definition']['mode']??'local')==='local'&&is_string($running['target']??null)&&zfsmProtectionScopeOverlap($target,$running['target'])))return $running['id'];
     }
+    return null;
+}
+function zfsmProtectionReceivingInto(string $dataset): ?string {
+    foreach(zfsmPendingJobs()as$running)if(($running['schema']??null)===4&&($running['type']??'')==='replication'&&$running['state']==='running'&&(($running['definition']['mode']??'local')==='local')&&is_string($running['target']??null)&&zfsmProtectionScopeOverlap($dataset,$running['target']))return $running['id'];
     return null;
 }
 function zfsmProtectionMutationGuard(string $command,array $fields): void {

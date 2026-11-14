@@ -65,3 +65,16 @@ test('a key in RAM is accepted with a reboot warning; a key used by a replicatio
  assert.deepEqual(out.names,['used']);assert.deepEqual(out.used_by,['Offsite']);
  assert.equal(out.files_kept,true,'removing a reference never deletes the key');
 });
+// Review finding: removing the last key crashed on an empty-object write, and a key named "id"
+// tripped the job-journal guard in zfsmJobAtomicWrite.
+test('the last key can be removed and a key may be named id',async t=>{
+ const out=await run(t,`set_error_handler(function($n,$m){throw new ErrorException($m);});
+ zfsmSyncoidCredentialSave(['name'=>'id','keyfile'=>$key,'known_hosts'=>$known]);$named=array_column(zfsmSyncoidCredentialList(),'name');
+ zfsmSyncoidCredentialRemove('id');$after=zfsmSyncoidCredentialList();$raw=trim(file_get_contents(zfsmSyncoidCredentialFile()));
+ zfsmSyncoidCredentialSave(['name'=>'again','keyfile'=>$key,'known_hosts'=>$known]);
+ echo json_encode(['named'=>$named,'after'=>$after,'raw'=>$raw,'again'=>array_column(zfsmSyncoidCredentialList(),'name')]);`);
+ assert.deepEqual(out.named,['id']);
+ assert.deepEqual(out.after,[],'the list is empty after removing the last key');
+ assert.equal(out.raw,'[]');
+ assert.deepEqual(out.again,['again'],'an emptied list accepts a new key');
+});

@@ -93,7 +93,7 @@ function zfsmCommandRegistry(): array {
     foreach($registry as$name=>&$entry)$entry['name']=$name;unset($entry);
     return $registry;
 }
-// Compatibility spellings accepted from older clients.
+// The correct spelling of the historical adddirectortlisting command (the client still sends the old one).
 function zfsmCommandAliases(): array { return ['adddirectorylisting'=>'adddirectortlisting']; }
 function zfsmCommand(string $name): ?array {
     $registry=zfsmCommandRegistry();

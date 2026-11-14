@@ -133,10 +133,11 @@ def main():
         return 1
     output = 'dist/release-' + new
     summary = shlex.quote('feat: ' + args.message + ' (' + new + ')')
-    bump(old, new, args.dry_run)
+    # Tests and screenshots run first: a failure there leaves the tree untouched.
     run('python3 tests/installer.test.py', args.dry_run)
     run('npm test', args.dry_run)
     run(SCREENSHOTS, args.dry_run)
+    bump(old, new, args.dry_run)
     run('python3 tools/check-release.py', args.dry_run)
     run('git add -A && git commit -q -m ' + summary, args.dry_run)
     run('python3 tools/build-installer.py --output ' + output + ' --release-base-url ' + RELEASE_URL.format(version=new)

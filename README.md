@@ -108,7 +108,7 @@ Managed creation uses Sanoid snapshot-taking separately from Director retention.
 
 The wizard separates **Source → Destination → Schedule → Review**. It supports local pool destinations and SSH destinations when credentials, permissions and native prerequisites are valid.
 
-An SSH destination needs an SSH key. Register it in **Settings → Sanoid / Syncoid Integration → SSH keys for remote replication**: enter the path to the private key and to `known_hosts`; Director stores only these paths. Both files must belong to root and the key must not be readable by others. Keep them under `/boot` or `/mnt`, because `/root` is in RAM on Unraid and is cleared at reboot. The card shows the exact `ssh-keygen` and `ssh-keyscan` commands.
+An SSH destination needs an SSH key. Register it in **Settings → Sanoid / Syncoid Integration → SSH keys for remote replication**: enter the path to the private key and to `known_hosts`; Director stores only these paths. Both files must belong to root and the key must not be readable by others. Keep them on the flash drive under `/boot`, because `/root` is in RAM on Unraid and is cleared at reboot (shares under `/mnt/user` are usually writable by others and are refused). The card shows the exact `ssh-keygen` and `ssh-keyscan` commands.
 
 Reviewing or saving a definition is not a transfer. Run and enable decisions are explicit. Syncoid exit status alone is not treated as verified replication success: receiver identity and checkpoint evidence are part of the result. Interrupted/resumable work remains visible for inspection. Automatic destination rollback is not part of this workflow.
 

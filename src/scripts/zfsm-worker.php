@@ -76,7 +76,7 @@ try {
         foreach (zfsmPendingJobs($lane) as $job) {
             if (zfsmWorkerStopRequested()) break;
             if(($job['schema']??null)===7){try{zfsmObserveRequestJob($job['id']);}catch(Throwable$error){error_log('ZFS Director: request job requires inspection');}continue;}
-            if(($job['schema']??null)===4){zfsmRunProtectionJob($job);continue;}
+            if(($job['schema']??null)===4){try{zfsmRunProtectionJob($job);}catch(Throwable$error){error_log('ZFS Director worker: protection job requires inspection');}continue;}
             try{$lock=zfsmAcquireOperationLock($GLOBALS['plugin_lock'],true);}catch(Throwable$error){error_log('ZFS Director worker: operation lock unavailable');break;}
             if($lock===null)break;
             try {

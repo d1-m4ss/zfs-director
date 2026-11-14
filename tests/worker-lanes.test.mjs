@@ -63,3 +63,16 @@ test('PERF-001: the worker queue scan rereads only changed journals',async t=>{
  assert.equal(out.b,'running');
  assert.equal(out.uncached_counter,0,'request handlers bypass the cache');
 });
+test('a policy waits while a local replication receives into its dataset, not while it sends from it',async t=>{
+ const out=await run(t,`$id=running('cache/__mock__/project','cache/__mock__/backup');
+ echo json_encode(['id'=>$id,'target'=>zfsmProtectionReceivingInto('cache/__mock__/backup'),'target_child'=>zfsmProtectionReceivingInto('cache/__mock__/backup/x'),'source'=>zfsmProtectionReceivingInto('cache/__mock__/project'),'other'=>zfsmProtectionReceivingInto('cache/__mock__/other')]);`);
+ assert.equal(out.target,out.id);assert.equal(out.target_child,out.id);
+ assert.equal(out.source,null,'a policy on the source still runs during the send');assert.equal(out.other,null);
+});
+test('a queued policy on a receiving dataset stays queued and runs nothing',async t=>{
+ const out=await run(t,`running('cache/__mock__/project','cache/__mock__/backup');
+ $p=zfsmSanoidPolicy(['id'=>'abc','dataset'=>'cache/__mock__/backup','autosnap'=>false,'autoprune'=>false,'source_guid'=>'1']);$s=zfsmProtectionReadStore();$s['policies']['abc']=$p;zfsmProtectionWriteStore($s);
+ $j=zfsmNewProtectionJob('policy',$p);zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);zfsmRunProtectionJob($j);$after=zfsmReadJob($j['id']);
+ echo json_encode(['state'=>$after['state'],'started'=>$after['started_at']??null]);`);
+ assert.deepEqual(out,{state:'queued',started:null});
+});
