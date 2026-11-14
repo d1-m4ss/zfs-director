@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
-<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.14.3" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg" support="https://forums.unraid.net/topic/200986-plugin-zfs-director/">
-  <CHANGES>### 2026.11.14.3
-Jobs lists only functional work: directory conversion, file restore and ZIP preparation, dataset or directory deletion, requests refused before they started, replication runs, and manual snapshot-policy runs. Quick actions, scrub, downloads and scheduled snapshot checks no longer appear, and the Clean job history entry is gone. Finished jobs are deleted after 7 days by default; Settings has a new Keep finished jobs for option (1 day, 7 days, 30 days or Always). One Delete finished jobs button and an Everything checkbox replace the three clear and restore buttons; the button deletes at once, on every page, whatever matches the filters. The Jobs badge counts only running jobs. The long storage explanation is now one short line.
+<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.14.4" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg" support="https://forums.unraid.net/topic/200986-plugin-zfs-director/">
+  <CHANGES>### 2026.11.14.4
+Delete finished jobs now removes every finished record and the newest results are saved first; one unreadable journal no longer stops the cleanup, and unreadable settings never delete anything. Every Jobs card says in plain words what the process was, where it went, how it started and how it ended, including conversion, restore and ZIP cards. The Everything switch and the delete message reset when you change a filter or leave Jobs, and a delete error stays on screen. A scheduled policy check no longer gets an Open in Jobs link on the Running now bar. After a successful action the dialog shows only the result and a Close button; a partial or failed result keeps the form for a retry. A failed quick action and a refused restore no longer write hidden records to the flash drive; the error is shown in the dialog and kept in the audit log. Scrub and download progress is now kept in memory instead of on the flash drive. A snapshot policy whose scheduled check keeps failing now shows the reason, how many times and since when on its row, and the Overview names it with an Open policy link; the line goes away after the next check passes. Settings no longer has the Show folders in the tree list; folders are shown or hidden from a dataset's Actions menu, and the saved choice is kept. Properties no longer print Source: Unknown. Files replaced by a restore now stay identifiable after their job expires: the folder has a short description (date, snapshot and destination), Show recovery files displays it, and Delete retained files removes the folder after the usual deletion review, but only while no unfinished restore (running, failed or needing inspection) still points at it. Deleting the record of a ZIP, with the button or the automatic cleanup, now also deletes its ZIP file; if the file cannot be removed the record stays and the message says why. A record that holds a snapshot is kept, and its card says so.
 
 ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.</CHANGES>
   <FILE Run="/bin/bash">
@@ -10,13 +10,13 @@ ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-la
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director was NOT updated (exit $status). Nothing was changed: your settings, schedules and data are intact. The reason is shown above."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.14.3.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.14.4.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.14.3-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.14.3-$$
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.14.4-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.14.4-$$
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.14.3-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.14.4-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -234,7 +234,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '88f21c3e0d6023d05ccd5d2a4e694c51ea2812bb6e5a46d245905a9476253694' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '7d5089094428bbd0e22d17ef0e1618e0fa201512eb8f9ea565a4cc68f76d2ebf' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -279,6 +279,8 @@ try{
     // idle-capable; an update must refuse to proceed while one is in flight there too.
     $runtimeJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/protection-queue'"'"';if(is_link($runtimeJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
     $scanJobs($runtimeJobs,$jobs);
+    $requestJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/requests'"'"';if(is_link($requestJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
+    $scanJobs($requestJobs,$jobs);
     if($pendingJobs){
         $shown=implode('"'"'; '"'"',array_slice($pendingJobs,0,3)).(count($pendingJobs)&gt;3?'"'"'; and '"'"'.(count($pendingJobs)-3).'"'"' more'"'"':'"'"''"'"');
         $requireRecovery('"'"'Update paused: '"'"'.count($pendingJobs).'"'"' job(s) still queued or running: '"'"'.$shown.'"'"'. Nothing was changed and the installed version keeps running. Next: open Main &gt; ZFS Director &gt; Jobs, wait for these jobs to finish or cancel them, then run Plugins &gt; Check for Updates again.'"'"');
@@ -330,9 +332,12 @@ sub emit { print $json-&gt;encode($_[0])."\n" or fail('"'"'Progress channel clos
 sub identity { my @s=stat($_[0]); fail('"'"'Pinned object unavailable'"'"') unless @s; return {dev=&gt;"$s[0]",ino=&gt;"$s[1]"}; }
 sub same { my ($a,$b)=@_; return ref($b) eq '"'"'HASH'"'"' &amp;&amp; defined($b-&gt;{dev}) &amp;&amp; defined($b-&gt;{ino}) &amp;&amp; $a-&gt;{dev} eq "$b-&gt;{dev}" &amp;&amp; $a-&gt;{ino} eq "$b-&gt;{ino}"; }
 sub path {
-    my ($value)=@_; fail('"'"'Invalid directory path'"'"') if !defined($value)||ref($value)||length($value)&gt;4096||$value=~m{^/|\0};
+    my ($value,$deleting)=@_; fail('"'"'Invalid directory path'"'"') if !defined($value)||ref($value)||length($value)&gt;4096||$value=~m{^/|\0};
     my @parts=split m{/},$value,-1;
-    fail('"'"'Invalid directory path'"'"') if !@parts||@parts&gt;128||grep { $_ eq '"'"''"'"'||$_ eq '"'"'.'"'"'||$_ eq '"'"'..'"'"'||$_ eq '"'"'.zfs'"'"'||/^\.zfsm-/ } @parts;
+    fail('"'"'Invalid directory path'"'"') if !@parts||@parts&gt;128||grep { $_ eq '"'"''"'"'||$_ eq '"'"'.'"'"'||$_ eq '"'"'..'"'"' } @parts;
+    # A retained restore container (the last component) may be deleted as a whole (JOBS-007); nothing inside it, and nothing else under .zfsm- or .zfs.
+    my @check=@parts; pop @check if $deleting &amp;&amp; $check[-1]=~/\A\.zfsm-restore-\d{8}-\d{6}-[a-f0-9]{12}\z/;
+    fail('"'"'Invalid directory path'"'"') if grep { $_ eq '"'"'.zfs'"'"'||/^\.zfsm-/ } @check;
     return $value;
 }
 sub openat {
@@ -653,7 +658,7 @@ sub main {
     my $op=$args-&gt;{op}//'"'"''"'"'; if ($op eq '"'"'probe'"'"') { probe($args);return; }
     if($op eq '"'"'cleanup-inspect'"'"'||$op eq '"'"'cleanup'"'"'){cleanup_main($args);return;}
     fail('"'"'Unknown directory operation'"'"') unless $op eq '"'"'move'"'"'||$op eq '"'"'claim'"'"'||$op eq '"'"'delete'"'"';
-    my $selected=path($args-&gt;{path}); my $destination;
+    my $selected=path($args-&gt;{path},$op eq '"'"'delete'"'"'); my $destination;
     $destination=path($args-&gt;{destination}) if $op ne '"'"'delete'"'"';
     fail('"'"'Destination cannot be inside selected directory'"'"') if defined($destination)&amp;&amp;($destination eq $selected||index($destination,$selected.'"'"'/'"'"')==0);
     $root_path=$args-&gt;{root}; $root=request_root($args); $boundary=prepare_boundary($root);
@@ -730,9 +735,9 @@ early_failure() { local result=$?; if [[ "$result" != 0 ]]; then resume_runtime;
 trap early_failure EXIT
 </INLINE>
   </FILE>
-  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.14.3.tgz">
-    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.14.3/zfs-director-2026.11.14.3.tgz</URL>
-    <MD5>31350b74848ca119894ac856aa63ab0f</MD5>
+  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.14.4.tgz">
+    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.14.4/zfs-director-2026.11.14.4.tgz</URL>
+    <MD5>f52f1655a21fe130e8e67a39b4b538c0</MD5>
   </FILE>
   <FILE Run="/bin/bash">
     <INLINE>set -euo pipefail
@@ -740,14 +745,14 @@ trap early_failure EXIT
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director was NOT updated (exit $status). Nothing was changed: your settings, schedules and data are intact. The reason is shown above."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.14.3.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.14.4.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.14.3-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.14.3-$$
-printf '%s  %s\n' '88f21c3e0d6023d05ccd5d2a4e694c51ea2812bb6e5a46d245905a9476253694' "$archive" | sha256sum -c -
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.14.4-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.14.4-$$
+printf '%s  %s\n' '7d5089094428bbd0e22d17ef0e1618e0fa201512eb8f9ea565a4cc68f76d2ebf' "$archive" | sha256sum -c -
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.14.3-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.14.4-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -965,7 +970,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '88f21c3e0d6023d05ccd5d2a4e694c51ea2812bb6e5a46d245905a9476253694' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '7d5089094428bbd0e22d17ef0e1618e0fa201512eb8f9ea565a4cc68f76d2ebf' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -1010,6 +1015,8 @@ try{
     // idle-capable; an update must refuse to proceed while one is in flight there too.
     $runtimeJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/protection-queue'"'"';if(is_link($runtimeJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
     $scanJobs($runtimeJobs,$jobs);
+    $requestJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/requests'"'"';if(is_link($requestJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
+    $scanJobs($requestJobs,$jobs);
     if($pendingJobs){
         $shown=implode('"'"'; '"'"',array_slice($pendingJobs,0,3)).(count($pendingJobs)&gt;3?'"'"'; and '"'"'.(count($pendingJobs)-3).'"'"' more'"'"':'"'"''"'"');
         $requireRecovery('"'"'Update paused: '"'"'.count($pendingJobs).'"'"' job(s) still queued or running: '"'"'.$shown.'"'"'. Nothing was changed and the installed version keeps running. Next: open Main &gt; ZFS Director &gt; Jobs, wait for these jobs to finish or cancel them, then run Plugins &gt; Check for Updates again.'"'"');
@@ -1061,9 +1068,12 @@ sub emit { print $json-&gt;encode($_[0])."\n" or fail('"'"'Progress channel clos
 sub identity { my @s=stat($_[0]); fail('"'"'Pinned object unavailable'"'"') unless @s; return {dev=&gt;"$s[0]",ino=&gt;"$s[1]"}; }
 sub same { my ($a,$b)=@_; return ref($b) eq '"'"'HASH'"'"' &amp;&amp; defined($b-&gt;{dev}) &amp;&amp; defined($b-&gt;{ino}) &amp;&amp; $a-&gt;{dev} eq "$b-&gt;{dev}" &amp;&amp; $a-&gt;{ino} eq "$b-&gt;{ino}"; }
 sub path {
-    my ($value)=@_; fail('"'"'Invalid directory path'"'"') if !defined($value)||ref($value)||length($value)&gt;4096||$value=~m{^/|\0};
+    my ($value,$deleting)=@_; fail('"'"'Invalid directory path'"'"') if !defined($value)||ref($value)||length($value)&gt;4096||$value=~m{^/|\0};
     my @parts=split m{/},$value,-1;
-    fail('"'"'Invalid directory path'"'"') if !@parts||@parts&gt;128||grep { $_ eq '"'"''"'"'||$_ eq '"'"'.'"'"'||$_ eq '"'"'..'"'"'||$_ eq '"'"'.zfs'"'"'||/^\.zfsm-/ } @parts;
+    fail('"'"'Invalid directory path'"'"') if !@parts||@parts&gt;128||grep { $_ eq '"'"''"'"'||$_ eq '"'"'.'"'"'||$_ eq '"'"'..'"'"' } @parts;
+    # A retained restore container (the last component) may be deleted as a whole (JOBS-007); nothing inside it, and nothing else under .zfsm- or .zfs.
+    my @check=@parts; pop @check if $deleting &amp;&amp; $check[-1]=~/\A\.zfsm-restore-\d{8}-\d{6}-[a-f0-9]{12}\z/;
+    fail('"'"'Invalid directory path'"'"') if grep { $_ eq '"'"'.zfs'"'"'||/^\.zfsm-/ } @check;
     return $value;
 }
 sub openat {
@@ -1384,7 +1394,7 @@ sub main {
     my $op=$args-&gt;{op}//'"'"''"'"'; if ($op eq '"'"'probe'"'"') { probe($args);return; }
     if($op eq '"'"'cleanup-inspect'"'"'||$op eq '"'"'cleanup'"'"'){cleanup_main($args);return;}
     fail('"'"'Unknown directory operation'"'"') unless $op eq '"'"'move'"'"'||$op eq '"'"'claim'"'"'||$op eq '"'"'delete'"'"';
-    my $selected=path($args-&gt;{path}); my $destination;
+    my $selected=path($args-&gt;{path},$op eq '"'"'delete'"'"'); my $destination;
     $destination=path($args-&gt;{destination}) if $op ne '"'"'delete'"'"';
     fail('"'"'Destination cannot be inside selected directory'"'"') if defined($destination)&amp;&amp;($destination eq $selected||index($destination,$selected.'"'"'/'"'"')==0);
     $root_path=$args-&gt;{root}; $root=request_root($args); $boundary=prepare_boundary($root);
@@ -1494,7 +1504,7 @@ legacy_cleanup apply
 # Automatic installation receipt distinguishes boot from an unrelated upgrade.
 if [[ "$hold_recovery" == 0 ]]; then
   receipt=$(mktemp "$installed.XXXXXX")
-  printf '%s\n' '88f21c3e0d6023d05ccd5d2a4e694c51ea2812bb6e5a46d245905a9476253694' &gt; "$receipt"
+  printf '%s\n' '7d5089094428bbd0e22d17ef0e1618e0fa201512eb8f9ea565a4cc68f76d2ebf' &gt; "$receipt"
   mv -T -- "$receipt" "$installed"
 fi
 # Startup must follow Plugin Manager registration, not precede it.
@@ -1509,7 +1519,7 @@ chmod 0755 "$hook"
   $json=json_encode(["registration"=&gt;$argv[1],"sha256"=&gt;$argv[2],"hold_recovery"=&gt;$argv[3]==="1"],JSON_THROW_ON_ERROR);
   $temporary=tempnam(dirname($path),".install-");
   if($temporary===false||file_put_contents($temporary,$json)!==strlen($json)||!rename($temporary,$path))exit(1);
-' -- "$registration" '88f21c3e0d6023d05ccd5d2a4e694c51ea2812bb6e5a46d245905a9476253694' "$hold_recovery"
+' -- "$registration" '7d5089094428bbd0e22d17ef0e1618e0fa201512eb8f9ea565a4cc68f76d2ebf' "$hold_recovery"
 # No child service inherits the installer's operation/protection locks.
 flock -u 6
 flock -u 7
@@ -1517,7 +1527,7 @@ exec 6&gt;&amp;- 7&gt;&amp;-
 flock -u 9
 exec 9&gt;&amp;-
 trap - EXIT
-echo 'ZFS Director 2026.11.14.3 code installed; Plugin Manager will verify registration and start background services next.'
+echo 'ZFS Director 2026.11.14.4 code installed; Plugin Manager will verify registration and start background services next.'
 
 </INLINE>
   </FILE>
