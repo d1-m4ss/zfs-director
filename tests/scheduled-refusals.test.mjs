@@ -16,11 +16,11 @@ async function run(t,code){
 }
 test('identical scheduled refusals leave one record and one audit row; the repeats are counted',async t=>{
  const out=await run(t,`integration(false);$ids=[];for($i=0;$i<5;$i++){$q=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false);$ids[]=$q['job']['id'];$failed[]=count($q['failed']);}
- $page=zfsmJobPage(1,50,['filter'=>'all']);$listed=array_values(array_filter($page['jobs'],fn($j)=>$j['id']===$ids[0]));
- echo json_encode(['distinct'=>count(array_unique($ids)),'failed'=>$failed,'journals'=>count(journals()),'audits'=>refusals(),'repeats'=>$listed[0]['repeats']['count']??null,'error'=>$listed[0]['error']??null,'listed'=>count($page['jobs'])]);`);
+ $page=zfsmJobPage(1,50,['filter'=>'all','listed'=>true]);$marker=zfsmProtectionBlockedMarker('policy','abc');
+ echo json_encode(['distinct'=>count(array_unique($ids)),'failed'=>$failed,'journals'=>count(journals()),'audits'=>refusals(),'repeats'=>$marker['repeats']??null,'error'=>zfsmReadJob($ids[0])['error']??null,'listed'=>count($page['jobs'])]);`);
  assert.equal(out.distinct,1,'every repeat points at the first record');
  assert.deepEqual(out.failed,[1,1,1,1,1],'the dispatcher still sees each launch as refused');
- assert.equal(out.journals,1);assert.equal(out.audits,1);assert.equal(out.listed,1);
+ assert.equal(out.journals,1);assert.equal(out.audits,1);assert.equal(out.listed,0,'a scheduled refusal is not listed in Jobs, the way the interface asks for it');
  assert.equal(out.repeats,4);assert.match(out.error,/integration is disabled/);
 });
 test('a launch that passes the checks resets the count; a later refusal is recorded again',async t=>{
