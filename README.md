@@ -206,7 +206,7 @@ Snapshot policies, replication and file jobs run in three separate background la
 - Eligible retention deletion with protected snapshots left intact is reported as **Completed with warnings**, with an explanatory result.
 - Filters separate operation types and attention states. Pagination defaults to **10 records**, with larger page sizes available.
 - A scheduled run refused before anything starts (for example, Sanoid is missing or the integration is off) is recorded once; repeats every minute only update a counter on that record: *Refused again N times, last at …*.
-- **Clear finished on this page** hides finished jobs, failed ones included; **Show archived** brings them back. **Delete finished jobs** deletes the records of all finished jobs on every page. Running jobs, and jobs that still hold a snapshot, a ZIP or recovery data, are kept. Datasets, snapshots and files are never touched.
+- **Clear finished on this page** hides finished jobs, failed ones included; **Show archived** brings them back. **Delete finished jobs** deletes the records of all finished jobs on every page. Kept: running jobs; jobs that hold a snapshot or a ZIP, or may own recovery data (cancelled or failed conversions, restores and deletions, and any that retained an original); and the latest result of each policy and replication, which pool warnings read. Datasets, snapshots and files are never touched.
 - Recovery controls appear only where the backend supports them; completed or unsafe work is not silently resumed.
 
 ![Synthetic Jobs with conversion progress, a retention warning and pagination](docs/images/jobs.png)

@@ -8,17 +8,16 @@
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
     "src/frontend/ZFSMExplorer.js": "ecbe4f064ca99fe8c6313ecbe8a6ccc1feb976b742377cd9160f8e8ea7cd1ad5",
     "src/frontend/ZFSMForms.js": "a3e1eb313703282920a4d203075b57b4e4b9f3fd32822257bd179cbe63064f47",
-    "src/frontend/ZFSMHistory.js": "6248365512db7547ed7d507aa46114ba3bdb8f652aff99af706864e15b6db162",
     "src/frontend/ZFSMInventory.js": "04d6f24cf3bd00986aacaf300f7918e3825df1da2fd51f2b30caaa7d6f7b1038",
     "src/frontend/ZFSMOverview.js": "fce0218a833ce698d308072206e7cc3a42161f4fa38dd821694baf6d374d2f69",
     "src/frontend/ZFSMPoolView.js": "3e12f339d474213fcaed5642e01978be63c61380d92296c0e4c7c46050f3f22b",
     "src/frontend/ZFSMProtection.css": "14e571822601176361a63df3e227d0962365b6ae2bcf41e5559f5a7f5726dde8",
-    "src/frontend/ZFSMProtection.js": "387fc11df76c1ed7afc77134155acda0b6d94fd863b46253d3ec91224d18d847",
+    "src/frontend/ZFSMProtection.js": "a43afcf091b70a26744cab77687905e03bde55223ad34da7bbd9fada665d9400",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "0f442b7a51e0db85be4808bd0e6e6d8ae5479218c539ca4b5f27671c3f39c65d",
-    "src/frontend/ZFSMWorkspace.js": "ad0134ba88810e4a62a944fcd3a36455dac7bb914f7521bd48a08f48dc34aa5d",
+    "src/frontend/ZFSMWorkspace.js": "561bbea54ea40586a05740b74aaaf6bf57567f346944c5e31aa0a9a651e52d55",
     "docs/preview/data.mjs": "061c3bff5a32b57435da0e7bd1fdbbcf0ee3a8a94a4ed5d44e0c43cf6f0ec480",
-    "docs/preview/server.mjs": "3931bd9c38da01b024f956ddf8ce6829b76453ca9f3a82c12f8d3ee4667586fb",
+    "docs/preview/server.mjs": "6caf468e0ad279159c66b531ac48df76741d83ad8e1bef8c453acac4a0454dca",
     "docs/preview/capture.mjs": "4c4d60d2c9781ee86d699813acda3302be36966c74311f2b64168bdc1bc0acbe"
   },
   "capture": {
@@ -132,8 +131,8 @@
     },
     {
       "file": "jobs.png",
-      "sha256": "b4fe57ecfedaef10d34d46c68c5690c553ea4420a3bd287ae5098dc10bba4632",
-      "bytes": 115012,
+      "sha256": "d6494eb2c8439c3628fb42b5231408bf31b77c3de368df82d731cc52a1c874b1",
+      "bytes": 114359,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -141,8 +140,8 @@
     },
     {
       "file": "settings.png",
-      "sha256": "bd7969ec5c64aa16ee87a7562102cf99c7173d9ac531c990b1a0dc0fba6b5aae",
-      "bytes": 115724,
+      "sha256": "95369ce6f38fb9507d74559f859db816868d8a9fba0d55f4f531a399c3ca0fed",
+      "bytes": 115668,
       "viewport": {
         "width": 1440,
         "height": 980

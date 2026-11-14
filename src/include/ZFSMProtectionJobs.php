@@ -206,6 +206,8 @@ function zfsmProtectionRepeatBlocked(string $type,string $id,string $reason): ?a
         $marker=zfsmProtectionBlockedMarker($type,$id);if($marker===null||$marker['reason']!==$reason)return null;
         $job=zfsmReadJob($marker['job_id']);
         if(!zfsmProtectionBlockedBeforeStart($job)||($job['definition_id']??null)!==$id||($job['type']??null)!==$type||($job['error']??null)!==$reason)return null;
+        // A refusal the user hid (or whose record is gone) must not mute the next one.
+        if(function_exists('zfsmActivityJobArchived')&&zfsmActivityJobArchived($job))return null;
         $marker['repeats']++;$marker['last_seen']=gmdate('c');zfsmJobAtomicWrite(zfsmProtectionBlockedFile($type,$id),$marker);
         return $job;
     }catch(Throwable$e){return null;}

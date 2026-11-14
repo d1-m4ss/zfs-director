@@ -43,31 +43,53 @@ function zfsmJobHistoryRegular($file) {
     if(!$st||is_link($file)||($st['mode']&0170000)!==0100000||$st['nlink']!==1)throw new RuntimeException('History contains an unsafe file; retained for inspection.');
     return $st;
 }
-// "Delete finished jobs": removes every job record the plugin no longer needs, on request.
-// Kept: queued or running jobs, and records that still own something -- a snapshot hold, ZIP
-// staging not yet removed, a result waiting for recovery, or a journal that cannot be read
-// safely. Datasets, snapshots and files are never touched. The caller holds the operation lock.
-function zfsmJobKeepOnDelete($job) {
+// "Delete finished jobs": removes the records of finished jobs on request, on every page.
+// Kept: queued or running jobs; anything that may still own data or a way to recover it
+// (cancelled or failed conversions, restores and deletions, snapshot holds, ZIP staging not yet
+// removed, recovery_required, journals that cannot be read safely); the latest run and the
+// latest verified run of every policy and replication, which pool warnings and the Replication
+// screen read; and journals other records refer to. Failed or cancelled protection and request
+// jobs own no data (the recovery journals above do), so they are deleted. Datasets, snapshots
+// and files are never touched. The caller holds the operation lock.
+function zfsmJobKeepOnDelete($job,$pinned=false) {
     if(zfsmJobProblem($job))return 'needs inspection';
-    if(in_array($job['state']??'',['queued','running'],true))return 'running';
-    if(($job['state']??'')==='recovery_required')return 'needs recovery';
+    $state=$job['state']??'';$schema=$job['schema']??null;
+    if(in_array($state,['queued','running'],true))return 'running';
+    if($state==='recovery_required')return 'needs recovery';
     if(!empty($job['hold_owned'])||(function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job)))return 'still holds a snapshot or ZIP';
-    return null;
+    // A conversion or deletion that retained an original keeps the only pointer to it in Jobs.
+    if(in_array($schema,[1,6],true)&&!empty($job['recovery']))return 'retains an original for recovery';
+    if($pinned)return 'latest result of a policy or replication';
+    if($schema===4&&in_array($state,['completed','failed','cancelled'],true))return null;
+    if($schema===7&&in_array($state,['completed','failed','cancelled'],true))return function_exists('zfsmRequestJobActive')&&zfsmRequestJobActive($job)?'running':null;
+    if(function_exists('zfsmCleanupTerminalJob')&&zfsmCleanupTerminalJob($job))return null;
+    return 'may own recovery data';
 }
 function zfsmJobDeleteFinished() {
     $gate=zfsmJobHistoryGate(true,true);if($gate===null)throw new RuntimeException('Jobs are being updated; try again in a moment.');
     $removed=0;$kept=[];$directory=zfsmJobDirectory($GLOBALS['plugin_state']);
+    $keep=function($reason)use(&$kept){$kept[$reason]=($kept[$reason]??0)+1;};
     try{
         $names=@scandir($directory);if($names===false)throw new RuntimeException('Job storage is unavailable');
+        $jobs=[];$unreadable=[];
         foreach($names as$name){
             if(!preg_match('/^([0-9]{8}-[0-9]{6}-[a-f0-9]{12})\.json$/D',$name,$match))continue;
-            $id=$match[1];$file=$directory.'/'.$name;
-            try{zfsmJobHistoryRegular($file);$job=zfsmReadJob($id);$reason=zfsmJobKeepOnDelete($job);}catch(Throwable$error){$reason='needs inspection';}
-            if($reason!==null){$kept[$reason]=($kept[$reason]??0)+1;continue;}
-            $lock=$file.'.lock';$handle=null;
+            try{zfsmJobHistoryRegular($directory.'/'.$name);$jobs[$match[1]]=zfsmReadJob($match[1]);}catch(Throwable$error){$unreadable[$match[1]]=true;}
+        }
+        // Same pins as the hourly cleanup: latest and latest verified run per definition, and references.
+        $pins=[];try{zfsmJobHistoryReferences(zfsmProtectionReadStore(),$pins);}catch(Throwable$error){}
+        $order=$jobs;uasort($order,fn($a,$b)=>((zfsmJobHistoryTime($b)??PHP_INT_MAX)<=>(zfsmJobHistoryTime($a)??PHP_INT_MAX))?:strcmp($b['id'],$a['id']));
+        $latest=[];foreach($order as$id=>$job){
+            zfsmJobHistoryReferences($job,$pins,$id);
+            if(($job['schema']??null)===4){$key=($job['type']??'').':'.($job['definition_id']??'');if(!isset($latest[$key])){$pins[$id]=true;$latest[$key]=true;}if(($job['verification']['verified']??false)===true&&!isset($latest[$key.':verified'])){$pins[$id]=true;$latest[$key.':verified']=true;}}
+        }
+        foreach($unreadable as$id=>$_)$keep('needs inspection');
+        foreach($jobs as$id=>$job){
+            $reason=zfsmJobKeepOnDelete($job,isset($pins[$id]));if($reason!==null){$keep($reason);continue;}
+            $file=zfsmJobFile($id);$lock=$file.'.lock';$handle=null;
             if(file_exists($lock)||is_link($lock)){
-                try{zfsmJobHistoryRegular($lock);}catch(Throwable$error){$kept['needs inspection']=($kept['needs inspection']??0)+1;continue;}
-                $handle=fopen($lock,'ce');if(!$handle||!flock($handle,LOCK_EX|LOCK_NB)){if($handle)fclose($handle);$kept['running']=($kept['running']??0)+1;continue;}
+                try{zfsmJobHistoryRegular($lock);}catch(Throwable$error){$keep('needs inspection');continue;}
+                $handle=fopen($lock,'ce');if(!$handle||!flock($handle,LOCK_EX|LOCK_NB)){if($handle)fclose($handle);$keep('running');continue;}
             }
             try{
                 if(!unlink($file))throw new RuntimeException('Unable to delete a job record.');$removed++;
