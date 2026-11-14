@@ -1,3 +1,8 @@
+### 2026.11.14.1
+Snapshot policies, replication and file jobs now run in three separate background lanes, so a long replication no longer delays scheduled snapshots, restores or file operations; a policy waits while a local replication is receiving into its dataset. SSH keys for remote replication are registered in Settings: only the key and known_hosts paths are stored, and keys under /boot survive a reboot. One switch turns Sanoid/Syncoid integration on or off. The replication wizard first asks whether the copy goes to this server or to another one. Jobs has fewer filters, and a Running now bar on every screen names the operation in progress. A dataset has four tabs with its actions in one Actions menu, and Overview shows a status summary. The idle background service no longer rereads unchanged job journals.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.13.3
 New Large window button in the plugin header opens the whole plugin in a large window over the page; Escape or Close window returns. The pool warning bar is now one compact line with a shorter replication message.
 
