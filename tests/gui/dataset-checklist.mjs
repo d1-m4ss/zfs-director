@@ -22,20 +22,12 @@ try{
  for(const width of [390,1280]){
   let page,d;
   try{
-   // Settings: Directory listing datasets
+   // Settings: the folder listing is chosen from the dataset menu only (UX-016)
    page=await open(width,'settings');
-   const listing=page.locator('textarea[name=directory_listing]'),box=page.locator('.zfsm-checklist').first();
-   await page.locator('details').evaluateAll(items=>items.forEach(i=>i.open=true));await box.waitFor();assert.equal(await listing.isHidden(),true,'typed textarea is replaced by the checklist');
-   assert.deepEqual(await rows(box),[['cache',false],['cache/a',true],['cache/a/c1',false],['cache/a/c2',false],['cache/b',false]]);
-   assert.deepEqual(await box.locator('.zfsm-checklist-missing .zfsm-checklist-row').evaluateAll(items=>items.map(i=>[i.textContent,i.querySelector('input').checked])),[['cache/gone',true]],'saved but unknown names stay visible and checked');
-   assert.equal(await box.locator('.zfsm-checklist-count').textContent(),'2 selected');
-   await box.getByRole('checkbox',{name:'cache/b',exact:true}).check();assert.equal(await listing.inputValue(),'cache/a\ncache/b\ncache/gone');
-   await box.getByRole('checkbox',{name:'cache/gone',exact:true}).click();assert.equal(await listing.inputValue(),'cache/a\ncache/b');assert.equal(await box.locator('.zfsm-checklist-count').textContent(),'2 selected');
-   assert.equal(await box.locator('.zfsm-checklist-missing').isVisible(),false,'unchecked missing names disappear');
-   await box.getByRole('searchbox',{name:'Filter datasets'}).fill('c1');assert.deepEqual(await rows(box),[['cache/a/c1',false]]);assert.equal(await listing.inputValue(),'cache/a\ncache/b','filter does not change the value');
-   await box.getByRole('searchbox',{name:'Filter datasets'}).fill('zzz');assert.match(await box.textContent(),/No dataset matches the filter/);
+   await page.locator('details').evaluateAll(items=>items.forEach(i=>i.open=true));await page.getByRole('button',{name:'Save settings',exact:true}).waitFor();
+   assert.equal(await page.locator('textarea[name=directory_listing]').count(),0);assert.equal(await page.locator('.zfsm-checklist').count(),0);
    await page.getByRole('button',{name:'Save settings',exact:true}).click();await page.waitForFunction(()=>calls.some(c=>c.cmd==='validatesettings'||c.cmd==='saveconfig'));
-   assert.equal(await page.evaluate(()=>calls.filter(c=>c.settings).at(-1).settings.directory_listing),'cache/a\ncache/b','saved value is one name per line');
+   assert.equal(await page.evaluate(()=>Object.hasOwn(calls.filter(c=>c.settings).at(-1).settings,'directory_listing')),false,'Settings does not send the folder listing');
    await page.screenshot({path:out+'/'+width+'-settings.png'});await page.close();
    // Replication: exclusions are children of the source
    page=await open(width,'replication');await page.locator('[data-replication-id=rep]').click();await page.getByRole('button',{name:'Edit',exact:true}).click();d=page.getByRole('dialog');
