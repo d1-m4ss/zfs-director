@@ -154,11 +154,11 @@
    catch(error){if(!disposed)status(error.message,true);}
    finally{archiveBusy=false;if(!disposed)syncAvailability();}
   }
-  function updateJobs(jobs){if(disposed)return;for(const job of jobs)if(job.snapshot===snapshot&&['restore','archive','download'].includes(job.type))trackedJobs.set(job.id,job);renderJobStatus();}
+  function updateJobs(jobs){if(disposed)return;for(const job of jobs)if(job.snapshot===snapshot&&['restore','archive'].includes(job.type))trackedJobs.set(job.id,job);renderJobStatus();}
   function needsAttention(job){return !['queued','running','completed','cancelled'].includes(job.state);}
   function errorKey(job){return JSON.stringify([job.id,job.state,job.error]);}
   function markErrorsViewed(){for(const job of trackedJobs.values())if(needsAttention(job))viewedErrors.add(errorKey(job));jobAlert.hidden=true;jobAlertMessage.removeAttribute('role');}
-  function jobLabel(job){const type=job.type==='archive'?'ZIP':job.type==='download'?'Download':'Restore',percent=typeof job.progress?.percent==='number'&&Number.isFinite(job.progress.percent)?Math.max(0,Math.min(100,job.progress.percent)):null,state={queued:'Queued',running:'Running'+(percent===null?'':' · '+percent+'%'),completed:'Completed',failed:'Failed',recovery_required:'Recovery required',cancelled:'Cancelled'}[job.state]||'Recovery required';return type+' · '+(job.type==='archive'&&job.state==='completed'&&(job.archive_removed||Number(job.expires)*1000<=Date.now())?'Expired — prepare again':state);}
+  function jobLabel(job){const type=job.type==='archive'?'ZIP':'Restore',percent=typeof job.progress?.percent==='number'&&Number.isFinite(job.progress.percent)?Math.max(0,Math.min(100,job.progress.percent)):null,state={queued:'Queued',running:'Running'+(percent===null?'':' · '+percent+'%'),completed:'Completed',failed:'Failed',recovery_required:'Recovery required',cancelled:'Cancelled'}[job.state]||'Recovery required';return type+' · '+(job.type==='archive'&&job.state==='completed'&&(job.archive_removed||Number(job.expires)*1000<=Date.now())?'Expired — prepare again':state);}
   function renderJobStatus(){
    const jobs=[...trackedJobs.values()].sort((a,b)=>b.id.localeCompare(a.id)),fingerprint=JSON.stringify(jobs.map(job=>({...job,expired:job.type==='archive'&&Number(job.expires)*1000<=Date.now()})));if(fingerprint===jobFingerprint)return;jobFingerprint=fingerprint;jobStatus.hidden=!jobs.length;if(!jobs.length)return;
    const latest=jobs[0],label=jobLabel(latest),active=['queued','running'].includes(latest.state),unseen=jobs.filter(job=>needsAttention(job)&&!viewedErrors.has(errorKey(job)));
@@ -171,7 +171,6 @@
     const zip=job.type==='archive',complete=job.state==='completed',expired=zip&&(job.archive_removed||Number(job.expires)*1000<=Date.now());
     const card=el('div',undefined,'zfsm-explorer-job');card.dataset.jobId=job.id;card.append(el('strong',jobLabel(job)),el('small',job.id,'zfsm-muted'));
     if(job.error)card.append(el('p',job.error,'zfsm-error'));
-    if(job.type==='download'&&job.result?.summary)card.append(el('p',job.result.summary,'zfsm-muted'));
     if(complete&&!expired&&zip&&job.id!==downloadJob?.id){const download=button('Download ZIP '+job.id,async()=>{try{await options.download({cmd:'downloadsnapshotarchive',job_id:job.id},text=>status(text,true));}catch(error){if(!disposed)status(error.message,true);}},'download',undefined,'Download');download.dataset.jobAction='download';card.append(download);}
     if(!zip&&job.target)card.append(el('p',job.target,'zfsm-muted'));
     const view=button('View job',()=>options.onJobs());view.dataset.jobAction='view';card.append(view);jobList.append(card);

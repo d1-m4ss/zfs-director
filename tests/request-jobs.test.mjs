@@ -93,7 +93,7 @@ test('Jobs API preserves completed transfer 100 percent over last transient 99 p
 
 test('a refused restore is not kept as a hidden journal',async()=>fixture(async({post})=>{
  const refused=await post({cmd:'restoresnapshotfiles',preview_id:'invalid',preview_token:'NEVER-PERSIST',confirmed:'1'});assert.ok(Object.keys(refused.failed).length);assert.equal(refused.job,undefined);
- for(const filter of ['restore','operation','all'])assert.equal((await post({cmd:'conversionjobs',listed:'0',filter,sort:'newest',view:'all'})).jobs.length,0,filter);
+ for(const filter of ['restore','all'])assert.equal((await post({cmd:'conversionjobs',listed:'0',filter,sort:'newest'})).jobs.length,0,filter);
 }));
 
 for(const command of ['cancelconversion','resumeconversion','cancelrestore','protectioncancel'])test(command+' refusal writes no journal and does not touch data',async()=>fixture(async({s,post})=>{

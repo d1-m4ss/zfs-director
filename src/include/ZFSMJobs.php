@@ -347,8 +347,8 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
     $filterOptions=is_array($options)?array_diff_key($options,['listed'=>1]):[];
     if ($options!==null) {
         if(!is_array($options))throw new InvalidArgumentException('Invalid jobs options');
-        $types=['all','snapshot','restore','archive','conversion','deletion','policy','replication','operation','download','maintenance'];
-        foreach(['filter'=>['all','active','needs_attention','completed','recovery','snapshot','restore','archive','conversion','deletion','policy','replication','operation','download','maintenance'],'type'=>$types,'sort'=>['newest','oldest','attention']]as$key=>$allowed)if(isset($options[$key])&&(!is_string($options[$key])||!in_array($options[$key],$allowed,true)))throw new InvalidArgumentException('Invalid jobs '.$key);
+        $types=['all','restore','archive','conversion','deletion','policy','replication'];
+        foreach(['filter'=>['all','active','needs_attention','completed','recovery','restore','archive','conversion','deletion','policy','replication'],'type'=>$types,'sort'=>['newest','oldest','attention']]as$key=>$allowed)if(isset($options[$key])&&(!is_string($options[$key])||!in_array($options[$key],$allowed,true)))throw new InvalidArgumentException('Invalid jobs '.$key);
     }
     $directory=zfsmJobDirectory($GLOBALS['plugin_state']); $files=@scandir($directory);
     if ($files===false) throw new RuntimeException('Job storage is unavailable');

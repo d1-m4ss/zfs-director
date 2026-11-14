@@ -184,11 +184,11 @@ test('a removed final page returns to a valid page without losing other selectio
  }finally{f.close();}
 });
 
-test('File Manager tracks direct transfers without hiding ready ZIP and never fabricates a percent',async()=>{
+test('File Manager tracks a running restore without hiding ready ZIP and never fabricates a percent',async()=>{
  const f=await explorer([entry('notes.txt')]);try{
-  const archive={id:'a',snapshot:'cache/data@base',type:'archive',state:'completed',expires:Date.now()/1000+3600},transfer={id:'b',snapshot:'cache/data@base',type:'download',state:'running',stage:'transferring',progress:{bytes:2,total:10,percent:20}};
-  f.app.updateJobs([archive,transfer]);const area=f.root.querySelector('.zfsm-explorer-jobs');assert.match(area.querySelector('[role=status]').textContent,/Download.*20%/);assert.equal(area.querySelector('progress').value,20);assert.equal(button(f.root,'Download ZIP').hidden,false);
+  const archive={id:'a',snapshot:'cache/data@base',type:'archive',state:'completed',expires:Date.now()/1000+3600},transfer={id:'b',snapshot:'cache/data@base',type:'restore',state:'running',stage:'copying',progress:{bytes:2,total:10,percent:20}};
+  f.app.updateJobs([archive,transfer]);const area=f.root.querySelector('.zfsm-explorer-jobs');assert.match(area.querySelector('[role=status]').textContent,/Restore.*20%/);assert.equal(area.querySelector('progress').value,20);assert.equal(button(f.root,'Download ZIP').hidden,false);
   f.app.updateJobs([{...transfer,progress:{bytes:2,total:10,percent:null}}]);assert.equal(area.querySelector('progress').hasAttribute('value'),false);assert.doesNotMatch(area.querySelector('[role=status]').textContent,/0%/);
-  f.app.updateJobs([{...transfer,state:'completed',result:{summary:'Server transfer finished. Check browser Downloads to confirm the file was saved.'}}]);assert.match(f.root.textContent,/Check browser Downloads/);assert.equal(button(f.root,'Download ZIP').hidden,false);
+  f.app.updateJobs([{...transfer,state:'completed'}]);assert.equal(button(f.root,'Download ZIP').hidden,false);
  }finally{f.close();}
 });
