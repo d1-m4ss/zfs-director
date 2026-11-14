@@ -574,7 +574,7 @@
         refresh_interval: config.refresh_interval ?? 30, lazy_load: config.lazy_load ?? 0,
         destructive_mode: config.destructive_mode ?? 0, exclusion: config.dataset_exclusion ?? config.exclusion ?? '',
         directory_listing: Array.isArray(config.directory_listing) ? config.directory_listing.join('\n') : config.directory_listing || '',
-        snap_max_days_alert: config.snap_max_days_alert ?? 30, snap_pattern: config.snap_pattern ?? 'Y-m-d-His', snap_prefix: config.snap_prefix || '',space_warning_percent:config.space_warning_percent??80,space_critical_percent:config.space_critical_percent??90,replication_lag_hours:config.replication_lag_hours??24
+        snap_max_days_alert: config.snap_max_days_alert ?? 30, snap_pattern: config.snap_pattern ?? 'Y-m-d-His', snap_prefix: config.snap_prefix || '',space_warning_percent:config.space_warning_percent??80,space_critical_percent:config.space_critical_percent??90,replication_lag_hours:config.replication_lag_hours??24,job_retention_days:config.job_retention_days??7
       };
       for (const name of Object.keys(values)) values[name] = String(values[name]);
       return values;
@@ -593,6 +593,7 @@
       const values = settingsValues();
       state.settingsBaseline = values;
       state.dirtySettings = new Set(Object.keys(state.draft).filter(name => Object.prototype.hasOwnProperty.call(values, name) && String(state.draft[name]) !== values[name]));
+      field(state, 'job_retention_days', 'Keep finished jobs for', values.job_retention_days, [['1', '1 day'], ['7', '7 days'], ['30', '30 days'], ['0', 'Always']]);
       field(state, 'refresh_interval', 'Refresh interval', values.refresh_interval, [['0', 'No refresh'], ['30', '30 seconds'], ['60', '1 minute'], ['120', '2 minutes'], ['300', '5 minutes'], ['900', '15 minutes'], ['1800', '30 minutes']]);
       for (const [key, label] of [['lazy_load', 'Load snapshots only when a pool is opened'], ['destructive_mode', 'Destructive Mode']]) field(state, key, label, values[key], [['0', 'No'], ['1', 'Yes']]);
       const listing = field(state, 'directory_listing', 'Show folders in the tree for these datasets', values.directory_listing, null, { type: 'textarea', rows: 5, maxLength: 16384 });

@@ -14,10 +14,9 @@ try{
   for(const pageNo of [3,4]){await page.getByRole('button',{name:'Next jobs',exact:true}).click();await page.getByText('Page '+pageNo+' / 4 · 37 total',{exact:true}).waitFor();}assert.equal(await page.locator('[data-job-id]').count(),7);assert.equal(await page.getByRole('button',{name:'Next jobs',exact:true}).isDisabled(),true);
   for(const [size,count,pages]of [['25',25,2],['50',37,1],['100',37,1],['10',10,4]]){await page.getByRole('combobox',{name:'Jobs per page',exact:true}).selectOption(size);await page.getByText('Page 1 / '+pages+' · 37 total',{exact:true}).waitFor();assert.equal(await page.locator('[data-job-id]').count(),count);}
   await page.reload();await page.locator('[data-job-id]').first().waitFor();assert.equal(await page.getByRole('combobox',{name:'Jobs per page',exact:true}).inputValue(),'10');assert.equal(await page.locator('[data-job-id]').count(),10);
-  await page.locator('.zfsm-history-storage > summary').click();assert.equal(await page.locator('.zfsm-history-storage').evaluate(e=>e.open),true);
-  if(width===390&&theme==='dark'&&layout==='tree'){await page.waitForResponse(r=>r.url()===mock.url+'/mock/admin'&&new URLSearchParams(r.request().postData()).get('cmd')==='conversionjobs');assert.equal(await page.locator('.zfsm-history-storage').evaluate(e=>e.open),true);}
+  await page.locator('[data-jobs-retention]').waitFor();assert.match(await page.locator('[data-jobs-retention]').innerText(),/^Finished jobs are deleted after \d+ days?\. Change it in Settings\.$/);assert.equal(await page.locator('.zfsm-history-storage').count(),0);
   assert.equal(await page.locator('#zfsm-workspace').evaluate(e=>e.scrollWidth>e.clientWidth+1),false);
-  const key=theme+'-'+layout+'-'+width;await page.screenshot({path:out+'/'+key+'.png',fullPage:true});results.push({key,status:'PASS',default_size:10,selected_sizes:[10,25,50,100],last_page_count:7,storage_explanation_open:true});console.log('PASS '+key);await context.close();
+  const key=theme+'-'+layout+'-'+width;await page.screenshot({path:out+'/'+key+'.png',fullPage:true});results.push({key,status:'PASS',default_size:10,selected_sizes:[10,25,50,100],last_page_count:7,retention_line:true});console.log('PASS '+key);await context.close();
  }
  assert.deepEqual(errors,[]);
 }finally{await browser.close();await mock.close();await writeFile(out+'/results.json',JSON.stringify({results,errors,boundary:'Actual Chromium frontend against local mock. No test-host or native storage operations.'},null,2)+'\n');}

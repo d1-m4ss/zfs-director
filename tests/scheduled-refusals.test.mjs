@@ -48,7 +48,7 @@ test('a refusal the user hid does not mute the next refusal',async t=>{
  const out=await run(t,`integration(false);$first=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false)['job']['id'];zfsmActivitySetJobs([$first],true);
  $second=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false)['job']['id'];$page=zfsmJobPage(1,50,['filter'=>'all']);
  echo json_encode(['new_record'=>$second!==$first,'visible_attention'=>$page['counts']['needs_attention']]);`);
- assert.deepEqual(out,{new_record:true,visible_attention:1});
+ assert.deepEqual(out,{new_record:true,visible_attention:2});
 });
 test('Delete finished jobs keeps data owners, latest results and running work; deletes the rest',async t=>{
  const out=await run(t,`$abc=zfsmProtectionReadStore()['policies']['abc'];$GLOBALS['abc']=$abc;$n=0;
@@ -58,10 +58,33 @@ test('Delete finished jobs keeps data owners, latest results and running work; d
  $cancelledConversion=$conv('cancelled','copying',1);$failedConversion=$conv('failed','copying',2);$doneConversion=$conv('completed','complete_source_retained',3);
  $hidden=zfsmActivitySetJobs([$oldFail],true);
  $r=zfsmJobDeleteFinished();$left=array_map(fn($f)=>basename($f,'.json'),journals());sort($left);
- echo json_encode(['hidden'=>isset($hidden['succeeded'][$oldFail]),'deleted'=>$r['deleted'],'kept'=>$r['kept'],'left'=>$left,'expected_left'=>[$queued,$held,$latest,$cancelledConversion,$failedConversion,$doneConversion],'deleted_ids'=>array_values(array_diff([$oldFail,$oldDone],$left)),'message'=>$r['succeeded']['jobs']]);`);
+ echo json_encode(['hidden'=>isset($hidden['succeeded'][$oldFail]),'deleted'=>$r['deleted'],'kept'=>$r['kept'],'left'=>$left,'expected_left'=>[$queued,$held,$latest,$cancelledConversion,$failedConversion],'deleted_ids'=>array_values(array_diff([$oldFail,$oldDone,$doneConversion],$left)),'message'=>$r['succeeded']['jobs']]);`);
  assert.equal(out.hidden,true,'a failed job can be hidden');
- assert.equal(out.deleted,2,'old failed and old completed protection jobs');
+ assert.equal(out.deleted,3,'old failed and old completed protection jobs and the completed conversion');
  assert.deepEqual(out.left,out.expected_left.sort(),'running, held, the latest result and unfinished conversions stay');
- assert.deepEqual(out.kept,{'latest result of a policy or replication':1,'retains an original for recovery':3,running:1,'still holds a snapshot or ZIP':1});
- assert.match(out.message,/^Deleted 2 finished job record\(s\)\. Kept 6:/);
+ assert.deepEqual(out.kept,{'latest result of a policy or replication':1,'may own recovery data':2,running:1,'still holds a snapshot or ZIP':1});
+ assert.match(out.message,/^Deleted 3 finished job record\(s\)\. Kept 5:/);
+});
+test('Delete finished jobs removes every matching record in one call, on every page; Everything ignores the filters',async t=>{
+ const out=await run(t,`$abc=zfsmProtectionReadStore()['policies']['abc'];$GLOBALS['abc']=$abc;
+ $make=function($i,$state){$j=zfsmNewProtectionJob('policy',$GLOBALS['abc']);$j['id']=sprintf('20261113-%06d-%012x',$i,$i);$j['created']=$j['updated']=gmdate('c',1794000000+$i);$j['state']=$state;$j['stage']='finished';$j['verified_outcome']=$state==='completed'?'completed':'failed';$j['verification']=['outcome'=>$j['verified_outcome']];zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);return $j['id'];};
+ for($i=1;$i<=300;$i++)$make($i,'failed');for($i=301;$i<=330;$i++)$make($i,'completed');
+ $filter=zfsmJobPage(1,1,['filter'=>'completed','type'=>'all','view'=>'all','ids_only'=>true]);
+ $r1=zfsmJobDeleteFinished(array_fill_keys($filter['ids'],true));$after1=count(journals());
+ $r2=zfsmJobDeleteFinished();$after2=count(journals());
+ echo json_encode(['matching'=>count($filter['ids']),'deleted_first'=>$r1['deleted'],'left_first'=>$after1,'deleted_second'=>$r2['deleted'],'left_second'=>$after2,'kept'=>$r2['kept']]);`);
+ assert.equal(out.matching,30,'the filter selects the completed group across pages');
+ assert.equal(out.deleted_first+out.left_first,330,'nothing else was touched');
+ assert.equal(out.left_first,300+1-out.deleted_first+29,'only matching records go; the newest policy result stays pinned');
+ assert.equal(out.left_second,1,'one call removes the rest; only the latest result of the policy stays');
+ assert.deepEqual(out.kept,{'latest result of a policy or replication':1});
+});
+test('Jobs lists only functional work: replication runs and manual policy runs, not scheduled policy checks or quick-action journals',async t=>{
+ const out=await run(t,`$abc=zfsmProtectionReadStore()['policies']['abc'];$GLOBALS['abc']=$abc;
+ $policy=function($n,$trigger){$j=zfsmNewProtectionJob('policy',$GLOBALS['abc']);$j['id']=sprintf('20261114-10%02d00-%012x',$n,$n);$j['trigger']=$trigger;$j['state']='completed';$j['stage']='finished';$j['verified_outcome']='completed';$j['verification']=['outcome'=>'completed'];zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);return $j['id'];};
+ $manual=$policy(1,'manual');$scheduled=$policy(2,'schedule');
+ $failedQuick=zfsmRequestJobBegin('snapshotdataset',['cmd'=>'snapshotdataset']);zfsmRequestJobFinish('failed','Quick action failed.');
+ $listed=array_column(zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['jobs'],'id');$all=array_column(zfsmJobPage(1,50,['filter'=>'all','listed'=>false])['jobs'],'id');
+ echo json_encode(['manual'=>in_array($manual,$listed,true),'scheduled'=>in_array($scheduled,$listed,true),'listed_count'=>count($listed),'all_count'=>count($all)]);`);
+ assert.deepEqual(out,{manual:true,scheduled:false,listed_count:1,all_count:3},'a manual run is listed; a scheduled policy check and a failed quick action are not');
 });

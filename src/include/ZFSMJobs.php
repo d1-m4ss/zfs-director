@@ -308,6 +308,17 @@ function zfsmJobPresentation($job,$file,$worker_running,$problem=null) {
     if(!$problem&&($job['schema']??null)===7){$job['actions']=['cancel'=>false,'resume'=>false,'download'=>false,'inspect'=>true];$job['execution_active']=in_array($job['state'],['queued','running'],true)&&zfsmRequestJobActive($job);$job['retained_data']=['source'=>$job['source'],'message'=>'Recorded operation; it is never replayed by the worker. Inspect actual state before any new request.'];}
     return zfsmRedactJobData($job);
 }
+// Jobs lists only functional work: conversion, restore and ZIP preparation, deletion, requests
+// rejected before they started, replication runs and manual snapshot-policy runs. Everything
+// else (quick actions, scrub, downloads, scheduled policy checks) is internal and never listed.
+// An unreadable journal stays listed so that it can be inspected.
+function zfsmJobListed($job) {
+    $schema=$job['schema']??null;
+    if(!in_array($schema,[1,2,4,5,6,7],true)||zfsmJobProblem($job))return true;
+    if($schema===7)return false;
+    if($schema===4)return ($job['type']??'')==='replication'||($job['trigger']??'')==='manual';
+    return true;
+}
 function zfsmJobPage($page=1,$page_size=25,$options=null) {
     if ($options!==null) {
         if(!is_array($options))throw new InvalidArgumentException('Invalid jobs options');
@@ -327,6 +338,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
             $job=['id'=>basename($name,'.json'),'schema'=>null,'type'=>'unknown','state'=>'recovery_required'];
             $problem=['invalid_journal','Journal cannot be read safely: '.$error->getMessage().'. Inspect retained data manually.'];
         }
+        if(!empty($options['listed'])&&!zfsmJobListed($job))continue;
         $job=zfsmJobPresentation($job,$file,$worker_running,$problem);
         // Runtime progress is disposable. Its failure must not hide a valid journal.
         if (!$problem&&!(($job['schema']??null)===7&&!in_array($job['state'],['queued','running'],true))) try {
@@ -357,6 +369,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
             $problem=['invalid_journal','Journal cannot be read safely: '.$error->getMessage().'. Inspect retained data manually.'];
         }
         if (!$problem && ($job['state']??'')==='completed' && zfsmProtectionIdleCheck($job,$job['verification']??[]) && empty($job['cancel_requested'])) continue;
+        if(!empty($options['listed'])&&!zfsmJobListed($job))continue;
         $job=zfsmJobPresentation($job,$runtimeFile,$worker_running,$problem);
         if (!$problem && !in_array($job['state'],['queued','running'],true)) $job['group']='needs_attention';
         $groups[$job['group']][]=$job;
@@ -368,8 +381,8 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
         $all=array_values(array_filter($all,function($job)use($filter,$type,$view){return ($view==='all'||($view==='archived')===$job['archived'])&&($filter==='all'||$filter===$job['group']||($filter==='recovery'&&$job['state']==='recovery_required')||$filter===$job['type']||$filter===zfsmRequestJobCategory($job))&&($type==='all'||$type===$job['type']||$type===zfsmRequestJobCategory($job));}));
         $createdTime=static function($job){$created=$job['created']??null;if(is_int($created)||is_float($created))return is_finite($created)&&$created>0?$created:0;return is_string($created)&&strlen($created)<=64?(strtotime($created)?:0):0;};
         usort($all,function($a,$b)use($sort,$createdTime){if($sort==='attention'){$rank=['needs_attention'=>0,'active'=>1,'completed'=>2];$d=$rank[$a['group']]-$rank[$b['group']];if($d)return $d;}$aTime=$createdTime($a);$bTime=$createdTime($b);$d=($bTime<=>$aTime)?:strcmp($b['id'],$a['id']);return $sort==='oldest'?-$d:$d;});
-        // Hidden (archived) jobs no longer count toward the Jobs badge or the Overview status.
-        $counts=['active'=>0,'needs_attention'=>0,'completed'=>0];foreach($groups as$group=>$items)foreach($items as$item)if(!zfsmActivityJobArchived($item))$counts[$group]++;$total=count($all);$page_size=max(1,min(200,(int)$page_size));$pages=max(1,(int)ceil($total/$page_size));$page=max(1,min($pages,(int)$page));
+        if(!empty($options['ids_only']))return ['ids'=>array_column($all,'id')];
+        $counts=array_map('count',$groups);$total=count($all);$page_size=max(1,min(200,(int)$page_size));$pages=max(1,(int)ceil($total/$page_size));$page=max(1,min($pages,(int)$page));
         return ['jobs'=>array_slice($all,($page-1)*$page_size,$page_size),'counts'=>$counts,'pagination'=>['page'=>$page,'page_size'=>$page_size,'total'=>$total,'pages'=>$pages,'has_previous'=>$page>1,'has_next'=>$page<$pages]];
     }
     $counts=array_map('count',$groups); $page_size=max(1,min(200,(int)$page_size)); $pages=max(1,(int)ceil($counts['completed']/$page_size)); $page=max(1,min($pages,(int)$page));

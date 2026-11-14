@@ -26,6 +26,7 @@ function zfsmValidateSettings($settings) {
     $warning=(int)($settings['space_warning_percent']??80);$critical=(int)($settings['space_critical_percent']??90);
     if($warning<1||$warning>99)$errors['space_warning_percent']='Use 1–99 percent.';
     if($critical<2||$critical>100||$critical<=$warning)$errors['space_critical_percent']='Critical percent must exceed warning and be at most 100.';
+    if(isset($settings['job_retention_days'])&&!in_array($settings['job_retention_days'],['0','1','7','30'],true))$errors['job_retention_days']='Choose 1 day, 7 days, 30 days or Always.';
     if((int)($settings['replication_lag_hours']??24)>8760)$errors['replication_lag_hours']='Use 0–8760 hours; 0 disables replication age alerts.';
     if ($errors) return ['valid'=>false,'errors'=>$errors,'snapshot_preview'=>''];
     if (!in_array($settings['refresh_interval'],['0','30','60','120','300','900','1800'],true)) $errors['refresh_interval']='Choose a supported refresh interval, for example 30 seconds.';

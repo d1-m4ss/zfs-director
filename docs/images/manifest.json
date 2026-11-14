@@ -7,7 +7,7 @@
     "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
     "src/frontend/ZFSMExplorer.js": "ecbe4f064ca99fe8c6313ecbe8a6ccc1feb976b742377cd9160f8e8ea7cd1ad5",
-    "src/frontend/ZFSMForms.js": "a3e1eb313703282920a4d203075b57b4e4b9f3fd32822257bd179cbe63064f47",
+    "src/frontend/ZFSMForms.js": "ed243b4b89180de242045540803831b8aab1633103cdb5fe32828c8d23073784",
     "src/frontend/ZFSMInventory.js": "04d6f24cf3bd00986aacaf300f7918e3825df1da2fd51f2b30caaa7d6f7b1038",
     "src/frontend/ZFSMOverview.js": "fce0218a833ce698d308072206e7cc3a42161f4fa38dd821694baf6d374d2f69",
     "src/frontend/ZFSMPoolView.js": "3e12f339d474213fcaed5642e01978be63c61380d92296c0e4c7c46050f3f22b",
@@ -15,7 +15,7 @@
     "src/frontend/ZFSMProtection.js": "a43afcf091b70a26744cab77687905e03bde55223ad34da7bbd9fada665d9400",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "0f442b7a51e0db85be4808bd0e6e6d8ae5479218c539ca4b5f27671c3f39c65d",
-    "src/frontend/ZFSMWorkspace.js": "561bbea54ea40586a05740b74aaaf6bf57567f346944c5e31aa0a9a651e52d55",
+    "src/frontend/ZFSMWorkspace.js": "f4568c9b599dd24a82e8d6ad9d395c152a5948d5f86fb5e5e73e1920491f7878",
     "docs/preview/data.mjs": "061c3bff5a32b57435da0e7bd1fdbbcf0ee3a8a94a4ed5d44e0c43cf6f0ec480",
     "docs/preview/server.mjs": "6caf468e0ad279159c66b531ac48df76741d83ad8e1bef8c453acac4a0454dca",
     "docs/preview/capture.mjs": "4c4d60d2c9781ee86d699813acda3302be36966c74311f2b64168bdc1bc0acbe"
@@ -131,8 +131,8 @@
     },
     {
       "file": "jobs.png",
-      "sha256": "d6494eb2c8439c3628fb42b5231408bf31b77c3de368df82d731cc52a1c874b1",
-      "bytes": 114359,
+      "sha256": "3e83079cae52c397a5e46b68f284d501e810e4eb9dffe6be953c553ddb92232d",
+      "bytes": 111707,
       "viewport": {
         "width": 1440,
         "height": 980

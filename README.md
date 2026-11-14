@@ -196,7 +196,7 @@ New retained originals use a recognizable name such as `incoming_archived_<date-
 
 ## Jobs: activity, progress and recovery
 
-Jobs lists background work and failures: file restore, ZIP preparation/download, conversion, deletion, scrub and Data Protection runs. Quick actions that succeed, such as taking a snapshot or saving settings, are written only to the audit log. External scripts keep their own ownership and execution history.
+Jobs lists only functional work: directory conversion, file restore and ZIP preparation, dataset or directory deletion, requests refused before they started, replication runs (scheduled or manual) and manual snapshot-policy runs (**Run now**). Quick actions, scrub, downloads and scheduled snapshot checks are not listed.
 
 Snapshot policies, replication and file jobs run in three separate background lanes, so a long replication does not delay scheduled snapshots, restores or ZIP downloads. A snapshot policy still waits while a local replication is receiving into its dataset.
 
@@ -205,15 +205,14 @@ Snapshot policies, replication and file jobs run in three separate background la
 - Stage history helps distinguish copying, verification, publication and recovery.
 - Eligible retention deletion with protected snapshots left intact is reported as **Completed with warnings**, with an explanatory result.
 - Filters separate operation types and attention states. Pagination defaults to **10 records**, with larger page sizes available.
-- A scheduled run refused before anything starts (for example, Sanoid is missing or the integration is off) is recorded once; repeats every minute only update a counter on that record: *Refused again N times, last at …*.
-- **Clear finished on this page** hides finished jobs, failed ones included; **Show archived** brings them back. **Delete finished jobs** deletes the records of all finished jobs on every page. Kept: running jobs; jobs that hold a snapshot or a ZIP, or may own recovery data (cancelled or failed conversions, restores and deletions, and any that retained an original); and the latest result of each policy and replication, which pool warnings read. Datasets, snapshots and files are never touched.
+- **Delete finished jobs** deletes, at once and on every page, the records of finished jobs that match the current filters; tick **Everything** to ignore the filters. A line above the list reports what was deleted and what was kept. The same jobs are kept as by the automatic cleanup.
 - Recovery controls appear only where the backend supports them; completed or unsafe work is not silently resumed.
 
 ![Synthetic Jobs with conversion progress, a retention warning and pagination](docs/images/jobs.png)
 
 ### Keeping history bounded
 
-The worker checks history maintenance hourly. Default policy: 30 days, soft limits of 1,000 entries / 32 MiB, at least the newest 100 records retained, and bounded cleanup batches. Active, failed/recovery-related, referenced and retained-data records receive protection. These limits do not authorize deleting user data or recovery originals; protected history may keep storage above the soft limits and require inspection.
+Finished jobs are deleted automatically after **7 days** by default. Change it in **Settings → Keep finished jobs for**: 1 day, 7 days, 30 days or Always. The check runs hourly. Running jobs, jobs that hold a snapshot or a ZIP, failed or cancelled conversions, restores and deletions, and the latest result of each policy and replication are kept. Datasets, snapshots and files are never touched.
 
 
 ## Requirements and state

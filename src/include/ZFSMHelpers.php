@@ -132,6 +132,8 @@ function zfsmSettingsSchema(): array {
 		'space_warning_percent'  => ['type' => 'int',    'default' => 80, 'optional' => true],
 		'space_critical_percent' => ['type' => 'int',    'default' => 90, 'optional' => true],
 		'replication_lag_hours'  => ['type' => 'int',    'default' => 24, 'optional' => true],
+		// How long finished jobs are kept: 1, 7 or 30 days, or 0 = always.
+		'job_retention_days'     => ['type' => 'int',    'default' => 7,  'optional' => true],
 	];
 }
 

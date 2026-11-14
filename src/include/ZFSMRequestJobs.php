@@ -4,7 +4,7 @@ require_once __DIR__.'/ZFSMCommands.php';
 // Labels of every audited command (ARCH-002 registry) plus internal worker maintenance.
 function zfsmRequestJobCommands() {
     $labels=[];foreach(zfsmCommandRegistry()as$name=>$c)if($c['label']!==null)$labels[$name]=$c['label'];
-    return $labels+['jobhistorycleanup'=>'Clean job history'];
+    return $labels;
 }
 // Only these synchronous requests keep a journal from the start: their outcome is
 // observed over time (scrub progress, download transfer). Every other synchronous

@@ -10,24 +10,24 @@ async function fixture(fn){const s=await startIntegration({dependencyUsage:true}
 
 test('a successful snapshot is recorded in the audit log only, not in Jobs',async()=>fixture(async({s,post,model,target})=>{
  const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:model.datasets[target].guid});assert.deepEqual(a.failed,[]);assert.equal(a.job,undefined);
- const list=await post({cmd:'conversionjobs'});assert.equal(list.jobs.length,0);
+ const list=await post({cmd:'conversionjobs',listed:'0'});assert.equal(list.jobs.length,0);
  const audit=(await post({cmd:'auditlog'})).entries;assert.ok(audit.some(e=>e.command==='snapshotdataset'&&e.phase==='outcome'&&e.status==='succeeded'));
 }));
 test('a failed snapshot request appears once in Jobs with its stage and no replay actions',async()=>fixture(async({s,post,model,target})=>{
  const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:'999999'});assert.ok(Object.keys(a.failed).length);assert.equal(a.job?.state,'failed');assert.equal(a.job.command,'snapshotdataset');assert.equal(a.job.type,'operation');
- const list=await post({cmd:'conversionjobs'});assert.equal(list.jobs.length,1);const j=list.jobs[0];assert.equal(j.id,a.job.id);assert.equal(j.diagnostics.issue,null);assert.deepEqual(j.actions,{cancel:false,resume:false,download:false,inspect:true});assert.equal(j.stage_history.at(-1).state,'failed');assert.ok(j.result.summary);
+ const list=await post({cmd:'conversionjobs',listed:'0'});assert.equal(list.jobs.length,1);const j=list.jobs[0];assert.equal(j.id,a.job.id);assert.equal(j.diagnostics.issue,null);assert.deepEqual(j.actions,{cancel:false,resume:false,download:false,inspect:true});assert.equal(j.stage_history.at(-1).state,'failed');assert.ok(j.result.summary);
  const calls=s.readModel().calls.length;await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';zfsmObserveRequestJob('${j.id}');`});assert.equal(s.readModel().calls.length,calls);
 }));
 
 test('invalid downloads and secret-bearing unlock refusals are journaled without secrets or payloads',async()=>fixture(async({post,model,target})=>{
  const a=await post({cmd:'downloadsnapshotarchive',job_id:'invalid'});assert.equal(a.job?.state,'failed');assert.equal(a.job.type,'download');
- const b=await post({cmd:'unlockdataset',zdataset:target,expected_guid:'999999',passphrase:'DO-NOT-PERSIST-THIS-KEY'});assert.equal(b.job?.state,'failed');assert.doesNotMatch(JSON.stringify((await post({cmd:'conversionjobs'})).jobs),/DO-NOT-PERSIST-THIS-KEY|passphrase/);
+ const b=await post({cmd:'unlockdataset',zdataset:target,expected_guid:'999999',passphrase:'DO-NOT-PERSIST-THIS-KEY'});assert.equal(b.job?.state,'failed');assert.doesNotMatch(JSON.stringify((await post({cmd:'conversionjobs',listed:'0'})).jobs),/DO-NOT-PERSIST-THIS-KEY|passphrase/);
 }));
 
 test('authenticated refusals of synchronous and file-queue operations remain visible; readonly and CSRF do not create jobs',async()=>fixture(async({post,model,target})=>{
- await post({cmd:'inventory'});await post({cmd:'snapshotdataset',zdataset:target,expected_guid:model.datasets[target].guid,csrf_token:'wrong'});assert.equal((await post({cmd:'conversionjobs'})).jobs.length,0);
+ await post({cmd:'inventory'});await post({cmd:'snapshotdataset',zdataset:target,expected_guid:model.datasets[target].guid,csrf_token:'wrong'});assert.equal((await post({cmd:'conversionjobs',listed:'0'})).jobs.length,0);
  const bad=await post({cmd:'snapshotdataset',zdataset:target,expected_guid:'999999'});assert.equal(bad.job?.state,'failed');assert.match(bad.job.error,/identity|GUID|refresh/i);
- const restore=await post({cmd:'restoresnapshotfiles',preview_id:'invalid',preview_token:'PRIVATE-TOKEN',confirmed:'1'});assert.equal(restore.job?.state,'failed');assert.equal(restore.job.command,'restoresnapshotfiles');assert.doesNotMatch(JSON.stringify(restore.job),/PRIVATE-TOKEN/);assert.equal((await post({cmd:'conversionjobs'})).jobs.length,2);
+ const restore=await post({cmd:'restoresnapshotfiles',preview_id:'invalid',preview_token:'PRIVATE-TOKEN',confirmed:'1'});assert.equal(restore.job?.state,'failed');assert.equal(restore.job.command,'restoresnapshotfiles');assert.doesNotMatch(JSON.stringify(restore.job),/PRIVATE-TOKEN/);assert.equal((await post({cmd:'conversionjobs',listed:'0'})).jobs.length,2);
 }));
 
 test('signed restore refusal retains reviewed context when the destination becomes readonly',async()=>fixture(async({s,post,model,target})=>{
@@ -36,7 +36,7 @@ test('signed restore refusal retains reviewed context when the destination becom
  const answer=await post({cmd:'restoresnapshotfiles',preview_id:preview.id,preview_token:preview.token,confirmed:'1'});
  assert.equal(answer.job?.schema,7);assert.equal(answer.job.type,'operation');assert.equal(answer.job.state,'failed');assert.equal(answer.job.stage,'preflight_rejected');
  assert.equal(answer.job.source,snapshot);assert.equal(answer.job.snapshot,snapshot);assert.equal(answer.job.dataset,target);assert.equal(answer.job.target,'/mnt/cache/__mock__/project/restored');assert.match(answer.job.error,/read.only/i);
- const listed=(await post({cmd:'conversionjobs'})).jobs.find(j=>j.id===answer.job.id);assert.equal(listed.diagnostics.issue,null);assert.deepEqual(listed.actions,{cancel:false,resume:false,download:false,inspect:true});assert.doesNotMatch(JSON.stringify(listed),new RegExp(preview.token));
+ const listed=(await post({cmd:'conversionjobs',listed:'0'})).jobs.find(j=>j.id===answer.job.id);assert.equal(listed.diagnostics.issue,null);assert.deepEqual(listed.actions,{cancel:false,resume:false,download:false,inspect:true});assert.doesNotMatch(JSON.stringify(listed),new RegExp(preview.token));
  const before=s.readModel();await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';zfsmObserveRequestJob('${answer.job.id}');`});assert.deepEqual(s.readModel(),before);
 }));
 
@@ -66,7 +66,7 @@ test('operation categories include refusal journals while preserving native type
 
 test('existing queued directory deletion keeps its original Job without a duplicate request journal',async()=>fixture(async({post,model})=>{
  const f=model.directory_fixtures,i=f.metadata[f.paths.delete].identity;
- const a=await post({cmd:'deletedirectory',directory:f.paths.delete,force:'1',expected_guid:model.datasets[f.owner].guid,'directory_identity[dev]':i.dev,'directory_identity[ino]':i.ino});assert.equal(a.job?.schema,6);assert.equal(a.job.state,'queued');assert.equal((await post({cmd:'conversionjobs'})).jobs.length,1);
+ const a=await post({cmd:'deletedirectory',directory:f.paths.delete,force:'1',expected_guid:model.datasets[f.owner].guid,'directory_identity[dev]':i.dev,'directory_identity[ino]':i.ino});assert.equal(a.job?.schema,6);assert.equal(a.job.state,'queued');assert.equal((await post({cmd:'conversionjobs',listed:'0'})).jobs.length,1);
 }));
 
 test('an unavailable history record stops a mutation before it runs and never reports unrecorded success',async()=>fixture(async({s,post,model,target})=>{
@@ -90,24 +90,24 @@ test('request operation coverage is explicit and includes Job controls and exclu
  for(const c of ['inventory','snapshotfiles','previewrestore','previewdestroy','protectionrunpreview','refresh'])assert.equal(commands.includes(c),false,c);
 }));
 test('Jobs API preserves completed transfer 100 percent over last transient 99 percent',async()=>fixture(async({s,post})=>{
- const r=await s.run({code:"<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';$j=zfsmRequestJobBegin('downloadsnapshotfile',['snapshot'=>'cache/__mock__/project@base']);zfsmRequestJobProgress(6,6);zfsmRequestJobFinish('completed','Server transfer finished');echo $j['id'];"});const job=(await post({cmd:'conversionjobs'})).jobs.find(j=>j.id===r.text);assert.equal(job.state,'completed');assert.equal(job.progress.percent,100);
+ const r=await s.run({code:"<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';$j=zfsmRequestJobBegin('downloadsnapshotfile',['snapshot'=>'cache/__mock__/project@base']);zfsmRequestJobProgress(6,6);zfsmRequestJobFinish('completed','Server transfer finished');echo $j['id'];"});const job=(await post({cmd:'conversionjobs',listed:'0'})).jobs.find(j=>j.id===r.text);assert.equal(job.state,'completed');assert.equal(job.progress.percent,100);
 }));
 
 test('Jobs Restore filter includes request refusals while Other operations remains compatible',async()=>fixture(async({post})=>{
  const refused=await post({cmd:'restoresnapshotfiles',preview_id:'invalid',preview_token:'NEVER-PERSIST',confirmed:'1'});assert.equal(refused.job.state,'failed');
- const restore=await post({cmd:'conversionjobs',filter:'restore',sort:'newest',view:'all'});assert.ok(restore.jobs.some(j=>j.id===refused.job.id),'A refused restore must remain reachable in Restore, including historical schema7 journals');
- const operations=await post({cmd:'conversionjobs',filter:'operation',sort:'newest',view:'all'});assert.ok(operations.jobs.some(j=>j.id===refused.job.id));
- const deletion=await post({cmd:'conversionjobs',filter:'deletion',sort:'newest',view:'all'});assert.ok(!deletion.jobs.some(j=>j.id===refused.job.id));
+ const restore=await post({cmd:'conversionjobs',listed:'0',filter:'restore',sort:'newest',view:'all'});assert.ok(restore.jobs.some(j=>j.id===refused.job.id),'A refused restore must remain reachable in Restore, including historical schema7 journals');
+ const operations=await post({cmd:'conversionjobs',listed:'0',filter:'operation',sort:'newest',view:'all'});assert.ok(operations.jobs.some(j=>j.id===refused.job.id));
+ const deletion=await post({cmd:'conversionjobs',listed:'0',filter:'deletion',sort:'newest',view:'all'});assert.ok(!deletion.jobs.some(j=>j.id===refused.job.id));
 }));
 
 for(const command of ['cancelconversion','resumeconversion','cancelrestore','protectioncancel','activityvisibility'])test(command+' refusal is recorded in Jobs without touching data',async()=>fixture(async({s,post})=>{
  const before=s.readModel(),answer=await post({cmd:command});assert.ok(Object.keys(answer.failed).length);
- const jobs=(await post({cmd:'conversionjobs',filter:'all'})).jobs;assert.equal(jobs.length,1);assert.equal(jobs[0].command,command);assert.equal(jobs[0].state,'failed');assert.deepEqual(s.readModel().datasets,before.datasets);
+ const jobs=(await post({cmd:'conversionjobs',listed:'0',filter:'all'})).jobs;assert.equal(jobs.length,1);assert.equal(jobs[0].command,command);assert.equal(jobs[0].state,'failed');assert.deepEqual(s.readModel().datasets,before.datasets);
 }));
 
 test('a failed snapshot has its own Jobs filter',async()=>fixture(async({post,model,target})=>{
  const answer=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:'999999'});assert.equal(answer.job?.state,'failed');
- const page=await post({cmd:'conversionjobs',filter:'snapshot'});assert.equal(page.jobs?.length,1,JSON.stringify(page));assert.equal(page.jobs[0].command,'snapshotdataset');
+ const page=await post({cmd:'conversionjobs',listed:'0',filter:'snapshot'});assert.equal(page.jobs?.length,1,JSON.stringify(page));assert.equal(page.jobs[0].command,'snapshotdataset');
 }));
 
 test('signed definition review gives Jobs its policy name, dataset and remove action; bad signatures do not',async()=>fixture(async({s})=>{
@@ -122,11 +122,17 @@ test('every administrative mutation is covered by a Jobs journal registry entry'
 }));
 
 test('wrong-type control parent is refused with a valid journal, not an invalid history record',async()=>fixture(async({s,post})=>{
- const r=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';$definition=['id'=>'abc','owner'=>'managed','dataset'=>'cache/__mock__/project','source_guid'=>'123'];$j=zfsmNewProtectionJob('policy',$definition);zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);echo $j['id'];`});assert.equal(r.errors,'');const answer=await post({cmd:'cancelconversion',job_id:r.text});assert.ok(Object.keys(answer.failed).length);const jobs=(await post({cmd:'conversionjobs',filter:'all'})).jobs;const observation=jobs.find(j=>j.command==='cancelconversion');assert.ok(observation);assert.equal(observation.diagnostics.issue,null);assert.equal(observation.state,'failed');assert.equal(observation.parent_job_id,r.text);
+ const r=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';$definition=['id'=>'abc','owner'=>'managed','dataset'=>'cache/__mock__/project','source_guid'=>'123'];$j=zfsmNewProtectionJob('policy',$definition);zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);echo $j['id'];`});assert.equal(r.errors,'');const answer=await post({cmd:'cancelconversion',job_id:r.text});assert.ok(Object.keys(answer.failed).length);const jobs=(await post({cmd:'conversionjobs',listed:'0',filter:'all'})).jobs;const observation=jobs.find(j=>j.command==='cancelconversion');assert.ok(observation);assert.equal(observation.diagnostics.issue,null);assert.equal(observation.state,'failed');assert.equal(observation.parent_job_id,r.text);
 }));
 
 // ARCH-005: request state lives in one explicit store with a fixed set of keys.
 test('request context accepts only its known keys and resets in one call',async()=>fixture(async({s})=>{
  const r=await s.run({code:"<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';zfsmRequestSet('request_audit','a1');$before=zfsmRequestGet('request_audit');try{zfsmRequestSet('anything_else',1);$unknown=null;}catch(LogicException $e){$unknown=$e->getMessage();}zfsmRequestReset();echo json_encode(['before'=>$before,'after'=>zfsmRequestGet('request_audit','none'),'unknown'=>$unknown,'leftover_globals'=>array_values(array_filter(array_keys($GLOBALS),fn($k)=>in_array($k,['zfsm_job_request_command','zfsm_request_published_job','zfsm_job_request_audit','zfsm_job_failure_context','zfsm_request_audit','zfsm_conversion_journal_started','zfsm_deletion_journal_started','zfsm_request_restore_context'],true)))]);"});
  const out=JSON.parse(r.text);assert.equal(out.before,'a1');assert.equal(out.after,'none');assert.match(out.unknown,/Unknown request context key anything_else/);assert.deepEqual(out.leftover_globals,[]);
+}));
+
+test('the Jobs listing shows only functional work; quick-action refusals stay internal',async()=>fixture(async({post,model,target})=>{
+ const bad=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:'999999'});assert.equal(bad.job?.state,'failed');
+ assert.equal((await post({cmd:'conversionjobs'})).jobs.length,0,'a failed quick action is not listed in Jobs');
+ assert.deepEqual((await post({cmd:'conversionjobs',listed:'0'})).jobs.map(j=>j.id),[bad.job.id],'the journal itself exists for diagnostics');
 }));

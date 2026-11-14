@@ -218,11 +218,14 @@ try {
 			zfsmReturnAnswer($answer);
 			break;
 		case 'deletefinishedjobs':
-			zfsmReturnAnswer(zfsmJobDeleteFinished());
+			foreach(['filter','type','everything']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid delete request');
+			// By default only jobs matching the filters shown in Jobs, on every page; "everything" ignores them.
+			$only=null;if(($_POST['everything']??'')!=='1'){$match=zfsmJobPage(1,1,array_intersect_key($_POST,array_flip(['filter','type']))+['view'=>'all','ids_only'=>true,'listed'=>true]);$only=array_fill_keys($match['ids'],true);}
+			zfsmReturnAnswer(zfsmJobDeleteFinished($only));
 			break;
 		case 'conversionjobs':
 			foreach(['page','page_size','filter','type','sort','view']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');
-			$job_options=array_intersect_key($_POST,array_flip(['filter','type','sort','view']));
+			$job_options=array_intersect_key($_POST,array_flip(['filter','type','sort','view']))+['listed'=>($_POST['listed']??'1')!=='0'];
 			echo json_encode(zfsmJobPage(zfsmPostString('page','1'),zfsmPostString('page_size','25'),$job_options?:null)+['worker_running'=>zfsmWorkerRunning(),'history'=>zfsmJobHistoryStatus(),'operation'=>zfsmOperationLockStatus()],JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 		case 'auditlog':

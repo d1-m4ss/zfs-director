@@ -1,3 +1,8 @@
+### 2026.11.14.3
+Jobs lists only functional work: directory conversion, file restore and ZIP preparation, dataset or directory deletion, requests refused before they started, replication runs, and manual snapshot-policy runs. Quick actions, scrub, downloads and scheduled snapshot checks no longer appear, and the Clean job history entry is gone. Finished jobs are deleted after 7 days by default; Settings has a new Keep finished jobs for option (1 day, 7 days, 30 days or Always). One Delete finished jobs button and an Everything checkbox replace the three clear and restore buttons; the button deletes at once, on every page, whatever matches the filters. The Jobs badge counts only running jobs. The long storage explanation is now one short line.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.14.2
 A scheduled Sanoid or Syncoid run that is refused before it starts (for example, Sanoid is missing) is now recorded once instead of every minute; repeats only raise a counter, and old duplicates are folded away by the hourly cleanup. Jobs has a new Delete finished jobs button that removes the records of all finished jobs; running jobs, jobs that hold a snapshot, a ZIP or recovery data, and the latest result of each policy and replication are kept. Clear finished on this page now also hides failed jobs. The Administrative History screen is gone: quick actions stay in the audit log, and errors are in Jobs.
 
