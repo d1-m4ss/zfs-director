@@ -240,10 +240,30 @@ function zfsmCreateWorkspace(options) {
         const icon=node('span',{ok:'✓',warning:'⚠',error:'✕',unknown:'?'}[severity],'zfsm-health-icon');icon.setAttribute('aria-hidden','true');badge.append(icon,node('span',label+(diagnostic?.stale?' · stale':'')));
         badge.title=(diagnostic?.reasons||[]).join(' · ')||({ok:'Verified ZFS pool diagnostics.',unknown:'Pool diagnostics are not currently verified.'}[severity]||'Review Pool & Scrub diagnostics.');return badge;
     }
+    // UX-013: one answer to "is everything OK": pool health from verified diagnostics (which
+    // also carry space and replication-age alerts) and Jobs that need attention, with links.
+    function dashboardSummary(){
+        const box=node('section',undefined,'zfsm-dashboard-summary'),items=node('ul');box.setAttribute('aria-label','Status summary');
+        const add=(severity,text,label,go)=>{const li=node('li',undefined,'zfsm-summary-item');li.dataset.severity=severity;const icon=node('span',{ok:'✓',warning:'⚠',error:'✕',unknown:'?',info:'•'}[severity],'zfsm-health-icon');icon.setAttribute('aria-hidden','true');li.append(icon,node('span',text));if(go)li.append(button(label,go));items.append(li);};
+        const pools=Object.keys(data?.pools||{}),checked=[];let problems=0;
+        for(const name of pools){const d=diagnostics.get(name),severity=d?.stale&&severityFor(name)!=='error'?'unknown':severityFor(name);
+            if(severity==='ok')checked.push(name);else if(severity==='unknown')continue;else{problems++;add(severity,'Pool '+name+': '+((d?.reasons||[])[0]||(severity==='error'?'Error':'Warning')),'Open pool',()=>{pool=name;selection=name;selectionIdentity=selectionFingerprint();navigate('datasets');});}}
+        const attention=Number(jobs.counts?.needs_attention),active=Number(jobs.counts?.active);
+        if(Number.isFinite(attention)&&attention>0){problems++;add('warning',attention+(attention===1?' job needs':' jobs need')+' attention','Open Jobs',()=>{jobsFilter='needs_attention';jobsType='all';jobsPage=1;navigate('jobs');});}
+        if(!problems){
+            const unknown=pools.length-checked.length;
+            if(!data||!pools.length)add('unknown','No current inventory. Refresh to check pools.');
+            else if(unknown)add('unknown',checked.length+' of '+pools.length+' pools checked; the rest are not verified yet.');
+            else add('ok','All '+pools.length+(pools.length===1?' pool is':' pools are')+' healthy and no job needs attention.');
+        }
+        if(Number.isFinite(active)&&active>0)add('info',active+' background '+(active===1?'job':'jobs')+' running','Open Jobs',()=>{jobsFilter='active';jobsType='all';jobsPage=1;navigate('jobs');});
+        box.append(node('h3','Status'),items);box.dataset.state=problems?'attention':'ok';return box;
+    }
     function renderDashboard(host){
         const head=pageHeading(host,'Overview','Pools, datasets and background operations.'),open=button('Open datasets',()=>navigate('datasets'),{class:'zfsm-primary'});head.append(open);
         const metrics=node('div',undefined,'zfsm-dashboard-metrics'),datasetCount=data?Object.keys(data.datasets||{}).reduce((n,name)=>n+flatten(name,false).filter(row=>row.kind==='dataset').length,0):'Unknown';
         for(const [label,value]of [['Imported pools',data?Object.keys(data.pools||{}).length:'Unknown'],['Datasets',datasetCount],['Background tasks',backgroundTaskStatus()]]){const metric=node('section',undefined,'zfsm-dashboard-metric');metric.append(node('span',label),node('strong',value));if(label==='Background tasks')metric.append(node('small','Prepares ZIP downloads, restores files and converts directories.','zfsm-muted'));metrics.append(metric);}host.append(metrics);
+        host.append(dashboardSummary());
         const list=node('section',undefined,'zfsm-dashboard-pools');list.append(node('h3','Storage pools'));if(!data)list.append(node('p','No current inventory. Refresh to inspect actual ZFS state.','zfsm-muted'));else for(const [name,p]of Object.entries(data.pools||{})){const row=node('div',undefined,'zfsm-dashboard-pool');row.append(button(name,()=>{pool=name;selection=name;selectionIdentity=selectionFingerprint();navigate('datasets');}),overviewPoolHealth(name),node('span',p.Health||'UNKNOWN'),node('span',bytes(p.Used)+' / '+bytes(p.Size)));list.append(row);const why=reasonBlock(name,'zfsm-dashboard-reasons',3);if(why)list.append(why);}host.append(list);if(data&&!inventoryFresh)host.append(node('p','Inventory is stale. Refresh before relying on these values.','zfsm-notice'));
     }
     function renderBrowser(){

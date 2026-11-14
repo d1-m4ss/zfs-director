@@ -582,3 +582,15 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
 #zfsm-workspace .zfsm-all-properties {margin-top:14px;border:1px solid var(--zfsm-border);border-radius:9px;background:var(--zfsm-panel);padding:10px 12px}
 #zfsm-workspace .zfsm-all-properties>summary {cursor:pointer;color:var(--zfsm-accent-label);font-weight:600}
 #zfsm-workspace .zfsm-all-properties[open]>summary {margin-bottom:10px}
+
+/* UX-013: Overview status summary */
+#zfsm-workspace .zfsm-dashboard-summary {border:1px solid var(--zfsm-border);border-radius:9px;background:var(--zfsm-panel);padding:12px 14px;margin:0 0 14px}
+#zfsm-workspace .zfsm-dashboard-summary h3 {margin:0 0 8px;font-size:13px;color:var(--zfsm-muted)}
+#zfsm-workspace .zfsm-dashboard-summary ul {list-style:none;margin:0;padding:0;display:grid;gap:6px}
+#zfsm-workspace .zfsm-summary-item {display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;color:var(--zfsm-text)}
+#zfsm-workspace .zfsm-summary-item button {margin-left:auto;min-height:28px;padding:2px 10px}
+#zfsm-workspace .zfsm-summary-item[data-severity=ok] .zfsm-health-icon {color:var(--zfsm-good)}
+#zfsm-workspace .zfsm-summary-item[data-severity=warning] .zfsm-health-icon {color:var(--zfsm-warning)}
+#zfsm-workspace .zfsm-summary-item[data-severity=error] .zfsm-health-icon {color:var(--zfsm-error)}
+#zfsm-workspace .zfsm-summary-item[data-severity=unknown] .zfsm-health-icon {color:var(--zfsm-muted)}
+#zfsm-workspace .zfsm-summary-item[data-severity=info] .zfsm-health-icon {color:var(--zfsm-accent)}

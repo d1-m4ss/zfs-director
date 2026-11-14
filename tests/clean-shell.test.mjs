@@ -86,3 +86,18 @@ test('a running operation shows one bar on every screen, opens its job and block
 test('no bar when the operation lock is free',async()=>{
  const t=await mount();try{t.app.refresh();await settle();await t.poll();assert.equal(t.root.querySelector('.zfsm-operation-bar').hidden,true);}finally{t.close();}
 });
+// UX-013: Overview answers "is everything OK" with links to what needs a look.
+test('Overview status summary: healthy, then pool warning and jobs needing attention with links',async()=>{
+ let t=await mount({diagnostic:poolDiagnostic('ok'),counts:{active:0,needs_attention:0,completed:1}});try{t.root.querySelector('[data-section=overview]').click();t.app.refresh();await settle();await t.poll();
+  const box=t.root.querySelector('.zfsm-dashboard-summary');assert.ok(box);assert.equal(box.dataset.state,'ok');assert.match(box.textContent,/All 1 pool is healthy and no job needs attention\./);
+ }finally{t.close();}
+ t=await mount({diagnostic:poolDiagnostic('warning'),counts:{active:1,needs_attention:2,completed:0}});try{t.root.querySelector('[data-section=overview]').click();t.app.refresh();await settle();await t.poll();
+  const box=t.root.querySelector('.zfsm-dashboard-summary');assert.equal(box.dataset.state,'attention');
+  const lines=[...box.querySelectorAll('li')].map(li=>li.dataset.severity+':'+li.textContent);
+  assert.ok(lines.some(l=>/^warning:⚠Pool cache: Capacity threshold reachedOpen pool$/.test(l)),lines.join(' | '));
+  assert.ok(lines.some(l=>/^warning:⚠2 jobs need attentionOpen Jobs$/.test(l)),lines.join(' | '));
+  assert.ok(lines.some(l=>/^info:•1 background job runningOpen Jobs$/.test(l)),lines.join(' | '));
+  [...box.querySelectorAll('button')].find(b=>b.textContent==='Open Jobs').click();await settle();
+  assert.equal(t.root.querySelector('[aria-label="Job status"]').value,'needs_attention','the link opens Jobs filtered to attention');
+ }finally{t.close();}
+});
