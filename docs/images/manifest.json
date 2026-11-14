@@ -32,7 +32,7 @@
   "screenshots": [
     {
       "file": "overview.png",
-      "sha256": "2f2a47248237ff95b01bb945be55f838d98a953fcadf9a02d2e0061a5e353efe",
+      "sha256": "8265e945ca86bca38849c693b45b8dfb1bec83d329aafcab53c5650eb95c2097",
       "bytes": 74575,
       "viewport": {
         "width": 1440,
@@ -41,7 +41,7 @@
     },
     {
       "file": "datasets.png",
-      "sha256": "cc5569470221f35cb74558f5b185fe1a52ea579cb962aabd973a59bae4da8055",
+      "sha256": "6f8b98b360c47b9c113fa95702b2b578fca4f2398622f2e2dc38fd6fb8be02f8",
       "bytes": 207995,
       "viewport": {
         "width": 1440,
@@ -50,7 +50,7 @@
     },
     {
       "file": "snapshots.png",
-      "sha256": "102f845790fe4c7f592acbb38193d4b7d87603f7a7fc064a6f7fd91e44351913",
+      "sha256": "29f736bfe11baecb683d72faa91c545bdcc0f1a1b7a2ff42dfa53f95379f7aca",
       "bytes": 154821,
       "viewport": {
         "width": 1440,

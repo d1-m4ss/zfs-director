@@ -8,7 +8,7 @@ Manage ZFS in Unraid, browse snapshots in a **Snapshot File Manager**, automate 
 - **[Sanoid integration](#sanoid-snapshot-policies):** choose snapshot creation times, retention and protected removal of old snapshots; review External and Managed policies.
 - **[Syncoid integration](#syncoid-replication):** create local or SSH replication jobs through Source → Destination → Schedule → Review, with progress and verified results in Jobs.
 
-**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.14.2/ZFS-Director-2026.11.14.2-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.14.2/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
+**[Download the Unraid installation ZIP](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.14.3/ZFS-Director-2026.11.14.3-Unraid.zip)** · [SHA256SUMS](https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.14.3/SHA256SUMS) · [Installation and rollback](docs/INSTALLATION.md)
 
 Every release passes the automated suite (`npm run test:all`: unit and PHP tests, Chromium GUI and integration checks). Installation, upgrades, ZFS operations and the GUI were verified on a physical Unraid 7.3.3 server with OpenZFS 2.4.4 for RC1 (2026-10-22). See [testing](docs/TESTING.md) for what is and is not covered.
 
@@ -45,7 +45,7 @@ The installer downloads and verifies the ready-made package, creates its own sto
 
 New versions appear in **Plugins → Check for Updates** and in Community Applications. Installed from an older release URL (`…/releases/download/…/zfs-director.plg`)? Reinstall once from the URL above with **Force Install** so update checks follow new releases.
 
-The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.11.14.2) are also available. See [installation, upgrades and rollback](docs/INSTALLATION.md).
+The [ZIP and checksums](https://github.com/d1-m4ss/zfs-director/releases/tag/2026.11.14.3) are also available. See [installation, upgrades and rollback](docs/INSTALLATION.md).
 
 ## Snapshot File Manager
 
