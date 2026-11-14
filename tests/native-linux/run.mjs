@@ -5,7 +5,7 @@ const platform=process.env.ZFSM_NATIVE_PLATFORM||(process.arch==='arm64'?'linux/
 const image=process.env.ZFSM_NATIVE_IMAGE||(platform==='linux/arm64'?'zfsm-native-tests:arm64':'zfsm-native-tests:local');
 const name='zfsm-native-'+process.pid;
 // Copy through docker cp. Never expose host paths or the Docker socket to tests.
-execFileSync('docker',['create','--name',name,'--platform',platform,'--network','none','--cap-drop','ALL','--cap-add','CHOWN','--cap-add','DAC_OVERRIDE','--cap-add','FOWNER','--cap-add','SETUID','--cap-add','SETGID','--cap-add','SYS_ADMIN','--tmpfs','/test:rw,exec,nosuid,size=256m','--tmpfs','/limited:rw,nosuid,size=4m','--tmpfs','/readonly:ro,nosuid,size=1m',image,'python3','/stand/tests/native-linux/run.py']);
+execFileSync('docker',['create','--name',name,'--platform',platform,'--network','none','--cap-drop','ALL','--cap-add','CHOWN','--cap-add','DAC_OVERRIDE','--cap-add','FOWNER','--cap-add','SETUID','--cap-add','SETGID','--cap-add','SYS_ADMIN','--cap-add','SYS_CHROOT','--tmpfs','/test:rw,exec,nosuid,size=256m','--tmpfs','/limited:rw,nosuid,size=4m','--tmpfs','/readonly:ro,nosuid,size=1m',image,'python3','/stand/tests/native-linux/run.py']);
 try {
  execFileSync('docker',['cp','src',name+':/stand/src']);execFileSync('docker',['cp','tests',name+':/stand/tests']);
  const result=spawnSync('docker',['start','-a',name],{encoding:'utf8',maxBuffer:16*1024*1024});

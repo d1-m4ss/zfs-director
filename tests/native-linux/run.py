@@ -200,6 +200,13 @@ def audit_cases():
     SUBCHECKS['audit']=[{'name':line[5:],'status':'PASS'} for line in p.stdout.decode().splitlines() if line.startswith('PASS ')]
     assert len(SUBCHECKS['audit'])==6,p.stdout
 
+def settings_lock():
+    # Writes /usr/local/emhttp, /boot and /var/lock inside the container: run it last.
+    p=subprocess.run(['python3','/stand/tests/native-linux/settings-lock.py'],capture_output=True,timeout=90)
+    assert p.returncode==0,p.stdout.decode()+p.stderr.decode()
+    result=json.loads(p.stdout.decode().strip().splitlines()[-1]);assert result['status']=='PASS',result
+    SUBCHECKS['settings-lock']=result
+
 def main():
     os.chmod('/test',0o755)  # Private synthetic ancestor; never a host path.
     assert not shutil.which('zfs') and not shutil.which('zpool'),'ZFS must not be installed'
@@ -225,5 +232,6 @@ def main():
     test('protection worker defers config lock contention without losing its queued occurrence',protection_lock)
     test('operation bar reads the real lock owner without taking the lock',operation_status)
     test('native process input failures and duplex pipe backpressure',process_cases)
+    test('saveconfig uses its own lock while an operation runs, real endpoint and flock',settings_lock)
     finish()
 if __name__=='__main__':main()
