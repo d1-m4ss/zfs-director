@@ -11,7 +11,7 @@ async function fixture({type='conversion',interval=0,initial=true,holdInitial=fa
  const dom=new JSDOM('<main id="zfsm-workspace"></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main'),timers=new Map(),calls=[];let sequence=0,failObservation=false,holdObservation=holdInitial,releaseObservation;
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};w.zfsmFormatDateTime=String;w.setTimeout=(fn,ms)=>{timers.set(++sequence,{fn,ms});return sequence;};w.clearTimeout=n=>timers.delete(n);
  installDialogs(w);
- for(const name of ['ZFSMInventory','ZFSMForms','ZFSMSnapshots','ZFSMExplorer','ZFSMPoolView','ZFSMOverview','ZFSMHistory','ZFSMWorkspace'])w.eval(readFileSync('src/frontend/'+name+'.js','utf8'));
+ for(const name of ['ZFSMInventory','ZFSMForms','ZFSMSnapshots','ZFSMExplorer','ZFSMPoolView','ZFSMOverview','ZFSMWorkspace'])w.eval(readFileSync('src/frontend/'+name+'.js','utf8'));
  const owner=ds('cache/a','2'),tree=ds('cache','1');owner.directories=[source];owner._directory_identities={[source]:{dev:'1',ino:'100'}};tree.child[owner.name]=owner;
  const data={pools:{cache:{Health:'ONLINE',Size:1000,Used:100,Snapshots:0}},datasets:{cache:tree},devices:{cache:''},errors:{}};
  const job={id,type,state:'running',stage:'copying',source,actions:{},progress:{percent:25}},jobs=initial?[job]:[];

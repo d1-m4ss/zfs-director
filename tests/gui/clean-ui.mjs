@@ -11,7 +11,7 @@ const {chromium}=require(process.env.ZFSM_PLAYWRIGHT_MODULE||'playwright');
 const phase=process.env.ZFSM_PHASE||'after',out=resolve(process.env.ZFSM_OUTPUT||'evidence/clean-ui-2026-10-19',phase);
 await mkdir(out,{recursive:true});
 const source=process.env.ZFSM_SOURCE||'src/frontend';
-const names=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMProtection.js','ZFSMWorkspace.js','ZFSMWorkspace.css','ZFSMProtection.css'];
+const names=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMProtection.js','ZFSMWorkspace.js','ZFSMWorkspace.css','ZFSMProtection.css'];
 const contents=await Promise.all(names.map(name=>readFile(source+'/'+name,'utf8')));
 const hashes=Object.fromEntries(names.map((name,i)=>[name,createHash('sha256').update(contents[i]).digest('hex')]));
 // The design prototype is only the visual reference for ZFSM_PHASE=reference and is not part of the repository.

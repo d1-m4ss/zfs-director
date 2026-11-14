@@ -19,7 +19,7 @@ test('acceptance security: File Manager pins the GUID from the selected snapshot
     w.scrollTo = () => {};
     w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
     w.zfsmFormatDateTime = String;
-    for (const file of ['ZFSMInventory.js', 'ZFSMForms.js', 'ZFSMSnapshots.js', 'ZFSMExplorer.js', 'ZFSMPoolView.js', 'ZFSMOverview.js', 'ZFSMHistory.js', 'ZFSMWorkspace.js']) w.eval(readFileSync('src/frontend/' + file, 'utf8'));
+    for (const file of ['ZFSMInventory.js', 'ZFSMForms.js', 'ZFSMSnapshots.js', 'ZFSMExplorer.js', 'ZFSMPoolView.js', 'ZFSMOverview.js', 'ZFSMWorkspace.js']) w.eval(readFileSync('src/frontend/' + file, 'utf8'));
     const snapshot = { name: 'cache/data@selected', guid: '101', creation: 1700000000 };
     const child = { name: 'cache/data', guid: '2', type: 'filesystem', encryption: 'off', keystatus: 'none', child: {}, directories: [], snapshots: [snapshot] };
     const data = { pools: { cache: { Health: 'ONLINE', Size: 1000, Used: 10, Snapshots: 1 } }, datasets: { cache: { name: 'cache', guid: '1', type: 'filesystem', child: { 'cache/data': child }, directories: [], snapshots: [] } }, devices: { cache: '' }, errors: {} };

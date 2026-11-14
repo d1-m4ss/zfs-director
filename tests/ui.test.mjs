@@ -68,7 +68,7 @@ async function workspace(initial = diagnostic()) {
     let sequence=0,current=initial,failRead=false,resolveStart,rejectStart;
     w.setTimeout=(fn,ms)=>{timers.set(++sequence,{fn,ms});return sequence;};w.clearTimeout=id=>timers.delete(id);
     w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
-    for (const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMWorkspace.js']) w.eval(readFileSync('src/frontend/'+file,'utf8'));
+    for (const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMWorkspace.js']) w.eval(readFileSync('src/frontend/'+file,'utf8'));
     const request=async fields=>{
         calls.push({...fields});
         if(fields.cmd==='conversionjobs')return {jobs:[],worker_running:false};

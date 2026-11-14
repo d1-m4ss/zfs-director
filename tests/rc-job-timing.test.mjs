@@ -28,7 +28,7 @@ test('job runners record actual attempt start/end and leave crash time unknown',
 async function timingView(jobs,worker=true){
  const dom=new JSDOM('<main></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main');
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};w.zfsmFormatDateTime=x=>String(x);w.Date.now=()=>Date.parse('2026-10-16T12:01:00Z');
- for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
+ for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
  const app=w.zfsmCreateWorkspace({root,config:{refresh_interval:0},request:async fields=>{if(fields.cmd==='conversionjobs')return {jobs,worker_running:worker};if(fields.cmd==='inventory')return {op:'getAll',data:{pools:{},datasets:{},devices:{},errors:{}}};throw Error('unexpected '+fields.cmd);}});
  for(let n=0;n<50;n++)await Promise.resolve();[...root.querySelectorAll('button')].find(b=>/^Jobs/.test(b.textContent)).click();for(let n=0;n<50;n++)await Promise.resolve();
  return {root,close(){app.stop();w.close();}};

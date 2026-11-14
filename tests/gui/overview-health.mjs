@@ -4,7 +4,7 @@ import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const out=process.env.ZFSM_OUTPUT||'evidence/plain-policy-2026-10-19/health';await mkdir(out,{recursive:true});
-const names=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMProtection.js','ZFSMWorkspace.js','ZFSMWorkspace.css','ZFSMProtection.css'];
+const names=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMProtection.js','ZFSMWorkspace.js','ZFSMWorkspace.css','ZFSMProtection.css'];
 const sources=await Promise.all(names.map(n=>readFile('src/frontend/'+n,'utf8'))),hashes=Object.fromEntries(names.map((n,i)=>[n,createHash('sha256').update(sources[i]).digest('hex')]));
 const browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true}),results=[],errors=[];
 try{

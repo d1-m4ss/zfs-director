@@ -53,7 +53,7 @@ try{
   await fresh(width,width<=768);await capture(width+'-overview');
   for(const tab of ['Properties','Snapshots','Actions']){await page.getByRole('button',{name:tab,exact:true}).click();if(tab==='Properties')await page.locator('.zfsm-form-group').first().waitFor();await capture(width+'-'+tab.toLowerCase());}
   await page.getByRole('button',{name:'Snapshots',exact:true}).click();await page.locator('[data-file-manager="'+snap+'"]').click();await page.getByRole('dialog',{name:'Snapshot File Manager',exact:true}).waitFor();await page.getByRole('checkbox',{name:'Select notes.txt',exact:true}).check();await capture(width+'-file-manager');await page.getByRole('button',{name:'Close File Manager',exact:true}).click();
-  for(const tab of ['Jobs','Administrative History','Settings','Pool & Scrub']){await page.getByRole('button',{name:tab==='Jobs'?/^Jobs/:tab,exact:tab!=='Jobs'}).click();if(tab==='Administrative History')await page.locator('.zfsm-history-toolbar').waitFor();await capture(width+'-'+tab.toLowerCase().replaceAll(/[^a-z]+/g,'-'));}
+  for(const tab of ['Jobs','Settings','Pool & Scrub']){await page.getByRole('button',{name:tab==='Jobs'?/^Jobs/:tab,exact:tab!=='Jobs'}).click();await capture(width+'-'+tab.toLowerCase().replaceAll(/[^a-z]+/g,'-'));}
   assert.equal(mock.model.calls.filter(c=>c.cmd==='scrubpool').length,0,'Visual review cannot launch scrub');
  });
  for(const severity of ['warning','error','unknown'])await test('pool '+severity+' is visible and never Healthy',async()=>{

@@ -9,7 +9,7 @@ function zfsmDeletionError($text) {
         'preview_changed'=>['/preview|dependencies changed|holds|dry run/i','The deletion preview expired, changed or is blocked. Load a fresh preview and review its objects and dependencies.'],
         'protected'=>['/protected|service directory|pool root/i','This target contains protected data. Inspect its recovery or protection information; ordinary deletion is refused.'],
     ] as $code=>[$pattern,$message]) if (preg_match($pattern,$text)) return [$code,$message.($code==='dependencies'&&preg_match('/^Blocking: ([^\n]{1,1200})$/m',$text,$found)?' Blocking: '.$found[1].'.':'').($code==='lock_busy'&&preg_match('/^(Held by|Earlier request): ([A-Za-z0-9_.+ ()-]{1,120})$/m',$text,$found)?' '.$found[1].': '.$found[2].'.':'')];
-    return ['preflight_failed','Deletion was not started. Review the target, permissions and Administrative History, then submit a fresh request.'];
+    return ['preflight_failed','Deletion was not started. Review the target and permissions, then submit a fresh request.'];
 }
 // Read-only check behind the Delete directory dialog: the same reasons a
 // submission would be refused for, each with the place to resolve it.

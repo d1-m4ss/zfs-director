@@ -237,7 +237,7 @@ test('snapshotdataset writes no job journal and 2 audit appends', async () => {
         assert.deepEqual(a.failed, []);
         assert.equal(a.job, undefined);
         const counts = readCounts(s.php);
-        // A synchronous action writes only its two Administrative History records; it gets a
+        // A synchronous action writes only its two audit log records; it gets a
         // Jobs journal only when it fails (ARCH-001). It used to cost 9 journal writes.
         assert.deepEqual(counts, {jobs: 0, audit: 2, store: 0});
     } finally { await s.close(); }

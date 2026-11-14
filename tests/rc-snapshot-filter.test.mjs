@@ -15,7 +15,7 @@ async function setup(){
  const dom=new JSDOM('<main></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main');
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};w.zfsmFormatDateTime=x=>String(x);
  installDialogs(w);
- for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
+ for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
  const first=dataset('cache/first','2',51),second=dataset('cache/second','3'),parent=dataset('cache','1',0);first.directories=['/mnt/cache/first/ordinary'];parent.child={first,second};
  const data={pools:{cache:{Health:'ONLINE',Size:1000,Used:100,Snapshots:52},other:{Health:'ONLINE',Size:1000,Used:100,Snapshots:1}},datasets:{cache:parent,other:dataset('other','9')},devices:{cache:'',other:''},errors:{}},calls=[];
  let failInventory=false;

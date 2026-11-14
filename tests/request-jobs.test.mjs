@@ -8,7 +8,7 @@ async function fixture(fn){const s=await startIntegration({dependencyUsage:true}
  await fn({s,post,model:s.readModel(),target:'cache/__mock__/project'});
 }finally{await s.close();}}
 
-test('a successful snapshot is recorded in Administrative History only, not in Jobs',async()=>fixture(async({s,post,model,target})=>{
+test('a successful snapshot is recorded in the audit log only, not in Jobs',async()=>fixture(async({s,post,model,target})=>{
  const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:model.datasets[target].guid});assert.deepEqual(a.failed,[]);assert.equal(a.job,undefined);
  const list=await post({cmd:'conversionjobs'});assert.equal(list.jobs.length,0);
  const audit=(await post({cmd:'auditlog'})).entries;assert.ok(audit.some(e=>e.command==='snapshotdataset'&&e.phase==='outcome'&&e.status==='succeeded'));

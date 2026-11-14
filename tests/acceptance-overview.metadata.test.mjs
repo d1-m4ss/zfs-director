@@ -12,7 +12,7 @@ const click = (root,label) => { const button=[...root.querySelectorAll('button')
 async function setup({cached=false}={}) {
     const dom=new JSDOM('<main></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main');
     w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};w.zfsmFormatDateTime=x=>String(x);
-    for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
+    for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
     const data={pools:{cache:{Health:'ONLINE',Size:1000,Used:100,Snapshots:0}},datasets:{cache:{name:'cache',type:'filesystem',guid:'1',child:{'cache/data':structuredClone(child),'cache/other':{...structuredClone(child),name:'cache/other',guid:'3'}},snapshots:[],directories:[]}},devices:{cache:''},errors:{}};
     if(cached)w.localStorage.setItem('zfsm-workspace-inventory-v1',JSON.stringify({time:'2026-01-01T00:00:00Z',data}));
     const pending=[],calls=[];

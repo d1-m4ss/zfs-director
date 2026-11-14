@@ -25,13 +25,16 @@ function zfsmActivityMarker($kind,$id) {
     return $marker;
 }
 function zfsmActivityJobEligible($job) {
-    return !zfsmJobProblem($job) && ($job['state']??'')==='completed' && empty($job['hold_owned']) && empty($job['error']) && !(function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job));
+    // Hiding is visibility only: a finished job may be hidden whether it succeeded or failed.
+    // Jobs still holding a snapshot or ZIP staging, or waiting for recovery, stay visible.
+    $state=$job['state']??'';
+    return !zfsmJobProblem($job) && ($state==='failed'||($state==='completed'&&empty($job['error']))) && empty($job['hold_owned']) && !(function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job));
 }
 function zfsmActivitySetJobs($ids,$archived) {
     $ids=zfsmActivityIds($ids,'jobs');if(!is_bool($archived))throw new InvalidArgumentException('Invalid visibility action');
     $directory=zfsmActivityDirectory('jobs');$lock=zfsmAuditLock($directory,LOCK_EX);
     try{
-        foreach($ids as$id){$job=zfsmReadJob($id);if($archived&&!zfsmActivityJobEligible($job))throw new InvalidArgumentException('Only valid completed jobs without snapshot protection or errors can be archived');}
+        foreach($ids as$id){$job=zfsmReadJob($id);if($archived&&!zfsmActivityJobEligible($job))throw new InvalidArgumentException('Only finished jobs that hold no snapshot, ZIP or recovery data can be hidden');}
         foreach($ids as$id)zfsmJobAtomicWrite($directory.'/'.$id.'.marker',['version'=>1,'id'=>$id,'archived'=>$archived]);
     }finally{flock($lock,LOCK_UN);fclose($lock);}
     return ['succeeded'=>array_fill_keys($ids,$archived?'Hidden from working view; retained journal unchanged':'Restored to working view'),'failed'=>[]];

@@ -77,6 +77,12 @@
   "destructive": true,
   "observed": false
  },
+ "deletefinishedjobs": {
+  "kind": "admin",
+  "lock": "operation",
+  "destructive": false,
+  "observed": false
+ },
  "destroydataset": {
   "kind": "admin",
   "lock": "operation",

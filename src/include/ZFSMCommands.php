@@ -1,7 +1,7 @@
 <?php
 // ARCH-002: one table for every command the admin endpoint accepts. A new command is added
 // here once; ZFSMAdmin.php reads kind, lock, destructive and observed from this table only.
-//   kind        read: no audit record. admin: recorded in Administrative History.
+//   kind        read: no audit record. admin: recorded in the audit log.
 //   lock        none | config (config lock) | operation (operation lock, waits up to 5 s).
 //   destructive requires Destructive Mode, rechecked under the lock.
 //   observed    keeps a Jobs journal from the start (scrub progress, downloads).
@@ -67,6 +67,7 @@ function zfsmCommandRegistry(): array {
         // Audited; change ZFS or files under the operation lock.
         'activityvisibility'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Organize activity history'],
         'cleanupmutation'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Clean completed recovery'],
+        'deletefinishedjobs'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Delete finished jobs'],
         'clonesnapshot'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Clone snapshot'],
         'createdataset'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Create dataset'],
         'deletedirectory'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Delete directory'],

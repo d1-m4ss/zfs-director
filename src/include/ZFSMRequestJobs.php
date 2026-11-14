@@ -8,7 +8,7 @@ function zfsmRequestJobCommands() {
 }
 // Only these synchronous requests keep a journal from the start: their outcome is
 // observed over time (scrub progress, download transfer). Every other synchronous
-// command is recorded in Administrative History, and in Jobs only when it fails.
+// command is recorded in the audit log, and in Jobs only when it fails.
 function zfsmRequestJobObservedCommands() { return array_keys(array_filter(zfsmCommandRegistry(),fn($c)=>$c['observed'])); }
 function zfsmRequestJobQueuedCommands() { return ['convertdirectory','deletedirectory','destroydataset','restoresnapshotfiles','archivesnapshotfiles','protectionrun']; }
 function zfsmRequestJobCategory($job) {
@@ -96,12 +96,12 @@ function zfsmRequestJobFailure($failed) {
         '/integration is disabled/i'=>'Sanoid / Syncoid is disabled. Existing schedules were not changed.',
         '/invalid|unsupported|not found|no longer available|does not exist/i'=>'The selected object or request is invalid or unavailable. Refresh and review the current selection.',
     ]as$pattern=>$message)if(preg_match($pattern,$text))return $message;
-    return 'The operation failed. Review its stage and Administrative History; inspect actual state before retrying.';
+    return 'The operation failed. Review its stage and inspect the actual state before retrying.';
 }
 function zfsmRequestJobAnswer($answer) {
     $command=zfsmRequestGet('job_request_command','');
     if(isset($GLOBALS['zfsm_request_job'])){
-        $failed=!empty($answer['failed']);$uncertain=($failed&&!empty($GLOBALS['zfsm_request_job']['native_submitted']))||isset($answer['failed']['audit'])||($failed&&!empty($answer['succeeded']));$summary=$uncertain?'The operation may have completed partly or fully. Inspect actual state and Administrative History before retrying.':($failed?zfsmRequestJobFailure($answer['failed']):(zfsmRequestJobCommands()[$command]??'Operation').' completed.');
+        $failed=!empty($answer['failed']);$uncertain=($failed&&!empty($GLOBALS['zfsm_request_job']['native_submitted']))||isset($answer['failed']['audit'])||($failed&&!empty($answer['succeeded']));$summary=$uncertain?'The operation may have completed partly or fully. Inspect the actual state before retrying.':($failed?zfsmRequestJobFailure($answer['failed']):(zfsmRequestJobCommands()[$command]??'Operation').' completed.');
         if($command==='snapshotdataset')foreach(array_keys($answer['succeeded']??[])as$name)if(zfsmValidSnapshotName($name)){zfsmRequestJobDownloadContext($name);break;}
         $id=$GLOBALS['zfsm_request_job']['id'];$audit=zfsmRequestGet('job_request_audit',null);if($audit!==null)zfsmJobUpdate($id,['audit_id'=>$audit]);
         $context=zfsmRequestGet('job_failure_context',[]);
@@ -119,7 +119,7 @@ function zfsmRequestJobAnswer($answer) {
         // success needs inspection rather than a retry.
         $partial=!empty($answer['succeeded'])||isset($answer['failed']['audit']);
         zfsmRequestJobBegin($command,$_POST,zfsmRequestGet('job_request_audit',null));$context=zfsmRequestGet('job_failure_context',[]);
-        $answer['job']=zfsmRequestJobFinish($partial?'recovery_required':'failed',$partial?'The operation may have completed partly. Inspect actual state and Administrative History before retrying.':zfsmRequestJobFailure($answer['failed']),null,['succeeded_count'=>count($answer['succeeded']??[]),'failed_count'=>count($answer['failed']),'failure'=>array_intersect_key($context,array_flip(['stage','exit_code','error_code','tool']))]);
+        $answer['job']=zfsmRequestJobFinish($partial?'recovery_required':'failed',$partial?'The operation may have completed partly. Inspect the actual state before retrying.':zfsmRequestJobFailure($answer['failed']),null,['succeeded_count'=>count($answer['succeeded']??[]),'failed_count'=>count($answer['failed']),'failure'=>array_intersect_key($context,array_flip(['stage','exit_code','error_code','tool']))]);
     }
     return $answer;
 }

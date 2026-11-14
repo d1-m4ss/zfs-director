@@ -4,7 +4,7 @@ import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {protectionUXFixture} from '../fixtures/protection-ux.mjs';
 const require=createRequire(import.meta.url),{chromium}=require(process.env.ZFSM_PLAYWRIGHT_MODULE||'playwright');
 const output=process.env.ZFSM_OUTPUT||'/tmp/zfsm-protection-gui-20261019';await mkdir(output,{recursive:true});
-const files=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMProtection.js','ZFSMWorkspace.js'];
+const files=['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMProtection.js','ZFSMWorkspace.js'];
 const scripts=await Promise.all(files.map(name=>readFile('src/frontend/'+name,'utf8'))),styles=await Promise.all(['ZFSMWorkspace.css','ZFSMProtection.css'].map(name=>readFile('src/frontend/'+name,'utf8')));
 const browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true}),results=[],errors=[];
 let context;

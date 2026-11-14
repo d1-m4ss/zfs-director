@@ -7,7 +7,7 @@ const settle=async()=>{for(let n=0;n<60;n++)await Promise.resolve();};
 async function mount(palette='white',installed=true,state='healthy'){
  const dom=new JSDOM('<main id="zfsm-workspace"></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main');
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.zfsmFormatDateTime=String;
- for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMProtection.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
+ for(const file of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMProtection.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+file,'utf8'));
  const app=w.zfsmCreateWorkspace({root,hostTheme:palette,config:{refresh_interval:0},request:async fields=>{
   if(fields.cmd==='conversionjobs')return {jobs:[],worker_running:false};
   if(fields.cmd==='protectiondata')return protectionUXFixture();

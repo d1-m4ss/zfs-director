@@ -11,7 +11,7 @@ async function setup({cached=false,refreshInterval=cached?0:30,guid='2',initialH
  const timers=new Map();let timerSequence=0;w.setTimeout=(fn,ms)=>{timers.set(++timerSequence,{fn,ms});return timerSequence;};w.clearTimeout=id=>timers.delete(id);
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};w.zfsmFormatDateTime=x=>String(x);
  installDialogs(w);
- for(const f of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMHistory.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+f,'utf8'));
+ for(const f of ['ZFSMInventory.js','ZFSMForms.js','ZFSMSnapshots.js','ZFSMExplorer.js','ZFSMPoolView.js','ZFSMOverview.js','ZFSMWorkspace.js'])w.eval(readFileSync('src/frontend/'+f,'utf8'));
  let fail=initialFail,hold=initialHold,release,progressive=initialProgressive,snapshotRelease;const calls=[];
  const child={name:'cache/data',type:'filesystem',guid,encryption:'off',keystatus:'none',mountpoint:'/mnt/cache/data',child:{},snapshots:[],directories:[]};
  const data={pools:{cache:{Health:'ONLINE',Size:1000,Used:100,Snapshots:0}},datasets:{cache:{name:'cache',type:'filesystem',guid:'1',child:{'cache/data':child},snapshots:[],directories:[]}},devices:{cache:''},errors:{}};

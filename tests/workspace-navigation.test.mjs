@@ -10,7 +10,7 @@ async function mount(jobs=[],savedSelection=''){
  const dom=new JSDOM('<main id="zfsm-workspace"></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main'),calls=[];
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.zfsmFormatDateTime=String;w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};
  w.setTimeout=()=>1;w.clearTimeout=()=>{};
- for(const file of ['ZFSMInventory','ZFSMForms','ZFSMSnapshots','ZFSMExplorer','ZFSMPoolView','ZFSMOverview','ZFSMHistory','ZFSMWorkspace'])w.eval(readFileSync('src/frontend/'+file+'.js','utf8'));
+ for(const file of ['ZFSMInventory','ZFSMForms','ZFSMSnapshots','ZFSMExplorer','ZFSMPoolView','ZFSMOverview','ZFSMWorkspace'])w.eval(readFileSync('src/frontend/'+file+'.js','utf8'));
  const dataset=(name,guid,type='filesystem')=>({name,guid,type,mountpoint:type==='volume'?'none':'/mnt/'+name,used:100,referenced:100,available:1000,encryption:'off',keystatus:'none',child:{},directories:[],snapshots:[]});
  const tree=dataset('cache','1');tree.child['cache/a']=dataset('cache/a','2');tree.child['cache/b']=dataset('cache/b','3');tree.child['cache/volume']=dataset('cache/volume','4','volume');
  tree.child['cache/a'].directories=['/mnt/cache/a/ordinary',mutation,maintenance,maintenance+'/retained',archive,restore,restore+'/replaced','/mnt/cache/a/.keep-me','/mnt/cache/a/SampleProject_archived_20261020-130405'];

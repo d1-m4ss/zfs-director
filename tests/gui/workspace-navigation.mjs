@@ -7,7 +7,7 @@ import {resolve} from 'node:path';
 // no HTTP listener, server connection or native storage operation is used.
 const require=createRequire(import.meta.url),{chromium}=require(process.env.ZFSM_PLAYWRIGHT_MODULE||'playwright');
 const out=resolve(process.env.ZFSM_OUTPUT||'evidence/workspace-navigation-2026-10-20');await mkdir(out,{recursive:true});
-const files=['ZFSMInventory','ZFSMForms','ZFSMSnapshots','ZFSMExplorer','ZFSMPoolView','ZFSMOverview','ZFSMHistory','ZFSMWorkspace'];
+const files=['ZFSMInventory','ZFSMForms','ZFSMSnapshots','ZFSMExplorer','ZFSMPoolView','ZFSMOverview','ZFSMWorkspace'];
 const scripts=await Promise.all(files.map(name=>readFile(name==='ZFSMWorkspace'&&process.env.ZFSM_WORKSPACE_SOURCE?process.env.ZFSM_WORKSPACE_SOURCE:'src/frontend/'+name+'.js','utf8'))),css=await readFile('src/frontend/ZFSMWorkspace.css','utf8');
 const browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true}),results=[],errors=[];
 const mutation='/mnt/cache/a/.zfsm-mutation-'+'a'.repeat(48),ordinary='/mnt/cache/a/ordinary-65';

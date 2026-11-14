@@ -27,7 +27,7 @@ const INTEGRATION_SCRIPTS = [
   'actions-layout', 'activity', 'advanced-storage', 'all-operation-jobs', 'archive-cleanup',
   'conversion-exports', 'deletion-exports', 'deletion-jobs-gui', 'destroy', 'history-fixes',
   'mutation-cleanup', 'ownership', 'protection', 'rc1-gaps', 'rc1-history-details',
-  'rc1-history-old', 'rc1-lock', 'rc1-maintenance', 'rc1-usage', 'readonly-directory-deletion',
+  'rc1-lock', 'rc1-maintenance', 'rc1-usage', 'readonly-directory-deletion',
   'security', 'snapshot-mount-gui',
 ];
 

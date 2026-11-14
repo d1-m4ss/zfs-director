@@ -38,11 +38,11 @@ function zfsmReturnAnswer($ret) {
 		$deletion_command=$GLOBALS['zfsm_audit_operations'][$id]['command']??null;
 		if(in_array($deletion_command,['deletedirectory','destroydataset'],true)&&$answer['failed']&&empty($answer['job'])){
 			try{if(!empty(zfsmRequestGet('deletion_journal_started')))$answer['failed']['queue']='Deletion queue outcome is uncertain. Inspect Jobs and actual state before submitting again.';else{$kind=$deletion_command==='deletedirectory'?'directory':'dataset';$rejected=zfsmRecordRejectedDeletion($kind,zfsmPostString($kind==='directory'?'directory':'zdataset'),$answer['failed'],$id);if($rejected)$answer['job']=$rejected;}}
-			catch(Throwable$error){$answer['failed']['job_record']='The rejected deletion request could not be saved in Jobs. Inspect Administrative History.';error_log('ZFS Director: rejected deletion record failed');}
+			catch(Throwable$error){$answer['failed']['job_record']='The rejected deletion request could not be saved in Jobs. Inspect the actual state before retrying.';error_log('ZFS Director: rejected deletion record failed');}
 		}
 		if(($GLOBALS['zfsm_audit_operations'][$id]['command']??null)==='convertdirectory'&&$answer['failed']&&empty($answer['job'])){
 			try{if(!empty(zfsmRequestGet('conversion_journal_started')))$answer['failed']['queue']='Conversion queue outcome is uncertain. Inspect Jobs and actual state before submitting again.';else{$rejected=zfsmRecordRejectedConversion(zfsmPostString('directory'),$answer['failed'],$id);if($rejected)$answer['job']=$rejected;}}
-			catch(Throwable$error){$answer['failed']['job_record']='The rejected request could not be saved in Jobs. No conversion was queued; inspect Administrative History.';error_log('ZFS Director: rejected conversion record failed');}
+			catch(Throwable$error){$answer['failed']['job_record']='The rejected request could not be saved in Jobs. No conversion was queued. Inspect the actual state before retrying.';error_log('ZFS Director: rejected conversion record failed');}
 		}
 		if($answer['failed']&&empty($GLOBALS['zfsm_audit_operations'][$id]['failure_details']['error_code']))zfsmAuditRecordFailure(null,[],['code'=>null,'output'=>implode("\n",array_map(fn($v)=>is_string($v)?$v:'',$answer['failed']))]);
 		zfsmRequestSet('job_failure_context',$GLOBALS['zfsm_audit_operations'][$id]['failure_details']??[]);
@@ -216,6 +216,9 @@ try {
 			if(!is_string($_POST['kind']??null)||!in_array($_POST['kind'],['jobs','history'],true)||!is_string($_POST['archived']??null)||!in_array($_POST['archived'],['0','1'],true))throw new InvalidArgumentException('Invalid visibility request');
 			$answer=$_POST['kind']==='jobs'?zfsmActivitySetJobs($_POST['ids']??null,$_POST['archived']==='1'):zfsmActivitySetHistory($_POST['ids']??null,$_POST['archived']==='1',zfsmPostString('review_token'));
 			zfsmReturnAnswer($answer);
+			break;
+		case 'deletefinishedjobs':
+			zfsmReturnAnswer(zfsmJobDeleteFinished());
 			break;
 		case 'conversionjobs':
 			foreach(['page','page_size','filter','type','sort','view']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');

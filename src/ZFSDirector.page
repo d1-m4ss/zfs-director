@@ -28,7 +28,6 @@ $zfsm_datetime = array('timeZone' => date_default_timezone_get(), 'dateFormat' =
 <script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMExplorer.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMPoolView.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMOverview.js'); ?>"></script>
-<script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMHistory.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMProtection.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master.ui/frontend/ZFSMWorkspace.js'); ?>"></script>
 <script>

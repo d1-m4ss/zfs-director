@@ -185,6 +185,34 @@ function zfsmProtectionDefinitionControl(array $request): array {
         }
         return ['succeeded'=>[$id=>$action==='remove'?'Definition removed; all datasets and snapshots retained':'Definition '.$action.'d'],'failed'=>[]]+($warning===null?[]:['scheduler_warning'=>$warning]);});
 }
+// A scheduled launch refused before anything runs (Sanoid / Syncoid missing, integration off,
+// a schedule conflict) repeats every minute until the cause is fixed. Only the first refusal of
+// a run of identical ones is written to the boot flash and audited; each repeat only updates a
+// small counter in tmpfs. The counter is lost at reboot, so every boot records it once more. A
+// launch that passes the checks forgets the counter, so a later refusal is recorded again.
+function zfsmProtectionBlockedFile(string $type,string $id): string {
+    return zfsmJobDirectory(($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/protection-blocked').'/'.$type.'-'.$id.'.json';
+}
+function zfsmProtectionBlockedBeforeStart(array $job): bool {
+    return ($job['schema']??null)===4&&($job['trigger']??'')==='schedule'&&($job['state']??'')==='failed'&&($job['verified_outcome']??'')==='blocked'&&($job['verification']['outcome']??'')==='blocked'&&empty($job['started_at'])&&empty($job['cancel_requested']);
+}
+function zfsmProtectionBlockedMarker(string $type,string $id): ?array {
+    $file=zfsmProtectionBlockedFile($type,$id);if(is_link($file)||!is_file($file)||filesize($file)>4096)return null;
+    $marker=json_decode((string)file_get_contents($file),true);
+    return is_array($marker)&&is_string($marker['job_id']??null)&&is_string($marker['reason']??null)&&is_int($marker['repeats']??null)?$marker:null;
+}
+function zfsmProtectionRepeatBlocked(string $type,string $id,string $reason): ?array {
+    try{
+        $marker=zfsmProtectionBlockedMarker($type,$id);if($marker===null||$marker['reason']!==$reason)return null;
+        $job=zfsmReadJob($marker['job_id']);
+        if(!zfsmProtectionBlockedBeforeStart($job)||($job['definition_id']??null)!==$id||($job['type']??null)!==$type||($job['error']??null)!==$reason)return null;
+        $marker['repeats']++;$marker['last_seen']=gmdate('c');zfsmJobAtomicWrite(zfsmProtectionBlockedFile($type,$id),$marker);
+        return $job;
+    }catch(Throwable$e){return null;}
+}
+function zfsmProtectionForgetBlocked(string $type,string $id): void {
+    try{$file=zfsmProtectionBlockedFile($type,$id);if(!is_link($file)&&is_file($file))@unlink($file);}catch(Throwable$e){}
+}
 function zfsmQueueProtection(array $request,bool $interactive=true): array {
     $type=$request['type']??'';$id=$request['id']??'';
     if(!in_array($type,['policy','replication'],true)||!is_string($id)||!preg_match('/^[a-f0-9]{1,32}$/D',$id))throw new InvalidArgumentException('Valid managed definition required.');
@@ -199,7 +227,12 @@ function zfsmQueueProtection(array $request,bool $interactive=true): array {
         // start: a preflight failure is already a terminal, non-idle outcome (REL-002).
         $ephemeral=$type==='policy'&&!$interactive;
         try{$backend=zfsmProtectionRequire($interactive);if(!$backend['enabled'])throw new RuntimeException('Sanoid / Syncoid integration is disabled; managed execution is blocked. Existing schedules are unchanged.');zfsmProtectionCheckDefinitionSchedules($type,$d,zfsmProtectionSchedules());}
-        catch(Throwable$e){if($interactive)throw $e;zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);$job=zfsmProtectionFinish($job['id'],['outcome'=>'blocked','reason'=>$e->getMessage(),'exit_code'=>null]);zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'failed');return ['succeeded'=>[],'failed'=>[$job['id']=>$e->getMessage()],'job'=>$job];}
+        catch(Throwable$e){if($interactive)throw $e;
+            $repeat=zfsmProtectionRepeatBlocked($type,$id,$e->getMessage());if($repeat!==null)return ['succeeded'=>[],'failed'=>[$repeat['id']=>$e->getMessage()],'job'=>$repeat];
+            zfsmJobAtomicWrite(zfsmJobFile($job['id']),$job);$job=zfsmProtectionFinish($job['id'],['outcome'=>'blocked','reason'=>$e->getMessage(),'exit_code'=>null]);zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'failed');
+            try{zfsmJobAtomicWrite(zfsmProtectionBlockedFile($type,$id),['job_id'=>$job['id'],'reason'=>$e->getMessage(),'repeats'=>0,'last_seen'=>gmdate('c')]);}catch(Throwable$markerError){}
+            return ['succeeded'=>[],'failed'=>[$job['id']=>$e->getMessage()],'job'=>$job];}
+        zfsmProtectionForgetBlocked($type,$id);
         zfsmJobAtomicWrite($ephemeral?zfsmProtectionRuntimeJobFile($job['id']):zfsmJobFile($job['id']),$job);if(!$interactive&&$type!=='policy')zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'queued');return ['succeeded'=>[$job['id']=>'Queued'],'failed'=>[],'job'=>$job];
     });
 }
