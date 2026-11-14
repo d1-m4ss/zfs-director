@@ -116,8 +116,11 @@ function zfsmCreateWorkspace(options) {
     }
     function selected(){return flatten(pool,false).find(item=>item.name===selection)||null;}
     function servicePath(name){return String(name).split('/').some(part=>part==='.zfsm-maintenance'||/^\.zfsm-(mutation|archive|restore)-/.test(part));}
-    function compatibleTab(item,key){if(!item||item.kind==='directory'&&['details','properties','snapshots','files'].includes(key)||key==='files'&&item.node.type==='volume')return item?.kind==='directory'?'actions':'overview';return key;}
-    function chooseTab(key){tab=key;if(!poolTabs.has(key)&&selected()?.kind==='dataset')datasetTab=key;renderTab();}
+    // UX-001: four dataset tabs. Dataset information is the "All properties" block on Overview
+    // (old links to tab=details open it); Actions is a menu button beside the tabs.
+    let openAllProperties=false;
+    function compatibleTab(item,key){if(key==='details'){openAllProperties=true;key='overview';}if(!item||item.kind==='directory'&&['properties','snapshots','files'].includes(key)||key==='files'&&item.node.type==='volume')return item?.kind==='directory'?'actions':'overview';return key;}
+    function chooseTab(key){if(key==='details'){openAllProperties=true;key='overview';}tab=key;if(!poolTabs.has(key)&&selected()?.kind==='dataset')datasetTab=key;renderTab();}
     function recoveryFiles(show){showRecoveryFiles=show;const item=selected();if(!show&&item?.kind==='directory'&&servicePath(item.name)){selection=item.node.name;selectionChanged=false;selectionIdentity=selectionFingerprint();}if(show){browserQuery='';browserFilter='all';browserPage=1;for(const row of flatten(pool,false).filter(row=>row.kind==='directory'&&servicePath(row.name))){let name=row.node.name;while(name){collapsed.delete(name);name=name.includes('/')?name.slice(0,name.lastIndexOf('/')):'';}}}section='datasets';tab=compatibleTab(selected(),datasetTab);savePreferences();renderSection();}
     function selectionFingerprint(item=selected()){return item?JSON.stringify([item.name,item.kind,String(item.node.guid||''),item.kind==='directory'?item.node._directory_identities?.[item.name]||null:null]):'';}
     const snapshotCommands=new Set(['renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','rollbacksnapshot','destroysnapshot']);
@@ -211,7 +214,7 @@ function zfsmCreateWorkspace(options) {
             if(!showRecoveryFiles&&selected()?.kind==='directory'&&servicePath(selection)){selection=selected().node.name;selectionIdentity=selectionFingerprint();}
             const area=node('div',undefined,'zfsm-workarea');browserHost=node('div',undefined,'zfsm-browser');const detail=node('section',undefined,'zfsm-detail');detailHeading=node('div',undefined,'zfsm-detail-heading');const tabs=node('nav',undefined,'zfsm-tabs');tabs.setAttribute('aria-label','Workspace tabs');
             const item=selected();if(!poolTabs.has(tab))tab=compatibleTab(item,tab);
-            for(const [key,label] of [['overview','Overview'],['details','Dataset information'],['properties','Properties'],['snapshots','Snapshots'],['files','File Manager'],['actions','Actions']]){const control=button(label,()=>chooseTab(key),{'data-tab':key});control.prepend(navigationIcon(key));control.disabled=Boolean(item&&compatibleTab(item,key)!==key);if(key==='files'&&control.disabled)control.title='Choose a filesystem dataset, then a snapshot to browse.';tabs.append(control);}
+            for(const [key,label] of [['overview','Overview'],['properties','Properties'],['snapshots','Snapshots'],['files','File Manager'],['actions','Actions']]){const control=button(label,()=>chooseTab(key),{'data-tab':key});control.prepend(navigationIcon(key));control.disabled=Boolean(item&&compatibleTab(item,key)!==key);if(key==='files'&&control.disabled)control.title='Choose a filesystem dataset, then a snapshot to browse.';if(key==='actions'){control.classList.add('zfsm-tab-menu');control.title='Dataset and folder actions';}tabs.append(control);}
             detailBody=node('div');detail.append(detailHeading,detailBody);area.append(browserHost,detail);content.append(tabs,area);renderBrowser();renderTab();return;
         }
         const surface=node('section',undefined,'zfsm-section');content.append(surface);
@@ -331,7 +334,6 @@ function zfsmCreateWorkspace(options) {
         }
         const item=selected();if(!item){detailBody.append(node('p','The selected object is no longer available. Refresh inventory.','zfsm-error'));return;}
         if(tab==='overview')renderOverview(detailBody,item);
-        else if(tab==='details')renderDatasetInformation(detailBody,item);
         else if(tab==='properties')openForm(detailBody,'editdatasetproperty',context(item));
         else if(tab==='snapshots'){snapshotHost=node('div');detailBody.append(snapshotHost);renderSnapshots();}
         else if(tab==='files')renderFiles(detailBody,item);
@@ -339,8 +341,10 @@ function zfsmCreateWorkspace(options) {
     }
     function renderOverview(host,item){
         if(item.kind==='directory'){host.append(node('p','Directory listing: '+item.name));return;}
+        const all=node('details',undefined,'zfsm-all-properties'),summary=node('summary','All properties');all.append(summary);all.open=openAllProperties;openAllProperties=false;
+        const allBody=node('div');all.append(allBody);renderDatasetInformation(allBody,item);
         const error=snapshotError(item.node);if(error)host.append(node('p',error,'zfsm-error'));
-        const fresh=inventoryFresh&&!error&&!selectionChanged,guid=String(item.node.guid||''),generation=viewGeneration,inventoryData=data,selectedPool=pool,surface=node('div');host.append(surface);
+        const fresh=inventoryFresh&&!error&&!selectionChanged,guid=String(item.node.guid||''),generation=viewGeneration,inventoryData=data,selectedPool=pool,surface=node('div');host.append(surface,all);if(all.open&&typeof requestAnimationFrame==='function')requestAnimationFrame(()=>all.scrollIntoView?.({block:'start'}));
         const render=(properties,metadataState,metadataError)=>{surface.replaceChildren();zfsmRenderDatasetOverview(surface,{node:item.node,pool:selectedPool,fresh,loaded:snapshotsLoaded(item.node),config,bytes,date,properties,propertiesFresh:metadataState==='loaded',metadataState,metadataError,onAction:action=>openAction(action,context(item)),onTab:chooseTab,onProtection:()=>navigate('protection')});};
         render(null,fresh&&/^[1-9][0-9]*$/.test(guid)?'loading':'stale');
         if(!fresh||!/^[1-9][0-9]*$/.test(guid))return;

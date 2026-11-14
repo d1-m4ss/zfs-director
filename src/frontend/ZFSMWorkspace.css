@@ -576,3 +576,9 @@ html:has(#zfsm-workspace dialog[open]), html:has(#zfsm-workspace dialog[open]) b
 #zfsm-workspace .zfsm-operation-pulse {width:8px;height:8px;border-radius:50%;background:var(--zfsm-accent);flex:none;animation:zfsm-operation-pulse 1.4s ease-in-out infinite}
 @keyframes zfsm-operation-pulse {0%,100%{opacity:1}50%{opacity:.3}}
 @media (prefers-reduced-motion:reduce){#zfsm-workspace .zfsm-operation-pulse{animation:none}}
+
+/* UX-001: four dataset tabs; Actions is a menu button at the end of the tab strip */
+#zfsm-workspace .zfsm-tabs .zfsm-tab-menu {margin-left:auto;border:1px solid var(--zfsm-border)}
+#zfsm-workspace .zfsm-all-properties {margin-top:14px;border:1px solid var(--zfsm-border);border-radius:9px;background:var(--zfsm-panel);padding:10px 12px}
+#zfsm-workspace .zfsm-all-properties>summary {cursor:pointer;color:var(--zfsm-accent-label);font-weight:600}
+#zfsm-workspace .zfsm-all-properties[open]>summary {margin-bottom:10px}

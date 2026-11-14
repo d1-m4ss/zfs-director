@@ -51,7 +51,7 @@ for(const change of ['selection','GUID','refresh','view'])test('Overview ignores
         if(change==='selection')click(x.root,'cache/other');
         if(change==='GUID'){x.data.datasets.cache.child['cache/data'].guid='777';x.app.refresh();await tick();}
         if(change==='refresh'){x.app.refresh();await tick();}
-        if(change==='view')click(x.root,'Dataset information');
+        if(change==='view')click(x.root,'Properties');
         request.resolve({...structuredClone(metadata),_permissions:{...metadata._permissions,owner:'STALE-OWNER'}});await tick();
         assert.doesNotMatch(x.root.textContent,/STALE-OWNER/);
     }finally{x.close();}

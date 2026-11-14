@@ -22,7 +22,14 @@ async function mount(jobs=[],savedSelection=''){
  return {w,root,app,calls,async select(name){root.querySelector('[data-node="'+name+'"]').click();await settle();},async tab(key){root.querySelector('.zfsm-tabs [data-tab="'+key+'"]').click();await settle();},close(){app.stop();w.close();}};
 }
 
-for(const key of ['overview','details','properties','snapshots','files','actions'])test('selecting another dataset preserves the compatible '+key+' tab',async()=>{
+// UX-001: four dataset tabs plus the Actions menu button; Dataset information is on Overview.
+test('the tab strip has four dataset tabs and the Actions menu; tab=details opens All properties on Overview',async()=>{
+ const t=await mount();try{await t.select('cache/a');assert.deepEqual([...t.root.querySelectorAll('.zfsm-tabs [data-tab]')].map(b=>b.dataset.tab),['overview','properties','snapshots','files','actions']);assert.ok(t.root.querySelector('.zfsm-tabs [data-tab=actions]').classList.contains('zfsm-tab-menu'));
+  assert.equal(t.root.querySelector('.zfsm-all-properties').open,false,'All properties starts closed');
+  t.app.chooseTab?.('details');t.root.querySelector('.zfsm-all-properties summary').click();await settle();assert.equal(t.root.querySelector('.zfsm-all-properties').open,true);const info=t.root.querySelector('.zfsm-all-properties');assert.ok(info.textContent.length>40,'All properties shows Dataset information: '+info.innerHTML.slice(0,300));
+ }finally{t.close();}
+});
+for(const key of ['overview','properties','snapshots','files','actions'])test('selecting another dataset preserves the compatible '+key+' tab',async()=>{
  const t=await mount();try{await t.select('cache/a');await t.tab(key);await t.select('cache/b');assert.equal(t.app.getState().tab,key);assert.equal(t.root.querySelector('.zfsm-workarea').dataset.activeTab,key);}finally{t.close();}
 });
 test('incompatible directories and zvols fall back without replacing the dataset tab preference',async()=>{
