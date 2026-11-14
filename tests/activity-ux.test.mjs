@@ -153,3 +153,14 @@ test('every running conversion, restore and ZIP stage has plain words',async()=>
   assert.deepEqual(jobs.map(status),stages.map(row=>row[2]));
  }finally{x.close();}
 });
+test('a finished ZIP card that holds a snapshot says why it is kept; one that does not says nothing',async()=>{
+ const base={schema:2,type:'archive',state:'completed',stage:'completed',source:'cache/immich@daily',created:'2026-11-14T14:00:00Z',actions:{}};
+ const jobs=[{...base,id:'20261114-140000-000000000001',hold_owned:true},{...base,id:'20261114-140100-000000000002',hold_owned:false}];
+ const x=await workspace(jobs);
+ try{
+  const kept=job=>[...x.root.querySelectorAll('[data-job-id="'+job.id+'"] [data-job-kept]')].map(n=>n.textContent);
+  assert.deepEqual(kept(jobs[0]),['Kept: it holds a snapshot. Release the hold to delete it.']);
+  assert.deepEqual(kept(jobs[1]),[]);
+  assert.equal(x.root.querySelector('[data-job-id="'+jobs[0].id+'"] summary [data-job-kept]')!==null,true,'the line is visible without opening the card');
+ }finally{x.close();}
+});

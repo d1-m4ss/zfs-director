@@ -64,9 +64,9 @@ function zfsmJobKeepOnDelete($job) {
     if(zfsmJobProblem($job))return 'needs inspection';
     $state=$job['state']??'';$schema=$job['schema']??null;
     if(in_array($state,['queued','running'],true))return 'running';
-    if(!empty($job['hold_owned'])||(function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job)))return 'still holds a snapshot or ZIP';
-    // A ZIP that is still on disk belongs to its job until it is removed.
-    if($schema===2&&($job['type']??'')==='archive')return empty($job['archive_removed'])?'still holds a snapshot or ZIP':null;
+    if(!empty($job['hold_owned']))return 'still holds a snapshot';
+    // A ZIP that is still on disk is deleted together with its record (zfsmJobHistoryApply).
+    if($schema===2&&($job['type']??'')==='archive')return null;
     if($schema===6){
         // A deletion that was interrupted or kept a private recovery container is the only record of it.
         if(function_exists('zfsmCleanupTerminalJob')&&zfsmCleanupTerminalJob($job))return null;
@@ -159,6 +159,9 @@ function zfsmJobHistoryApply($records,$plan,$directory,$limit,$strict,&$progress
         if($why!==null){if(!in_array($why,['recent','not selected'],true))$keep($why);continue;}
         if($limit!==null&&$removed>=$limit)continue;
         if(isset($plan['latest'][$id])){try{zfsmLastResultRemember(zfsmReadJob($id));}catch(Throwable$error){$keep('newest result could not be saved');continue;}}
+        // The ZIP file goes first; when it cannot be removed the record stays and says why.
+        try{$archive=zfsmReadJob($id);if(function_exists('zfsmCleanupArchive')&&($archive['schema']??null)===2&&($archive['type']??'')==='archive'&&empty($archive['archive_removed']))zfsmCleanupArchive($archive);}
+        catch(Throwable$error){$keep('ZIP file could not be removed ('.zfsmExplorerShortText($error->getMessage(),120).')');continue;}
         try{$freed=zfsmJobHistoryRemove($id,$records[$id],$directory,$runtime);}catch(Throwable$error){if($strict)throw $error;$keep('changed during deletion');continue;}
         if($freed===null){$keep('running');continue;}
         $removed++;$bytes+=$freed;if(isset($plan['duplicate'][$id]))$duplicates++;$progress=['removed'=>$removed,'bytes'=>$bytes,'duplicates'=>$duplicates];

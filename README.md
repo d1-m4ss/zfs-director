@@ -208,7 +208,7 @@ Snapshot policies, replication and file jobs run in three separate background la
 - Stage history helps distinguish copying, verification, publication and recovery.
 - Eligible retention deletion with protected snapshots left intact is reported as **Completed with warnings**, with an explanatory result.
 - Filters separate operation types and attention states. Pagination defaults to **10 records**, with larger page sizes available.
-- **Delete finished jobs** deletes, at once and on every page, the records of finished jobs that match the current filters; tick **Everything** to ignore the filters. A line above the list reports what was deleted and what was kept. The same jobs are kept as by the automatic cleanup.
+- **Delete finished jobs** deletes, at once and on every page, the records of finished jobs that match the current filters; tick **Everything** to ignore the filters. A line above the list reports what was deleted and what was kept. The same jobs are kept as by the automatic cleanup. Deleting a ZIP record also deletes its ZIP file (if the file cannot be removed, the record stays); a record that still holds a snapshot is kept and says so.
 - Recovery controls appear only where the backend supports them; completed or unsafe work is not silently resumed.
 
 ![Synthetic Jobs with conversion progress, a retention warning and pagination](docs/images/jobs.png)

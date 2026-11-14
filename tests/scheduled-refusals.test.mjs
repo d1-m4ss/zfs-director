@@ -63,7 +63,7 @@ test('Delete finished jobs keeps data owners, holds and running work; deletes th
  assert.equal(out.deleted,4,'failed and completed protection jobs (including the newest) and the completed conversion');
  assert.equal(out.saved,out.latest,'the newest policy result is saved before its journal goes');
  assert.deepEqual(out.left,out.expected_left.sort(),'running, held and unfinished conversions stay');
- assert.deepEqual(out.kept,{'may own recovery data':2,running:1,'still holds a snapshot or ZIP':1});
+ assert.deepEqual(out.kept,{'may own recovery data':2,running:1,'still holds a snapshot':1});
  assert.match(out.message,/^Deleted 4 finished job record\(s\)\. Kept 4:/);
 });
 test('Delete finished jobs removes every matching record in one call, on every page; Everything ignores the filters',async t=>{
