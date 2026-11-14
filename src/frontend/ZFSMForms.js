@@ -793,14 +793,17 @@
       const failures = failureText(answer);
       const successes = Object.entries(answer.succeeded).map(([name, text]) => name + ': ' + String(text)).join('\n');
       const result = failures ? (successes ? 'partial' : 'error') : !successes ? 'unknown' : answer.worker_warning ? 'warning' : 'success';
-      const finished = result === 'success' && state.modal && state.action !== 'editdatasetproperty' && !['queued', 'running'].includes(answer.job?.state);
+      const finished = result === 'success' && state.modal && state.action !== 'editdatasetproperty';
+      const queuedJob = ['queued', 'running'].includes(answer.job?.state);
       const completed = state.completed && !finished ? 'Select the updated object to perform another action.' : '';
-      const deleted = Object.keys(answer.succeeded);
+      if (state.batchRows) state.deletedNames = [...(state.deletedNames || []), ...Object.keys(answer.succeeded)];
+      const deleted = state.batchRows ? state.deletedNames : [];
       const details = state.batchRows
-        ? (finished ? '' : 'Deleted: ' + deleted.length + '. Failed or not attempted: ' + Object.keys(answer.failed).length + '.\nSee each snapshot above for details.')
+        ? (finished ? '' : 'Deleted: ' + Object.keys(answer.succeeded).length + '. Failed or not attempted: ' + Object.keys(answer.failed).length + '.\nSee each snapshot above for details.')
         : [successes, failures, answer.worker_warning, completed].filter(Boolean).join('\n');
-      note(state, details || 'The operation returned no result. Inspect actual state before retrying.', !!failures);
+      note(state, details || (finished && state.batchRows ? '' : 'The operation returned no result. Inspect actual state before retrying.'), !!failures);
       const titles = {success:'Operation successful',partial:'Partially completed',error:'Operation failed',unknown:'Result not confirmed',warning:'Completed with warnings'};
+      if (finished && queuedJob) titles.success = 'Started';
       if (finished && state.batchRows) titles.success = 'Destroyed ' + deleted.length + (deleted.length === 1 ? ' snapshot' : ' snapshots');
       state.result.dataset.result = result;
       const heading = element('strong', titles[result], 'zfsm-result-heading');
@@ -812,12 +815,13 @@
       }
       state.result.prepend(heading);
       if (finished) {
+        state.completed = true;
         // A finished action leaves only its result: no fields, checkboxes, preview or review buttons.
         for (const child of Array.from(state.body.children)) if (child !== state.result && child.tagName !== 'H3' && child !== state.buttons && !child.classList.contains('zfsm-form-target')) child.remove();
         if (state.buttons) { for (const control of Array.from(state.buttons.querySelectorAll('button:not([data-close-action])'))) control.remove(); if (!state.buttons.children.length) state.buttons.remove(); }
         if (state.batchRows) { const list = element('ul'); for (const name of deleted) list.append(element('li', name)); state.result.append(list); }
       }
-      if (answer.destruction && (!finished || ['remaining', 'changed'].some(key => Array.isArray(answer.destruction[key]) && answer.destruction[key].length) || answer.destruction.diagnostics)) {
+      if (answer.destruction && (!finished || ['remaining', 'changed'].some(key => Array.isArray(answer.destruction[key]) && answer.destruction[key].length) || answer.destruction.diagnostics || (answer.destruction.state_verified === false && answer.destruction.attempted !== false))) {
         const outcome = element('section', undefined, 'zfsm-destroy-outcome'); outcome.dataset.destroyOutcome = '';
         outcome.append(element('strong', 'Deletion outcome'));
         outcome.append(element('p', answer.destruction.attempted === false ? 'No deletion was attempted.' : answer.destruction.state_verified ? 'Current object identities were checked after the attempt.' : 'Current state is unverified. Inspect actual state before retrying.'));
@@ -833,7 +837,8 @@
         const deletion=['deletedirectory','destroydataset'].includes(state.action);
         const queued=['queued','running'].includes(answer.job.state);
         const conversion=['convertdirectory','resumeconversion'].includes(state.action);
-        if(queued){state.completed=true;heading.textContent=deletion?'Deletion queued':conversion?'Conversion queued':'Operation in progress';state.result.append(element('span',' The operation has not finished. Follow its stage and progress in Jobs.'));}
+        if(queued&&finished){state.result.append(element('span',' The operation has not finished. Follow its stage and progress in Jobs.'));}
+        else if(queued){state.completed=true;heading.textContent=deletion?'Deletion queued':conversion?'Conversion queued':'Operation in progress';state.result.append(element('span',' The operation has not finished. Follow its stage and progress in Jobs.'));}
         const jobs=element('button',queued?(deletion?'View deletion progress':conversion?'View conversion progress':'View progress in Jobs'):answer.job.state==='completed'?'View result in Jobs':'View failed attempt in Jobs');jobs.type='button';jobs.dataset.viewJob=answer.job.id;
         jobs.addEventListener('click',()=>options.onViewJob?.(answer.job.id));if(answer.job.schema!==7)state.result.append(jobs);
       }
