@@ -219,6 +219,13 @@ sub restore {
     my $name='.zfsm-restore-'.$id;
     file_error('Restore staging already exists; inspect the retained job before retrying') if child_stat($dest,$name);
     my $container=mkdir_child($dest,$name,0700); my $data=mkdir_child($container,'data',0700); my $backup=mkdir_child($container,'replaced',0700);
+    # JOBS-007: the folder of replaced files outlives its job record, so it says what it is.
+    if ($plan->{mode} eq 'overwrite' && @{$plan->{conflicts}}) {
+        my $info=anchor($container).'/restore-info.json';
+        sysopen(my $fh,$info,O_WRONLY|O_CREAT|O_EXCL,0600) or file_error('Unable to describe the retained files'); binmode($fh);
+        print $fh $json->encode({version=>1,restored_at=>time(),snapshot=>(defined($args->{snapshot})&&!ref($args->{snapshot})?$args->{snapshot}:''),destination=>(defined($plan->{target})&&!ref($plan->{target})?$plan->{target}:''),job=>$id})."\n" or file_error('Unable to describe the retained files');
+        $fh->flush && $fh->sync or file_error('Unable to flush the retained files description'); close($fh) or file_error('Unable to close the retained files description');
+    }
     emit({phase=>'copying',bytes=>0,percent=>0,staging=>$name});
     rsync_copy($source,$data,$container,$plan,0); emit({phase=>'verifying',bytes=>$plan->{bytes},percent=>86}); rsync_copy($source,$data,$container,$plan,1);
     # Complete recheck after copying, before the first live-file replacement.

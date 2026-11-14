@@ -37,9 +37,12 @@ sub emit { print $json->encode($_[0])."\n" or fail('Progress channel closed'); S
 sub identity { my @s=stat($_[0]); fail('Pinned object unavailable') unless @s; return {dev=>"$s[0]",ino=>"$s[1]"}; }
 sub same { my ($a,$b)=@_; return ref($b) eq 'HASH' && defined($b->{dev}) && defined($b->{ino}) && $a->{dev} eq "$b->{dev}" && $a->{ino} eq "$b->{ino}"; }
 sub path {
-    my ($value)=@_; fail('Invalid directory path') if !defined($value)||ref($value)||length($value)>4096||$value=~m{^/|\0};
+    my ($value,$deleting)=@_; fail('Invalid directory path') if !defined($value)||ref($value)||length($value)>4096||$value=~m{^/|\0};
     my @parts=split m{/},$value,-1;
-    fail('Invalid directory path') if !@parts||@parts>128||grep { $_ eq ''||$_ eq '.'||$_ eq '..'||$_ eq '.zfs'||/^\.zfsm-/ } @parts;
+    fail('Invalid directory path') if !@parts||@parts>128||grep { $_ eq ''||$_ eq '.'||$_ eq '..' } @parts;
+    # A retained restore container may be deleted as a whole (JOBS-007); nothing else under .zfsm- or .zfs.
+    my @check=@parts; shift @check if $deleting && $check[0]=~/\A\.zfsm-restore-\d{8}-\d{6}-[a-f0-9]{12}\z/;
+    fail('Invalid directory path') if grep { $_ eq '.zfs'||/^\.zfsm-/ } @check;
     return $value;
 }
 sub openat {
@@ -360,7 +363,7 @@ sub main {
     my $op=$args->{op}//''; if ($op eq 'probe') { probe($args);return; }
     if($op eq 'cleanup-inspect'||$op eq 'cleanup'){cleanup_main($args);return;}
     fail('Unknown directory operation') unless $op eq 'move'||$op eq 'claim'||$op eq 'delete';
-    my $selected=path($args->{path}); my $destination;
+    my $selected=path($args->{path},$op eq 'delete'); my $destination;
     $destination=path($args->{destination}) if $op ne 'delete';
     fail('Destination cannot be inside selected directory') if defined($destination)&&($destination eq $selected||index($destination,$selected.'/')==0);
     $root_path=$args->{root}; $root=request_root($args); $boundary=prepare_boundary($root);

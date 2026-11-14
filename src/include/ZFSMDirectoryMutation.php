@@ -5,7 +5,9 @@ function zfsmDirectoryRequest($operation,$source,$options=[]) {
     if (!in_array($operation,['move','claim','delete'],true)) throw new InvalidArgumentException('Invalid directory operation');
     $root=$source['mountpoint']??''; $path=$source['path']??'';
     if (!is_string($root)||$root==='/'||!is_string($path)||!str_starts_with($path,$root.'/')) throw new RuntimeException('Directory is outside its dataset');
-    if(preg_match('~(?:^|/)\.zfsm-[^/]*(?:/|$)~',substr($path,strlen($root)+1)))throw new RuntimeException('This service directory contains protected recovery data and cannot be removed with Delete directory. Its journal and any retained objects require separate recovery review.');
+    // JOBS-007: a retained restore container (.zfsm-restore-<id>) may be deleted as a whole; every other service directory stays protected.
+    $relative=substr($path,strlen($root)+1);if($operation==='delete')$relative=preg_replace('~^\.zfsm-restore-[0-9]{8}-[0-9]{6}-[a-f0-9]{12}(?:/|$)~','',$relative);
+    if(preg_match('~(?:^|/)\.zfsm-[^/]*(?:/|$)~',$relative))throw new RuntimeException('This service directory contains protected recovery data and cannot be removed with Delete directory. Its journal and any retained objects require separate recovery review.');
     $identity=zfsmDirectoryIdentity($path);
     $reviewed=$GLOBALS['zfsm_directory_reviewed']??null;
     if (is_array($reviewed)&&($reviewed['path']??null)===$path) {

@@ -6,6 +6,7 @@ import {JSDOM} from 'jsdom';
 const settle=async()=>{for(let i=0;i<80;i++)await Promise.resolve();};
 const mutation='/mnt/cache/a/.zfsm-mutation-'+'a'.repeat(48),maintenance='/mnt/cache/a/.zfsm-maintenance',archive='/mnt/cache/a/.zfsm-archive-20261020-130405-0123456789ab',restore='/mnt/cache/a/.zfsm-restore-20261020-130405-0123456789ab';
 const findButton=(root,label)=>[...root.querySelectorAll('button')].find(b=>b.textContent===label);
+let retainedInfo=null;
 async function mount(jobs=[],savedSelection='',counts=null){
  const dom=new JSDOM('<main id="zfsm-workspace"></main>',{url:'http://fixture.local/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,root=w.document.querySelector('main'),calls=[];
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.zfsmFormatDateTime=String;w.scrollTo=()=>{};w.ResizeObserver=class{observe(){}disconnect(){}};
@@ -17,7 +18,7 @@ async function mount(jobs=[],savedSelection='',counts=null){
  tree.child['cache/a']._directory_identities=Object.fromEntries(tree.child['cache/a'].directories.map((name,i)=>[name,{dev:'1',ino:String(100+i)}]));
  const inventory={op:'getAll',data:{pools:{cache:{Health:'ONLINE',Size:1000,Used:100,Snapshots:0}},datasets:{cache:tree},devices:{cache:''},errors:{}}};
  if(savedSelection)w.localStorage.setItem('zfsm-workspace-preferences-v1',JSON.stringify({pool:'cache',selection:savedSelection}));
- const app=w.zfsmCreateWorkspace({root,config:{refresh_interval:0,destructive_mode:1,directory_listing:['cache/a']},request:async fields=>{calls.push(fields);if(fields.cmd==='inventory'||fields.cmd==='inventorysnapshots')return inventory;if(fields.cmd==='conversionjobs')return {jobs,worker_running:false,...(counts?{counts}:{})};if(fields.cmd==='getdatasetproperties')return tree.child[fields.zdataset]||tree;if(fields.cmd==='pooldiagnostics')throw Error('Synthetic unavailable diagnostics');throw Error('Unexpected '+fields.cmd);}});
+ const app=w.zfsmCreateWorkspace({root,config:{refresh_interval:0,destructive_mode:1,directory_listing:['cache/a']},request:async fields=>{calls.push(fields);if(fields.cmd==='inventory'||fields.cmd==='inventorysnapshots')return inventory;if(fields.cmd==='conversionjobs')return {jobs,worker_running:false,...(counts?{counts}:{})};if(fields.cmd==='getdatasetproperties')return tree.child[fields.zdataset]||tree;if(fields.cmd==='restoreinfo'){if(retainedInfo)return retainedInfo;throw Error('Synthetic missing description');}if(fields.cmd==='pooldiagnostics')throw Error('Synthetic unavailable diagnostics');throw Error('Unexpected '+fields.cmd);}});
  await app.refresh();await settle();
  return {w,root,app,calls,async select(name){root.querySelector('[data-node="'+name+'"]').click();await settle();},async tab(key){root.querySelector('.zfsm-tabs [data-tab="'+key+'"]').click();await settle();},close(){app.stop();w.close();}};
 }
@@ -56,5 +57,15 @@ test('internal restore and ZIP spools share the deliberate recovery view while s
 test('the Jobs badge shows the number of active jobs and nothing when none are active',async()=>{
  for(const [counts,label] of [[{active:2,needs_attention:5},'Jobs · 2'],[{active:0,needs_attention:5},'Jobs']]){
   const t=await mount([],'',counts);try{assert.equal(t.root.querySelector('[data-section=jobs]').textContent,label);}finally{t.close();}
+ }
+});
+test('a retained restore folder says what it is after its job expired and can be deleted; a folder without a description still shows its path',async()=>{
+ for(const [info,text] of [[{directory:restore,modified:'2026-11-14T10:00:00Z',restored_at:'2026-11-14T09:30:00Z',snapshot:'cache/a@daily',destination:'/mnt/cache/a/photos'},'Files replaced by a restore from cache/a@daily on 2026-11-14T09:30:00Z in /mnt/cache/a/photos. Delete them when you no longer need them.'],[{directory:restore,modified:'2026-11-14T10:00:00Z',restored_at:null,snapshot:null,destination:null},'Files replaced by a restore (changed 2026-11-14T10:00:00Z) in '+restore+'. Delete them when you no longer need them.'],[null,'Files replaced by a restore. Details are unavailable.']]){
+  retainedInfo=info;const t=await mount();
+  try{t.root.querySelector('[data-section=jobs]').click();await settle();findButton(t.root,'Show recovery files').click();await settle();await t.select(restore);await settle();
+   assert.equal(t.root.querySelector('[data-retained-restore]').textContent,text);
+   assert.ok(findButton(t.root,'Delete retained files'),'the delete action is offered');
+   assert.equal(findButton(t.root,'Move / Rename'),undefined);assert.equal(findButton(t.root,'Convert to dataset'),undefined);
+  }finally{retainedInfo=null;t.close();}
  }
 });

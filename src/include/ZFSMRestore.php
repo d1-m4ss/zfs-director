@@ -230,3 +230,22 @@ function zfsmRunRestoreJob($id) {
         if($audit)try{zfsmAuditFinish($audit,['status'=>$state==='completed'?'succeeded':($state==='recovery_required'?'recovery_required':'failed'),'succeeded'=>$state==='completed'?[$job['target']]:[],'details'=>['stage'=>$phase]]);}catch(Throwable$e){zfsmJobUpdate($id,['state'=>'recovery_required','error'=>'Files may be restored, but the final history record failed. Inspect actual state']);}
     }
 }
+// JOBS-007: what a retained restore folder is, read from the description written next to the
+// replaced files (so it still works after the job record has expired). A folder without that
+// description, such as one from an earlier version, is described by its path and change time.
+function zfsmRestoreRetainedInfo($directory) {
+    $source=zfsmResolveDirectory($directory,true);
+    if(!$source||$source['path']!==$directory||!preg_match('/^\.zfsm-restore-[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',substr($directory,strlen($source['mountpoint'])+1)))throw new InvalidArgumentException('Choose a retained restore folder.');
+    $stat=@lstat($directory);$modified=$stat?gmdate('c',$stat['mtime']):null;
+    $info=['directory'=>$directory,'modified'=>$modified,'restored_at'=>null,'snapshot'=>null,'destination'=>null];
+    $file=$directory.'/restore-info.json';$s=@lstat($file);
+    if($s&&($s['mode']&0170000)===0100000&&$s['uid']===0&&$s['size']<=4096){
+        $value=json_decode((string)@file_get_contents($file),true,4);
+        if(is_array($value)&&($value['version']??null)===1){
+            if(is_int($value['restored_at']??null))$info['restored_at']=gmdate('c',$value['restored_at']);
+            if(is_string($value['snapshot']??null)&&zfsmValidSnapshotName($value['snapshot']))$info['snapshot']=$value['snapshot'];
+            if(is_string($value['destination']??null)&&strlen($value['destination'])<=4096&&!preg_match('/[\x00-\x1f\x7f]|(?:^|\/)\.\.(?:\/|$)/',$value['destination']))$info['destination']=rtrim($source['mountpoint'],'/').($value['destination']===''?'':'/'.ltrim($value['destination'],'/'));
+        }
+    }
+    return $info;
+}

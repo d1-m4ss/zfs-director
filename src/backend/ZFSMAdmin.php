@@ -319,6 +319,7 @@ try {
 			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool'), zfsmPostString('offline_confirmed')));
 			break;
 
+		case 'restoreinfo': echo json_encode(zfsmRestoreRetainedInfo(zfsmPostString('directory')),JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE|JSON_THROW_ON_ERROR);break;
 		case 'previewcleanup': echo json_encode(zfsmCleanupPreview(zfsmPostString('directory'),$request_token),JSON_THROW_ON_ERROR);break;
 		case 'cleanupmutation': zfsmReturnAnswer(zfsmCleanupCommit($_POST,$request_token));break;
 		case 'previewdeletedirectory':

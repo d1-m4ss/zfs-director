@@ -468,6 +468,12 @@ function zfsmCreateWorkspace(options) {
         }
         if(item.kind==='directory'){
             if(/^\.zfsm-mutation-[a-f0-9]{48}$/.test(item.name.split('/').pop()))action('Clean completed recovery','cleanupmutation',danger,'Needs Destructive Mode');
+            else if(/^\.zfsm-restore-\d{8}-\d{6}-[a-f0-9]{12}$/.test(item.name.split('/').pop())&&item.name.split('/').filter(part=>part.startsWith('.zfsm-')).length===1){
+                // JOBS-007: the folder says what it holds even after its job record has expired.
+                const about=node('p','Files replaced by a restore. Checking details…','zfsm-notice');about.dataset.retainedRestore='';bar.append(about);
+                request({cmd:'restoreinfo',directory:item.name}).then(info=>{if(!about.isConnected)return;about.textContent='Files replaced by a restore'+(info.snapshot?' from '+info.snapshot:'')+(info.restored_at?' on '+date(info.restored_at):' (changed '+(info.modified?date(info.modified):'at an unknown time')+')')+(info.destination?' in '+info.destination:' in '+info.directory)+'. Delete them when you no longer need them.';}).catch(()=>{if(about.isConnected)about.textContent='Files replaced by a restore. Details are unavailable.';});
+                action('Delete retained files','deletedirectory',danger,'Needs Destructive Mode');
+            }
             else if(item.name.split('/').some(part=>part.startsWith('.zfsm-')))bar.append(node('p','Protected service directory. Retained data requires recovery review.','zfsm-notice'));
             else{action('Convert to dataset','convertdirectory',danger,'Needs Destructive Mode');action('Move / Rename','movedirectory',danger,'Needs Destructive Mode');action('Delete directory','deletedirectory',danger,'Needs Destructive Mode');}
         }

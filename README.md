@@ -191,7 +191,7 @@ A verified read-only Docker mount of a parent does not block deletion of every o
 
 Conversion is a background Job. Stop every writer first, allow room for the copies, and inspect the verified result before restarting writers. The operation copies through a confined workflow and retains the original for recovery.
 
-New retained originals use a recognizable name such as `incoming_archived_<date-time>`. Older recovery names are preserved. Internal `.zfsm-mutation-*` working directories are normally hidden from the dataset tree and can be inspected through Jobs / recovery files. They must not be treated as ordinary disposable folders: unfinished work and retained data remain protected. Cleanup of eligible completed temporary data requires a fresh reviewed operation.
+New retained originals use a recognizable name such as `incoming_archived_<date-time>`. Older recovery names are preserved. Internal `.zfsm-mutation-*` working directories are normally hidden from the dataset tree and can be inspected through Jobs / recovery files. They must not be treated as ordinary disposable folders: unfinished work and retained data remain protected. Cleanup of eligible completed temporary data requires a fresh reviewed operation. Files replaced by a file restore are kept in `.zfsm-restore-<id>/replaced`; the folder carries a short description (date, snapshot, destination) that **Show recovery files** displays even after the job record has been deleted, and **Delete retained files** removes it after the usual deletion review.
 
 
 ## Jobs: activity, progress and recovery

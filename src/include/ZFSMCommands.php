@@ -19,6 +19,7 @@ function zfsmCommandRegistry(): array {
         'inventorysnapshots'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'pooldiagnostics'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewacl'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
+        'restoreinfo'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewcleanup'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewdeletedirectory'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewdestroy'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],

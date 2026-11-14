@@ -365,6 +365,12 @@
   "destructive": false,
   "observed": false
  },
+ "restoreinfo": {
+  "kind": "read",
+  "lock": "none",
+  "destructive": false,
+  "observed": false
+ },
  "restoresnapshotfiles": {
   "kind": "admin",
   "lock": "none",
