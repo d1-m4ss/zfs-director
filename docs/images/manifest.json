@@ -7,7 +7,7 @@
     "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
     "src/frontend/ZFSMExplorer.js": "9aa9ac3793ae1d37273f9363674e7fadf094735ebbc307d2935153659bc9a748",
-    "src/frontend/ZFSMForms.js": "0dfd4a0dcf65d8f8174de2ef2dd59af9c03ca050bde60b323af96819df4b2b49",
+    "src/frontend/ZFSMForms.js": "c11163416f1c9105fddfe8547aed94d63963b0452a0b349f39f6be0d9fc34ff9",
     "src/frontend/ZFSMInventory.js": "04d6f24cf3bd00986aacaf300f7918e3825df1da2fd51f2b30caaa7d6f7b1038",
     "src/frontend/ZFSMOverview.js": "fce0218a833ce698d308072206e7cc3a42161f4fa38dd821694baf6d374d2f69",
     "src/frontend/ZFSMPoolView.js": "3e12f339d474213fcaed5642e01978be63c61380d92296c0e4c7c46050f3f22b",
@@ -15,9 +15,9 @@
     "src/frontend/ZFSMProtection.js": "a43afcf091b70a26744cab77687905e03bde55223ad34da7bbd9fada665d9400",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "45c97ada67ea7425fb59da447c148d327a6f28653d088ca7c28733c8aea6981e",
-    "src/frontend/ZFSMWorkspace.js": "2d3dd7aa98a7d37c426b786e488fcdfedbdcde44ecbb02a2b2ec6b1f5645806c",
-    "docs/preview/data.mjs": "32e0630b0a032cf86861a06dcaf42ea25270fed28b34945483d675664693d632",
-    "docs/preview/server.mjs": "0055c62d501b2a00e681a420a0de84f5cd93da1331194afa3ded6dcdcbf07f3b",
+    "src/frontend/ZFSMWorkspace.js": "43eb4efd573d204b50eec82849df2d83417f4f6bbc13360dea00acd27f986728",
+    "docs/preview/data.mjs": "86b3850d349451716ea3d78f0d50eca72d5b8518d9ceac47ef541aa8b99590fd",
+    "docs/preview/server.mjs": "e6c33216d9f194a4c4cbbc620a440800bf5947308563fbbe5797cd2c89171b4e",
     "docs/preview/capture.mjs": "7217260b8303bba89cb84b95ed2b94a51befdfe618d7ebb1859d3551f771859f"
   },
   "capture": {
@@ -32,8 +32,8 @@
   "screenshots": [
     {
       "file": "overview.png",
-      "sha256": "ff41d9c92e5626409b39f7f7c9954cdab89cf96818dbd17da7b440e22e8f8eab",
-      "bytes": 75728,
+      "sha256": "c5a74eaed1a7ceaffbadc71a1c0ccdb9b2ff661430af9a665fdce0197b2e2564",
+      "bytes": 75727,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -41,8 +41,8 @@
     },
     {
       "file": "datasets.png",
-      "sha256": "44f6c0dac7d4fb530d38d1e5eab275fe0ef7b74dfb00ae4dbeebb933582d30c8",
-      "bytes": 208068,
+      "sha256": "718bfc9aadc10acdedde20be985385fd8cd596bf9b6433b6cee78a77b929ddc0",
+      "bytes": 208067,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -50,7 +50,7 @@
     },
     {
       "file": "snapshots.png",
-      "sha256": "06594db1a034fc8dc2d7dfabce1719a8f91b960aa5a3b6f4d42866ab345f4005",
+      "sha256": "9a96e43a71530c5f69c69fd40396d7254af6df8406c14d19247e2ae0ac0ab1f4",
       "bytes": 154910,
       "viewport": {
         "width": 1440,
@@ -131,8 +131,8 @@
     },
     {
       "file": "jobs.png",
-      "sha256": "b8d762ce8d7adf48baa9487d9cffc8721b412d29834735bcd1dbdf73b50b04d6",
-      "bytes": 113779,
+      "sha256": "dc32a4469172fa358d24771976a650a5abe07f00d6561e986f7dd7fba329d1a7",
+      "bytes": 114429,
       "viewport": {
         "width": 1440,
         "height": 980
