@@ -792,13 +792,16 @@
       if(answer.field_errors)for(const [name,message]of Object.entries(answer.field_errors)){const control=state.fields[name];if(control){control.setCustomValidity(String(message));let feedback=control.parentNode.querySelector('.zfsm-field-error');if(!feedback){feedback=element('small',undefined,'zfsm-field-error');control.parentNode.append(feedback);}feedback.textContent=String(message);}}
       const failures = failureText(answer);
       const successes = Object.entries(answer.succeeded).map(([name, text]) => name + ': ' + String(text)).join('\n');
-      const completed = state.completed ? 'Select the updated object to perform another action.' : '';
+      const result = failures ? (successes ? 'partial' : 'error') : !successes ? 'unknown' : answer.worker_warning ? 'warning' : 'success';
+      const finished = result === 'success' && state.modal && state.action !== 'editdatasetproperty' && !['queued', 'running'].includes(answer.job?.state);
+      const completed = state.completed && !finished ? 'Select the updated object to perform another action.' : '';
+      const deleted = Object.keys(answer.succeeded);
       const details = state.batchRows
-        ? 'Deleted: ' + Object.keys(answer.succeeded).length + '. Failed or not attempted: ' + Object.keys(answer.failed).length + '.\nSee each snapshot above for details.'
+        ? (finished ? '' : 'Deleted: ' + deleted.length + '. Failed or not attempted: ' + Object.keys(answer.failed).length + '.\nSee each snapshot above for details.')
         : [successes, failures, answer.worker_warning, completed].filter(Boolean).join('\n');
       note(state, details || 'The operation returned no result. Inspect actual state before retrying.', !!failures);
-      const result = failures ? (successes ? 'partial' : 'error') : !successes ? 'unknown' : answer.worker_warning ? 'warning' : 'success';
       const titles = {success:'Operation successful',partial:'Partially completed',error:'Operation failed',unknown:'Result not confirmed',warning:'Completed with warnings'};
+      if (finished && state.batchRows) titles.success = 'Destroyed ' + deleted.length + (deleted.length === 1 ? ' snapshot' : ' snapshots');
       state.result.dataset.result = result;
       const heading = element('strong', titles[result], 'zfsm-result-heading');
       if (result === 'success') {
@@ -808,7 +811,13 @@
         state.result.className = 'zfsm-notice'; state.result.dataset.severity = 'warning';
       }
       state.result.prepend(heading);
-      if (answer.destruction) {
+      if (finished) {
+        // A finished action leaves only its result: no fields, checkboxes, preview or review buttons.
+        for (const child of Array.from(state.body.children)) if (child !== state.result && child.tagName !== 'H3' && child !== state.buttons && !child.classList.contains('zfsm-form-target')) child.remove();
+        if (state.buttons) { for (const control of Array.from(state.buttons.querySelectorAll('button:not([data-close-action])'))) control.remove(); if (!state.buttons.children.length) state.buttons.remove(); }
+        if (state.batchRows) { const list = element('ul'); for (const name of deleted) list.append(element('li', name)); state.result.append(list); }
+      }
+      if (answer.destruction && (!finished || ['remaining', 'changed'].some(key => Array.isArray(answer.destruction[key]) && answer.destruction[key].length) || answer.destruction.diagnostics)) {
         const outcome = element('section', undefined, 'zfsm-destroy-outcome'); outcome.dataset.destroyOutcome = '';
         outcome.append(element('strong', 'Deletion outcome'));
         outcome.append(element('p', answer.destruction.attempted === false ? 'No deletion was attempted.' : answer.destruction.state_verified ? 'Current object identities were checked after the attempt.' : 'Current state is unverified. Inspect actual state before retrying.'));
