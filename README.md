@@ -106,7 +106,7 @@ Managed creation uses Sanoid snapshot-taking separately from Director retention.
 
 ## Syncoid replication
 
-The wizard separates **Source → Destination → Schedule → Review**. It supports local pool destinations and SSH destinations when credentials, permissions and native prerequisites are valid.
+The wizard separates **Source → Destination → Schedule → Review**. The Destination step starts with where the copy goes: **On this server** (a local pool) or **On another server (SSH)**, available when credentials, permissions and native prerequisites are valid. Schedules start at every hour; there is no every-minute replication preset.
 
 An SSH destination needs an SSH key. Register it in **Settings → Sanoid / Syncoid Integration → SSH keys for remote replication**: enter the path to the private key and to `known_hosts`; Director stores only these paths. Both files must belong to root and the key must not be readable by others. Keep them on the flash drive under `/boot`, because `/root` is in RAM on Unraid and is cleared at reboot (shares under `/mnt/user` are usually writable by others and are refused). The card shows the exact `ssh-keygen` and `ssh-keyscan` commands.
 
@@ -129,7 +129,7 @@ Reviewing or saving a definition is not a transfer. Run and enable decisions are
 | Directory operations | Directory listings, move/rename, conversion to a dataset, guarded deletion and recovery inspection |
 | Snapshot Policies | Sanoid policy review, explicit creation times, retention settings and External / Managed ownership |
 | Replication | Syncoid wizard for local and SSH destinations, scheduling and verified-result reporting |
-| Jobs | Requested operations, progress, errors, stage history, recovery controls, filtering and pagination |
+| Jobs | Requested operations, progress, errors, stage history, recovery controls, filtering, pagination and deleting finished records |
 | Pool & Scrub | Native diagnostics, scrub progress, reviewed scrub requests and read-only inspection of native scheduling |
 
 ### Why Sanoid and Syncoid
@@ -153,7 +153,9 @@ We compared **Sanoid/Syncoid 2.2.0 and ZnapZend 0.23.6** in an isolated VM with 
 
 ## A quieter workspace
 
-The dataset tree sits beside the selected object's details. The selected dataset tab is retained when navigating between compatible objects, making it easier to inspect snapshots or actions across several datasets.
+The dataset tree sits beside the selected object's details. A dataset has four tabs, **Overview, Properties, Snapshots and File Manager**; every other action is in one **Actions** menu. The selected tab is retained when navigating between compatible objects, making it easier to inspect snapshots across several datasets.
+
+Overview starts with a **Status** card: pool health and any job that needs attention, with a link to it. While an operation holds the lock, a **Running now** bar on every screen names it, and actions that would wait for it say so.
 
 Themes include **Black, Gray, White and Azure**, plus **Unraid (auto)** to inherit the host theme. The interface adapts to narrow screens. Dialogs keep long reviews inside a bounded window rather than extending the entire page.
 
@@ -194,13 +196,17 @@ New retained originals use a recognizable name such as `incoming_archived_<date-
 
 ## Jobs: activity, progress and recovery
 
-Jobs collects operations requested through Director: snapshot creation, file restore, ZIP preparation/download, conversion, deletion, configuration changes and Data Protection runs. External scripts keep their own ownership and execution history.
+Jobs lists background work and failures: file restore, ZIP preparation/download, conversion, deletion, scrub and Data Protection runs. Quick actions that succeed, such as taking a snapshot or saving settings, are written only to the audit log. External scripts keep their own ownership and execution history.
+
+Snapshot policies, replication and file jobs run in three separate background lanes, so a long replication does not delay scheduled snapshots, restores or ZIP downloads. A snapshot policy still waits while a local replication is receiving into its dataset.
 
 - Progress is numeric when a meaningful measure is available; otherwise the current stage is shown without inventing a percentage.
 - Errors show the affected operation and available safe context.
 - Stage history helps distinguish copying, verification, publication and recovery.
 - Eligible retention deletion with protected snapshots left intact is reported as **Completed with warnings**, with an explanatory result.
 - Filters separate operation types and attention states. Pagination defaults to **10 records**, with larger page sizes available.
+- A scheduled run refused before anything starts (for example, Sanoid is missing or the integration is off) is recorded once; repeats every minute only update a counter on that record: *Refused again N times, last at …*.
+- **Clear finished on this page** hides finished jobs, failed ones included; **Show archived** brings them back. **Delete finished jobs** deletes the records of all finished jobs on every page. Running jobs, and jobs that still hold a snapshot, a ZIP or recovery data, are kept. Datasets, snapshots and files are never touched.
 - Recovery controls appear only where the backend supports them; completed or unsafe work is not silently resumed.
 
 ![Synthetic Jobs with conversion progress, a retention warning and pagination](docs/images/jobs.png)
