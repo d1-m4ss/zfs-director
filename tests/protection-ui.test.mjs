@@ -432,3 +432,7 @@ test('a policy row says when its scheduled check failed, once or N times, and no
   }finally{t.app.stop();}
  }
 });
+test('a paused policy row shows no failed-check line',async()=>{
+ const t=await mount(true,(fields,{data})=>fields.cmd==='protectiondata'?{...data,policies:data.policies.map(p=>p.id==='abc'?{...p,enabled:false,last_check_failure:{since:'2026-11-14T18:00:00Z',times:2,reason:'Sanoid is not installed'}}:p)}:undefined);
+ try{await t.app.render('policies');assert.deepEqual([...t.root.querySelectorAll('[data-check-failure]')].map(n=>n.textContent),[]);}finally{t.app.stop();}
+});

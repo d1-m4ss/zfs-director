@@ -1,13 +1,34 @@
 <?php
 // Directory mutations use pinned descriptors and a full-filesystem boundary.
 // Path checks here authorize the request; they are not a TOCTOU fallback.
+// JOBS-007: the one retained-restore folder that may be deleted as a whole: the LAST component of the
+// path is .zfsm-restore-<id> and no other component is a service name. Returns the job id, or null.
+function zfsmRetainedRestoreId($relative) {
+    if(!is_string($relative)||$relative==='')return null;
+    $parts=explode('/',$relative);$last=array_pop($parts);
+    if(!preg_match('/^\.zfsm-restore-([0-9]{8}-[0-9]{6}-[a-f0-9]{12})$/D',$last,$match))return null;
+    foreach($parts as$part)if($part===''||$part==='.'||$part==='..'||$part==='.zfs'||str_starts_with($part,'.zfsm-'))return null;
+    return $match[1];
+}
+// Why a retained restore folder must stay: its restore did not finish. Null when it may go.
+function zfsmRetainedRestoreBlocker($path) {
+    $id=is_string($path)?zfsmRetainedRestoreId(basename($path)):null;
+    if($id===null)return null;
+    foreach(glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[]as$file){
+        try{$job=zfsmReadJob(basename($file,'.json'));}catch(Throwable$error){continue;}
+        if(($job['schema']??null)!==2||($job['type']??null)!=='restore')continue;
+        if(($job['id']??null)!==$id&&($job['staging']??null)!==$path)continue;
+        if(in_array($job['state']??'',['queued','running','recovery_required','failed'],true))return 'This folder belongs to a restore that did not finish. Open that job in Jobs first.';
+    }
+    return null;
+}
 function zfsmDirectoryRequest($operation,$source,$options=[]) {
     if (!in_array($operation,['move','claim','delete'],true)) throw new InvalidArgumentException('Invalid directory operation');
     $root=$source['mountpoint']??''; $path=$source['path']??'';
     if (!is_string($root)||$root==='/'||!is_string($path)||!str_starts_with($path,$root.'/')) throw new RuntimeException('Directory is outside its dataset');
     // JOBS-007: a retained restore container (.zfsm-restore-<id>) may be deleted as a whole; every other service directory stays protected.
-    $relative=substr($path,strlen($root)+1);if($operation==='delete')$relative=preg_replace('~^\.zfsm-restore-[0-9]{8}-[0-9]{6}-[a-f0-9]{12}(?:/|$)~','',$relative);
-    if(preg_match('~(?:^|/)\.zfsm-[^/]*(?:/|$)~',$relative))throw new RuntimeException('This service directory contains protected recovery data and cannot be removed with Delete directory. Its journal and any retained objects require separate recovery review.');
+    $relative=substr($path,strlen($root)+1);
+    if(!($operation==='delete'&&zfsmRetainedRestoreId($relative)!==null)&&preg_match('~(?:^|/)\.zfsm-[^/]*(?:/|$)~',$relative))throw new RuntimeException('This service directory contains protected recovery data and cannot be removed with Delete directory. Its journal and any retained objects require separate recovery review.');
     $identity=zfsmDirectoryIdentity($path);
     $reviewed=$GLOBALS['zfsm_directory_reviewed']??null;
     if (is_array($reviewed)&&($reviewed['path']??null)===$path) {

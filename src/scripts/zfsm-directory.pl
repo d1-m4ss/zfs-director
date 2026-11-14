@@ -40,8 +40,8 @@ sub path {
     my ($value,$deleting)=@_; fail('Invalid directory path') if !defined($value)||ref($value)||length($value)>4096||$value=~m{^/|\0};
     my @parts=split m{/},$value,-1;
     fail('Invalid directory path') if !@parts||@parts>128||grep { $_ eq ''||$_ eq '.'||$_ eq '..' } @parts;
-    # A retained restore container may be deleted as a whole (JOBS-007); nothing else under .zfsm- or .zfs.
-    my @check=@parts; shift @check if $deleting && $check[0]=~/\A\.zfsm-restore-\d{8}-\d{6}-[a-f0-9]{12}\z/;
+    # A retained restore container (the last component) may be deleted as a whole (JOBS-007); nothing inside it, and nothing else under .zfsm- or .zfs.
+    my @check=@parts; pop @check if $deleting && $check[-1]=~/\A\.zfsm-restore-\d{8}-\d{6}-[a-f0-9]{12}\z/;
     fail('Invalid directory path') if grep { $_ eq '.zfs'||/^\.zfsm-/ } @check;
     return $value;
 }

@@ -224,6 +224,40 @@ class DirectoryMutations(unittest.TestCase):
         self.assertEqual(proc.returncode,0,proc.stderr)
         self.assertFalse(self.source.exists())
 
+    def retained(self, parent=''):
+        directory = self.root / parent if parent else self.root
+        directory.mkdir(mode=0o777, parents=True, exist_ok=True)
+        os.chmod(directory, 0o777)
+        container = directory / '.zfsm-restore-20261114-093000-0123456789ab'
+        (container / 'replaced').mkdir(parents=True, mode=0o700)
+        (container / 'replaced' / 'old.txt').write_text('replaced by a restore')
+        return container
+    def test_delete_retained_restore_container_at_any_depth(self):
+        for parent in ('', 'photos/2026'):
+            container = self.retained(parent)
+            relative = str(container.relative_to(self.root))
+            proc, rows = self.run_helper(self.request(path=relative, identity=identity(container), recursive=True))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertFalse(container.exists(), relative)
+    def test_delete_inside_retained_restore_container_or_other_service_folder_is_refused(self):
+        container = self.retained()
+        mutation = self.root / ('.zfsm-mutation-' + 'a' * 48)
+        mutation.mkdir(mode=0o700)
+        for path, target in (('.zfsm-restore-20261114-093000-0123456789ab/replaced', container / 'replaced'),
+                             ('.zfsm-restore-20261114-093000-0123456789ab/replaced/old.txt', container / 'replaced' / 'old.txt'),
+                             ('.zfsm-restore-20261114-093000-0123456789ab/data', container / 'replaced'),
+                             ('.zfsm-mutation-' + 'a' * 48, mutation),
+                             ('.zfsm-restore-x', container)):
+            proc, rows = self.run_helper(self.request(path=path, identity=identity(target), recursive=True))
+            self.assertNotEqual(proc.returncode, 0, path)
+        self.assertEqual((container / 'replaced' / 'old.txt').read_text(), 'replaced by a restore')
+        self.assertTrue(mutation.exists())
+    def test_retained_restore_container_cannot_be_moved(self):
+        container = self.retained()
+        proc, rows = self.run_helper(self.request(op='move', destination='elsewhere', path=container.name, identity=identity(container)))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertTrue(container.exists())
+
     def test_helper_process_is_named_zfs_director(self):
         proc = subprocess.Popen(['perl', HELPER], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:

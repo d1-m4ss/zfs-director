@@ -20,6 +20,7 @@ function zfsmDirectoryDeletionPreview($directory,$force) {
     $path=$resolved['path'];
     try{zfsmDirectoryRequest('delete',$resolved,['recursive'=>$recursive]);}
     catch(Throwable$error){$blockers[]=['kind'=>'protected','title'=>'Can\'t delete: '.rtrim($error->getMessage(),'.'),'fix'=>''];}
+    $unfinished=zfsmRetainedRestoreBlocker($path);if($unfinished!==null)$blockers[]=['kind'=>'restore','title'=>$unfinished,'fix'=>''];
     foreach(zfsmPendingJobs()as$job)if(($job['source']??null)===$path)$blockers[]=['kind'=>'pending_job','title'=>'Can\'t delete now: an earlier request for this folder is still '.($job['state']??'pending'),'fix'=>'Open it in Jobs, wait for it or inspect it, then press Check again.','job'=>$job['id']];
     foreach(zfsmUnresolvedConversions()as$job){
         $originals=array_filter([$job['source'],$job['recovery']??null],'is_string');$hit=false;foreach($originals as$original)if(zfsmPathOverlaps($path,$original))$hit=true;
@@ -65,7 +66,7 @@ function zfsmValidateDeletionJob($job) {
         if (!$found) throw new RuntimeException('Deletion target GUID is missing');
     } else {
         $r=$job['request']??null;
-        if (!zfsmValidDatasetName($job['owner_dataset']??'')||!is_array($r)||($r['op']??null)!=='delete'||($r['recursive']??null)!==$job['recursive']||!is_string($r['root']??null)||$r['root']==='/'||!str_starts_with($r['root'],'/')||!is_string($r['path']??null)||$r['path']===''||$job['source']!==$r['root'].'/'.$r['path']||preg_match('~(?:^|/)(?:\.{1,2}|\.zfs|\.zfsm-[^/]*)(?:/|$)~',$r['path'])) throw new RuntimeException('Invalid confined deletion request');
+        if (!zfsmValidDatasetName($job['owner_dataset']??'')||!is_array($r)||($r['op']??null)!=='delete'||($r['recursive']??null)!==$job['recursive']||!is_string($r['root']??null)||$r['root']==='/'||!str_starts_with($r['root'],'/')||!is_string($r['path']??null)||$r['path']===''||$job['source']!==$r['root'].'/'.$r['path']||preg_match('~(?:^|/)(?:\.{1,2}|\.zfs)(?:/|$)~',$r['path'])||(zfsmRetainedRestoreId($r['path'])===null&&preg_match('~(?:^|/)\.zfsm-[^/]*(?:/|$)~',$r['path']))) throw new RuntimeException('Invalid confined deletion request');
         foreach (['identity','root_identity'] as $key) foreach (['dev','ino'] as $field) if (!is_string($r[$key][$field]??null)||!preg_match('/^[0-9]+$/D',$r[$key][$field])) throw new RuntimeException('Deletion directory identity is missing');
     }
 }
@@ -132,6 +133,7 @@ function zfsmRunDeletionJob($id) {
             $failure=$answer['failed']?substr(implode("\n",$answer['failed']),0,4096):null;
         } else {
             $resolved=zfsmResolveDirectory($job['source'],true);
+            if ($resolved&&($unfinished=zfsmRetainedRestoreBlocker($resolved['path']))!==null) throw new RuntimeException($unfinished);
             if (!$resolved||$resolved['dataset']!==$job['owner_dataset']||zfsmDirectoryRequest('delete',$resolved,['recursive'=>$job['recursive']])!==$job['request']) throw new RuntimeException('Directory identity or mount changed');
             $job=zfsmDeletionStage($id,'scanning');$buffer='';$last=null;$lastProgress=0;
             $chunk=function($text)use($id,&$buffer,&$last,&$lastProgress){

@@ -169,3 +169,11 @@ test('one scheduled refusal counts once', async t=>{
  const out=await run(t,`integration(false);zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false);echo json_encode(['f'=>zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['policy_failures']]);`);
  assert.equal(out.f[0].times,1);
 });
+test('a paused policy shows no failed-check line anywhere',async t=>{
+ const out=await run(t,`integration(false);zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false);integration(true);
+ $before=count(zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['policy_failures']);
+ $store=zfsmProtectionReadStore();$store['policies']['abc']['enabled']=false;zfsmProtectionWriteStore($store);
+ $page=zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['policy_failures'];$data=zfsmProtectionData();$p=array_values(array_filter($data['policies'],fn($p)=>$p['id']==='abc'))[0];
+ echo json_encode(['before'=>$before,'page'=>$page,'policy'=>$p['last_check_failure']]);`);
+ assert.deepEqual(out,{before:1,page:[],policy:null});
+});

@@ -338,7 +338,9 @@ function zfsmJobListed($job) {
 function zfsmJobPolicyFailures(array $newestPolicy): array {
     if(!function_exists('zfsmProtectionCheckFailure')||!function_exists('zfsmLastResults'))return [];
     foreach(zfsmLastResults()as$remembered)if(($remembered['type']??null)==='policy'&&strcmp((string)$remembered['created'],(string)($newestPolicy[$remembered['definition_id']]['created']??''))>0)$newestPolicy[$remembered['definition_id']]=$remembered;
-    $out=[];foreach($newestPolicy as$id=>$job){$failure=zfsmProtectionCheckFailure($job);if($failure!==null)$out[]=['id'=>$id,'dataset'=>$job['source']??null]+$failure;}
+    // A paused or disabled policy is not checked, so a failure of it is not news.
+    try{$policies=zfsmProtectionReadStore()['policies']??[];}catch(Throwable$error){$policies=[];}
+    $out=[];foreach($newestPolicy as$id=>$job){if(empty($policies[$id]['enabled']))continue;$failure=zfsmProtectionCheckFailure($job);if($failure!==null)$out[]=['id'=>$id,'dataset'=>$job['source']??null]+$failure;}
     return $out;
 }
 function zfsmJobPage($page=1,$page_size=25,$options=null) {
