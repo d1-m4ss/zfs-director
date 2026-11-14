@@ -42,7 +42,6 @@ async function setup(page,theme,width,layout,gate='visible'){
    if(fields.cmd==='inventory'||fields.cmd==='inventorysnapshots')return inventory;
    if(fields.cmd==='getdatasetproperties')return root.child[fields.zdataset]||root;
    if(fields.cmd==='pooldiagnostics')throw Error('Synthetic diagnostics unavailable');
-   if(fields.cmd==='auditlog')return {entries:[]};
    if(fields.cmd==='snapshotfiles')return {snapshot:fields.snapshot,snapshot_guid:'123',path:fields.path,total:1,restore_available:true,entries:[{name:'notes.txt',path:'notes.txt',type:'file',available:true,size:2048,mtime:1792393200,dev:'1',ino:'101'}]};
    if(fields.cmd==='previewrestore')return {id:'b'.repeat(32),token:'signed-fixture',files:1,bytes:2048,selection:fields.selection,target:'/mnt/cache/a/'+fields.target,conflicts:[]};
    if(fields.cmd==='previewdestroy')return {target:fields.zdataset||fields.snapshot,preview_id:'b'.repeat(32),token:'a'.repeat(64),can_destroy:true,objects:[{name:fields.zdataset||fields.snapshot,guid:'2'}],preview:'Synthetic reviewed deletion scope only'};

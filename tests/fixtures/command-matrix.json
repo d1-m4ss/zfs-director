@@ -5,12 +5,6 @@
   "destructive": false,
   "observed": false
  },
- "activityvisibility": {
-  "kind": "admin",
-  "lock": "operation",
-  "destructive": false,
-  "observed": false
- },
  "adddirectortlisting": {
   "kind": "admin",
   "lock": "config",
@@ -19,12 +13,6 @@
  },
  "archivesnapshotfiles": {
   "kind": "admin",
-  "lock": "none",
-  "destructive": false,
-  "observed": false
- },
- "auditlog": {
-  "kind": "read",
   "lock": "none",
   "destructive": false,
   "observed": false
@@ -180,12 +168,6 @@
   "observed": false
  },
  "previewdestroy": {
-  "kind": "read",
-  "lock": "none",
-  "destructive": false,
-  "observed": false
- },
- "previewhistoryarchive": {
   "kind": "read",
   "lock": "none",
   "destructive": false,
@@ -356,12 +338,6 @@
  "quotaoverview": {
   "kind": "read",
   "lock": "none",
-  "destructive": false,
-  "observed": false
- },
- "refresh": {
-  "kind": "admin",
-  "lock": "operation",
   "destructive": false,
   "observed": false
  },

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {startIntegration} from './integration/server.mjs';
+import {auditEntries} from './audit-entries.mjs';
 const bootstrap=`require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';
 function expectOwnership($ok,$why){if(!$ok)throw new RuntimeException($why);}
 function rejectOwnership($fn){try{$fn();}catch(RuntimeException $e){return $e->getMessage();}throw new LogicException('Expected ownership rejection');}
@@ -53,7 +54,7 @@ test('actual HTTP transfer API validates CSRF and signed review and audits disab
  const preview=await post({cmd:'protectionexternalpreview',id:source.id,type:'policy',data:{dataset:'cache/__mock__/project',schedule:'15 4 * * *'}});assert.equal(preview.review?.type,'external_transfer',JSON.stringify(preview));assert.equal(preview.review.value.enabled,false);
  const bad=await post({cmd:'protectionexternaltransfer',preview_id:preview.preview_id,token:'forged'});assert.ok(bad.failed.request);
  const saved=await post({cmd:'protectionexternaltransfer',preview_id:preview.preview_id,token:preview.token});assert.equal(saved.policy.enabled,false,JSON.stringify(saved));assert.ok(saved.succeeded[saved.policy.id]);
- const history=await post({cmd:'auditlog'});assert.ok(history.entries.some(e=>e.command==='protectionexternaltransfer'&&e.phase==='outcome'&&e.status==='succeeded'));assert.equal(JSON.stringify(history).includes('forged'),false);
+ const history={entries:await auditEntries(s)};assert.ok(history.entries.some(e=>e.command==='protectionexternaltransfer'&&e.phase==='outcome'&&e.status==='succeeded'));assert.equal(JSON.stringify(history).includes('forged'),false);
  assert.ok((await post({cmd:'protectionexternaltransfer',preview_id:preview.preview_id,token:preview.token})).failed.request);
 });
 test('transfer supports local replication without publishing schedules or adopting snapshot ownership',async t=>{

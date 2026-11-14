@@ -6,6 +6,7 @@ import {startIntegration} from './integration/server.mjs';
 const prelude=`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';
 $p=zfsmSanoidPolicy(['id'=>'abc','dataset'=>'cache/__mock__/project','autosnap'=>false,'autoprune'=>false]);$p['source_guid']=zfsmReadIdentity($p['dataset'])['guid'];$store=zfsmProtectionReadStore();$store['policies']['abc']=$p;zfsmProtectionWriteStore($store);
 function integration($on){$cfg=$GLOBALS['plugin_config'];file_put_contents($cfg,str_replace($on?'sanoid_integration = "0"':'sanoid_integration = "1"',$on?'sanoid_integration = "1"':'sanoid_integration = "0"',file_get_contents($cfg)));}
+function hide($id){zfsmJobAtomicWrite(zfsmActivityDirectory('jobs').'/'.$id.'.marker',['version'=>1,'id'=>$id,'archived'=>true]);}
 function journals(){return array_values(array_filter(glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json'),fn($f)=>preg_match('/[0-9]{8}-[0-9]{6}-[a-f0-9]{12}\\.json$/',$f)));}
 function refusals(){return count(array_filter(zfsmAuditList(500),fn($row)=>($row['command']??'')==='protectionscheduled'&&($row['status']??'')==='failed'));}
 `;
@@ -45,7 +46,7 @@ test('history cleanup keeps only the newest of each run of identical refusals le
  assert.deepEqual(out,{removed:40,blocked:false,newest_kept:true,oldest_gone:true,other_kept:true,other_dup_gone:true,ran_kept:true},'39 + 1 duplicates removed; the newest of each reason and a run that started stay');
 });
 test('a refusal the user hid does not mute the next refusal',async t=>{
- const out=await run(t,`integration(false);$first=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false)['job']['id'];zfsmActivitySetJobs([$first],true);
+ const out=await run(t,`integration(false);$first=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false)['job']['id'];hide($first);
  $second=zfsmQueueProtection(['type'=>'policy','id'=>'abc'],false)['job']['id'];$page=zfsmJobPage(1,50,['filter'=>'all']);
  echo json_encode(['new_record'=>$second!==$first,'visible_attention'=>$page['counts']['needs_attention']]);`);
  assert.deepEqual(out,{new_record:true,visible_attention:2});
@@ -56,10 +57,9 @@ test('Delete finished jobs keeps data owners, holds and running work; deletes th
  $conv=function($state,$stage,$minute){$id=sprintf('20261113-22%02d00-%012x',$minute,$minute);$j=['schema'=>1,'id'=>$id,'state'=>$state,'stage'=>$stage,'source'=>'/mnt/cache/x','dataset'=>'cache/x','owner_dataset'=>'cache','owner_guid'=>'123','owner_mountpoint'=>'/mnt/cache','pool'=>'cache','source_identity'=>['dev'=>'1','ino'=>'2'],'recovery'=>'/mnt/cache/x_zfsm_recovery_'.$id];zfsmJobAtomicWrite(zfsmJobFile($id),$j);return $id;};
  $oldFail=$prot('failed',1);$oldDone=$prot('completed',2);$queued=$prot('queued',3);$held=$prot('completed',4,['hold_owned'=>true]);$latest=$prot('failed',9);
  $cancelledConversion=$conv('cancelled','copying',1);$failedConversion=$conv('failed','copying',2);$doneConversion=$conv('completed','complete_source_retained',3);
- $hidden=zfsmActivitySetJobs([$oldFail],true);
+ hide($oldFail);
  $r=zfsmJobDeleteFinished();$left=array_map(fn($f)=>basename($f,'.json'),journals());sort($left);
- echo json_encode(['hidden'=>isset($hidden['succeeded'][$oldFail]),'deleted'=>$r['deleted'],'kept'=>$r['kept'],'left'=>$left,'expected_left'=>[$queued,$held,$cancelledConversion,$failedConversion],'deleted_ids'=>array_values(array_diff([$oldFail,$oldDone,$latest,$doneConversion],$left)),'saved'=>zfsmLastResults()['policy:abc']['id']??null,'latest'=>$latest,'message'=>$r['succeeded']['jobs']]);`);
- assert.equal(out.hidden,true,'a failed job can be hidden');
+ echo json_encode(['deleted'=>$r['deleted'],'kept'=>$r['kept'],'left'=>$left,'expected_left'=>[$queued,$held,$cancelledConversion,$failedConversion],'deleted_ids'=>array_values(array_diff([$oldFail,$oldDone,$latest,$doneConversion],$left)),'saved'=>zfsmLastResults()['policy:abc']['id']??null,'latest'=>$latest,'message'=>$r['succeeded']['jobs']]);`);
  assert.equal(out.deleted,4,'failed and completed protection jobs (including the newest) and the completed conversion');
  assert.equal(out.saved,out.latest,'the newest policy result is saved before its journal goes');
  assert.deepEqual(out.left,out.expected_left.sort(),'running, held and unfinished conversions stay');

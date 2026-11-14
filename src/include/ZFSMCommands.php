@@ -11,7 +11,6 @@ function zfsmCommandRegistry(): array {
     $registry=[
         // Read-only views and previews: no audit record, no lock.
         'acleditorinfo'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
-        'auditlog'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'conversionjobs'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'downloadsnapshotarchive'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>true,'label'=>'Download ZIP'],
         'downloadsnapshotfile'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>true,'label'=>'Download snapshot file'],
@@ -23,7 +22,6 @@ function zfsmCommandRegistry(): array {
         'previewcleanup'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewdeletedirectory'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewdestroy'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
-        'previewhistoryarchive'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewpromote'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewquota'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
         'previewrestore'=>['kind'=>'read','lock'=>'none','destructive'=>false,'observed'=>false,'label'=>null],
@@ -65,7 +63,6 @@ function zfsmCommandRegistry(): array {
         'protectioncredentialsave'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Save SSH key reference'],
         'protectioncredentialremove'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Remove SSH key reference'],
         // Audited; change ZFS or files under the operation lock.
-        'activityvisibility'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Organize activity history'],
         'cleanupmutation'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Clean completed recovery'],
         'deletefinishedjobs'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Delete finished jobs'],
         'clonesnapshot'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Clone snapshot'],
@@ -80,7 +77,6 @@ function zfsmCommandRegistry(): array {
         'movedirectory'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Move directory'],
         'promotedataset'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Promote clone'],
         'publishconversion'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Publish conversion'],
-        'refresh'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>null],
         'releasesnapshot'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Release snapshot hold'],
         'renamedataset'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Rename dataset'],
         'renamesnapshot'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Rename snapshot'],

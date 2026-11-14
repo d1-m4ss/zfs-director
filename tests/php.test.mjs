@@ -25,7 +25,7 @@ test('PHP scrub suite (simulated processes)', async () => {
     } finally { php.exit(); }
 });
 
-for (const scenario of ['success','native-failure','csrf','get','unconfirmed','badpool','lock','refresh']) {
+for (const scenario of ['success','native-failure','csrf','get','unconfirmed','badpool','lock']) {
     test('authenticated endpoint: ' + scenario, async () => {
         const php = await runtime();
         try {

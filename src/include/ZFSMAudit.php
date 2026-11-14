@@ -387,7 +387,6 @@ function zfsmAuditAppend(array $entry): void {
     $directory = zfsmAuditStorage(true);
     $lock = zfsmAuditLock($directory, LOCK_EX);
     try {
-        if(function_exists('zfsmActivityInvalidateHistory'))zfsmActivityInvalidateHistory($entry['operation_id']??null);
         $handle = zfsmAuditOpen($directory.'/'.gmdate('Y-m-d').'.jsonl', true);
         try {
             if (fseek($handle, 0, SEEK_END) !== 0) throw new \RuntimeException('Audit storage unavailable');

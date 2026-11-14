@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {startIntegration} from './integration/server.mjs';
+import {auditEntries} from './audit-entries.mjs';
 const started='Tue Oct 20 12:00:00 2026',running='scrub in progress since '+started+'\n    100 / 1000 scanned, 100 / 1000 issued\n    0B repaired, 10.00% done, 00:00:10 to go';
 async function fixture(fn){const s=await startIntegration();try{const file='/app/src/include/ZFSMScrub.php';s.php.writeFile(file,s.php.readFileAsText(file).replace("'scan_requested_from'=>time()","'scan_requested_from'=>1792497600").replace("'scan_requested_until'=>time()","'scan_requested_until'=>1792497600"));const post=async fields=>(await fetch(s.url+'/plugins/zfs.master.ui/backend/ZFSMAdmin.php',{method:'POST',body:new URLSearchParams({csrf_token:'integration-token',...fields})})).json();const scan=text=>{const m=s.readModel();m.status=m.status.replace(/scan: [\s\S]*?\nconfig:/,'scan: '+text+'\nconfig:');s.writeModel(m);};const observe=async id=>{const r=await s.run({code:`<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';zfsmJobUpdate('${id}',['observed_at'=>0]);echo json_encode(zfsmObserveRequestJob('${id}'));`});assert.equal(r.errors,'');return JSON.parse(r.text);};await fn({s,post,scan,observe});}finally{await s.close();}}
 test('scrub start remains in Jobs until native completion; observer reads progress without reissuing scrub',async()=>fixture(async({s,post,scan,observe})=>{
@@ -25,8 +26,8 @@ test('a different terminal scrub within an observation gap is never attributed t
  const a=await post({cmd:'scrubpool',pool:'cache',confirmed:'1'});scan(running);await observe(a.job.id);
  scan('scrub repaired 0B in 00:00:03 with 0 errors on Tue Oct 20 12:00:20 2026');const j=await observe(a.job.id);assert.equal(j.state,'recovery_required');assert.notEqual(j.progress?.percent,100);
 }));
-test('scrub journal retains audit correlation when the HTTP request detaches',async()=>fixture(async({post})=>{
- const a=await post({cmd:'scrubpool',pool:'cache',confirmed:'1'});assert.match(a.job?.audit_id,/^[a-f0-9]{32}$/);const history=(await post({cmd:'auditlog'})).entries;assert.ok(history.some(e=>e.operation_id===a.job.audit_id&&e.phase==='outcome'));
+test('scrub journal retains audit correlation when the HTTP request detaches',async()=>fixture(async({s,post})=>{
+ const a=await post({cmd:'scrubpool',pool:'cache',confirmed:'1'});assert.match(a.job?.audit_id,/^[a-f0-9]{32}$/);const history=await auditEntries(s);assert.ok(history.some(e=>e.operation_id===a.job.audit_id&&e.phase==='outcome'));
 }));
 test('cancel status without matching start evidence requires inspection rather than claiming this scrub was cancelled',async()=>fixture(async({post,scan,observe})=>{
  const a=await post({cmd:'scrubpool',pool:'cache',confirmed:'1'});scan(running);await observe(a.job.id);scan('scrub canceled on Tue Oct 20 12:00:20 2026');assert.equal((await observe(a.job.id)).state,'recovery_required');

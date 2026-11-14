@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {startIntegration} from './integration/server.mjs';
+import {auditEntries} from './audit-entries.mjs';
 
 async function fixture(fn){const s=await startIntegration({dependencyUsage:true});try{
  const post=async fields=>(await fetch(s.url+'/plugins/zfs.master.ui/backend/ZFSMAdmin.php',{method:'POST',body:new URLSearchParams({csrf_token:'integration-token',...fields})})).json();
@@ -11,12 +12,12 @@ async function fixture(fn){const s=await startIntegration({dependencyUsage:true}
 test('a successful snapshot is recorded in the audit log only, not in Jobs',async()=>fixture(async({s,post,model,target})=>{
  const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:model.datasets[target].guid});assert.deepEqual(a.failed,[]);assert.equal(a.job,undefined);
  const list=await post({cmd:'conversionjobs',listed:'0'});assert.equal(list.jobs.length,0);
- const audit=(await post({cmd:'auditlog'})).entries;assert.ok(audit.some(e=>e.command==='snapshotdataset'&&e.phase==='outcome'&&e.status==='succeeded'));
+ const audit=await auditEntries(s);assert.ok(audit.some(e=>e.command==='snapshotdataset'&&e.phase==='outcome'&&e.status==='succeeded'));
 }));
 test('a failed snapshot request writes no journal: the error is in the dialog answer and the audit log',async()=>fixture(async({s,post,model,target})=>{
  const a=await post({cmd:'snapshotdataset',zdataset:target,recursive:'0',expected_guid:'999999'});assert.ok(Object.keys(a.failed).length);assert.equal(a.job,undefined);
  assert.equal((await post({cmd:'conversionjobs',listed:'0'})).jobs.length,0,'no journal is written');
- const audit=(await post({cmd:'auditlog'})).entries;assert.ok(audit.some(e=>e.command==='snapshotdataset'&&e.phase==='outcome'&&e.status==='failed'));
+ const audit=await auditEntries(s);assert.ok(audit.some(e=>e.command==='snapshotdataset'&&e.phase==='outcome'&&e.status==='failed'));
 }));
 
 test('invalid downloads are journaled; secret-bearing unlock refusals write no journal and no secret',async()=>fixture(async({post,model,target})=>{
@@ -83,7 +84,7 @@ test('uncertain audit outcome after native success writes no journal and the ans
 }));
 test('request operation coverage is explicit and includes Job controls and excludes read-only views',async()=>fixture(async({s})=>{
  const r=await s.run({code:"<?php require '/acceptance/system.php';require '/app/src/backend/ZFSMOperations.php';echo json_encode(array_keys(zfsmRequestJobCommands()));"});const commands=JSON.parse(r.text);
- for(const c of ['restoresnapshotfiles','rollbacksnapshot','downloadsnapshotfile','downloadsnapshotarchive','archivesnapshotfiles','convertdirectory','movedirectory','cleanupmutation','deletedirectory','destroydataset','destroysnapshot','snapshotdataset','createdataset','renamedataset','lockdataset','unlockdataset','promotedataset','renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','protectionrun','scrubpool','editdatasetproperty','editacl','setquota','activityvisibility','cancelconversion','resumeconversion','cancelrestore','protectioncancel'])assert.ok(commands.includes(c),c);
+ for(const c of ['restoresnapshotfiles','rollbacksnapshot','downloadsnapshotfile','downloadsnapshotarchive','archivesnapshotfiles','convertdirectory','movedirectory','cleanupmutation','deletedirectory','destroydataset','destroysnapshot','snapshotdataset','createdataset','renamedataset','lockdataset','unlockdataset','promotedataset','renamesnapshot','holdsnapshot','releasesnapshot','clonesnapshot','protectionrun','scrubpool','editdatasetproperty','editacl','setquota','cancelconversion','resumeconversion','cancelrestore','protectioncancel'])assert.ok(commands.includes(c),c);
  for(const c of ['inventory','snapshotfiles','previewrestore','previewdestroy','protectionrunpreview','refresh'])assert.equal(commands.includes(c),false,c);
 }));
 test('Jobs API preserves completed transfer 100 percent over last transient 99 percent',async()=>fixture(async({s,post})=>{
@@ -95,7 +96,7 @@ test('a refused restore is not kept as a hidden journal',async()=>fixture(async(
  for(const filter of ['restore','operation','all'])assert.equal((await post({cmd:'conversionjobs',listed:'0',filter,sort:'newest',view:'all'})).jobs.length,0,filter);
 }));
 
-for(const command of ['cancelconversion','resumeconversion','cancelrestore','protectioncancel','activityvisibility'])test(command+' refusal writes no journal and does not touch data',async()=>fixture(async({s,post})=>{
+for(const command of ['cancelconversion','resumeconversion','cancelrestore','protectioncancel'])test(command+' refusal writes no journal and does not touch data',async()=>fixture(async({s,post})=>{
  const before=s.readModel(),answer=await post({cmd:command});assert.ok(Object.keys(answer.failed).length);
  assert.equal(answer.job,undefined);assert.equal((await post({cmd:'conversionjobs',listed:'0',filter:'all'})).jobs.length,0);assert.deepEqual(s.readModel().datasets,before.datasets);
 }));

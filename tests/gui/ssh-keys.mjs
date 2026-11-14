@@ -21,7 +21,6 @@ async function open(width){
    if(fields.cmd==='protectioncredentiallist')return {credentials:structuredClone(keys)};
    if(fields.cmd==='protectioncredentialsave'){if(!fields.keyfile.startsWith('/'))return {succeeded:{},failed:{[fields.name]:'Credential paths must be absolute trusted paths without shell syntax or whitespace.'}};keys.push({name:fields.name,keyfile:fields.keyfile,known_hosts:fields.known_hosts,usable:true,problem:null,used_by:fields.name==='used-key'?['Offsite']:[],persistent:fields.keyfile.startsWith('/boot/')});return {succeeded:{[fields.name]:'SSH key reference added'},failed:{}};}
    if(fields.cmd==='protectioncredentialremove'){keys=keys.filter(k=>k.name!==fields.name);return {succeeded:{[fields.name]:'removed'},failed:{}};}
-   if(fields.cmd==='auditlog')return {entries:[]};
    throw Error('Unexpected fixture command '+fields.cmd);}});
  });
  await page.locator('[data-section=settings]').click();await page.getByRole('heading',{name:'Sanoid / Syncoid Integration',exact:true}).waitFor();

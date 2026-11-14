@@ -209,30 +209,18 @@ try {
 		case 'pooldiagnostics':
 			echo json_encode(zfsmReadMaintenanceDiagnostics(zfsmPostString('pool'),$zfsm_cfg), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
 			break;
-		case 'previewhistoryarchive':
-            echo json_encode(zfsmActivityHistoryReview($_POST['ids']??null,zfsmPostString('review_token')),JSON_THROW_ON_ERROR);
-            break;
-		case 'activityvisibility':
-			if(!is_string($_POST['kind']??null)||!in_array($_POST['kind'],['jobs','history'],true)||!is_string($_POST['archived']??null)||!in_array($_POST['archived'],['0','1'],true))throw new InvalidArgumentException('Invalid visibility request');
-			$answer=$_POST['kind']==='jobs'?zfsmActivitySetJobs($_POST['ids']??null,$_POST['archived']==='1'):zfsmActivitySetHistory($_POST['ids']??null,$_POST['archived']==='1',zfsmPostString('review_token'));
-			zfsmReturnAnswer($answer);
-			break;
 		case 'deletefinishedjobs':
 			foreach(['filter','type','everything']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid delete request');
 			// By default only jobs matching the filters shown in Jobs, on every page; "everything" ignores them.
-			$only=null;if(($_POST['everything']??'')!=='1'){$match=zfsmJobPage(1,1,array_intersect_key($_POST,array_flip(['filter','type']))+['view'=>'all','ids_only'=>true,'listed'=>true]);$only=array_fill_keys($match['ids'],true);}
+			$only=null;if(($_POST['everything']??'')!=='1'){$match=zfsmJobPage(1,1,array_intersect_key($_POST,array_flip(['filter','type']))+['with_hidden'=>true,'ids_only'=>true,'listed'=>true]);$only=array_fill_keys($match['ids'],true);}
 			zfsmReturnAnswer(zfsmJobDeleteFinished($only));
 			break;
 		case 'conversionjobs':
-			foreach(['page','page_size','filter','type','sort','view']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');
+			foreach(['page','page_size','filter','type','sort']as$key)if(array_key_exists($key,$_POST)&&!is_string($_POST[$key]))throw new InvalidArgumentException('Invalid jobs page request');
 			// Retention also runs when the worker is stopped; it returns at once when not due.
 			try{zfsmJobHistoryCleanup();}catch(Throwable$error){error_log('ZFS Director: job history maintenance unavailable');}
-			$job_options=array_intersect_key($_POST,array_flip(['filter','type','sort','view']))+['listed'=>($_POST['listed']??'1')!=='0'];
+			$job_options=array_intersect_key($_POST,array_flip(['filter','type','sort']))+['listed'=>($_POST['listed']??'1')!=='0'];
 			echo json_encode(zfsmJobPage(zfsmPostString('page','1'),zfsmPostString('page_size','25'),$job_options?:null)+['worker_running'=>zfsmWorkerRunning(),'history'=>zfsmJobHistoryStatus(),'operation'=>zfsmOperationLockStatus()],JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE);
-			break;
-		case 'auditlog':
-			foreach (['cursor','page_size'] as $key) if (array_key_exists($key,$_POST) && !is_string($_POST[$key])) throw new InvalidArgumentException('Invalid audit page request');
-			echo json_encode(zfsmActivityAuditPage(zfsmPostString('page_size','500'),zfsmPostString('cursor')),JSON_UNESCAPED_SLASHES|JSON_INVALID_UTF8_SUBSTITUTE|JSON_THROW_ON_ERROR);
 			break;
 		case 'cancelconversion':
 			$job=zfsmCancelConversion(zfsmPostString('job_id'));
@@ -261,11 +249,6 @@ try {
 			// which violates the client contract even on a healthy pool.
 			foreach (array('pools','devices','datasets','errors') as $key) $answer['data'][$key] = (object)$answer['data'][$key];
 			echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
-			break;
-
-		case 'refresh':
-			// Compatibility for older clients: inventory is read directly on every request.
-			zfsmReturnAnswer(array('succeeded' => array('refresh' => 'Inventory is read directly; no refresh is needed'), 'failed' => array()));
 			break;
 
 		case 'createdataset':

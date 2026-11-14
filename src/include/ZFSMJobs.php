@@ -338,7 +338,7 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
     if ($options!==null) {
         if(!is_array($options))throw new InvalidArgumentException('Invalid jobs options');
         $types=['all','snapshot','restore','archive','conversion','deletion','policy','replication','operation','download','maintenance'];
-        foreach(['filter'=>['all','active','needs_attention','completed','recovery','snapshot','restore','archive','conversion','deletion','policy','replication','operation','download','maintenance'],'type'=>$types,'sort'=>['newest','oldest','attention'],'view'=>['working','archived','all']]as$key=>$allowed)if(isset($options[$key])&&(!is_string($options[$key])||!in_array($options[$key],$allowed,true)))throw new InvalidArgumentException('Invalid jobs '.$key);
+        foreach(['filter'=>['all','active','needs_attention','completed','recovery','snapshot','restore','archive','conversion','deletion','policy','replication','operation','download','maintenance'],'type'=>$types,'sort'=>['newest','oldest','attention']]as$key=>$allowed)if(isset($options[$key])&&(!is_string($options[$key])||!in_array($options[$key],$allowed,true)))throw new InvalidArgumentException('Invalid jobs '.$key);
     }
     $directory=zfsmJobDirectory($GLOBALS['plugin_state']); $files=@scandir($directory);
     if ($files===false) throw new RuntimeException('Job storage is unavailable');
@@ -397,10 +397,10 @@ function zfsmJobPage($page=1,$page_size=25,$options=null) {
         $groups[$job['group']][]=$job;
     }
     if($filterOptions){
-        $all=array_merge(...array_values($groups));$filter=$options['filter']??'all';$type=$options['type']??'all';$sort=$options['sort']??'newest';$view=$options['view']??'working';
-        foreach($all as&$item){$item['archived']=zfsmActivityJobArchived($item);$item['archive_eligible']=zfsmActivityJobEligible($item);}unset($item);
+        $all=array_merge(...array_values($groups));$filter=$options['filter']??'all';$type=$options['type']??'all';$sort=$options['sort']??'newest';$withHidden=!empty($options['with_hidden']);
+        foreach($all as&$item){$item['archived']=zfsmActivityJobArchived($item);}unset($item);
         // UX-003: "filter" is the status (older clients may still send a type there); "type" narrows by kind.
-        $all=array_values(array_filter($all,function($job)use($filter,$type,$view){return ($view==='all'||($view==='archived')===$job['archived'])&&($filter==='all'||$filter===$job['group']||($filter==='recovery'&&$job['state']==='recovery_required')||$filter===$job['type']||$filter===zfsmRequestJobCategory($job))&&($type==='all'||$type===$job['type']||$type===zfsmRequestJobCategory($job));}));
+        $all=array_values(array_filter($all,function($job)use($filter,$type,$withHidden){return ($withHidden||!$job['archived'])&&($filter==='all'||$filter===$job['group']||($filter==='recovery'&&$job['state']==='recovery_required')||$filter===$job['type']||$filter===zfsmRequestJobCategory($job))&&($type==='all'||$type===$job['type']||$type===zfsmRequestJobCategory($job));}));
         $createdTime=static function($job){$created=$job['created']??null;if(is_int($created)||is_float($created))return is_finite($created)&&$created>0?$created:0;return is_string($created)&&strlen($created)<=64?(strtotime($created)?:0):0;};
         usort($all,function($a,$b)use($sort,$createdTime){if($sort==='attention'){$rank=['needs_attention'=>0,'active'=>1,'completed'=>2];$d=$rank[$a['group']]-$rank[$b['group']];if($d)return $d;}$aTime=$createdTime($a);$bTime=$createdTime($b);$d=($bTime<=>$aTime)?:strcmp($b['id'],$a['id']);return $sort==='oldest'?-$d:$d;});
         if(!empty($options['ids_only']))return ['ids'=>array_column($all,'id')];

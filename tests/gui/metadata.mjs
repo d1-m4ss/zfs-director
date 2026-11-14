@@ -8,7 +8,7 @@ const require=createRequire(import.meta.url),{chromium}=require(process.env.ZFSM
 const output=process.env.ZFSM_METADATA_OUTPUT||'evidence/testhost-directories-2026-10-18/metadata-gui';
 await mkdir(output+'/screenshots',{recursive:true});
 const mock=await startMock(),browser=await chromium.launch({executablePath:process.env.ZFSM_CHROME,headless:true});
-const project=lab+'/project',results=[],issues=[],external=[],screenshots=[],measurements=[],readOnly=new Set(['inventory','inventorysnapshots','pooldiagnostics','getdatasetproperties','conversionjobs','auditlog']);
+const project=lab+'/project',results=[],issues=[],external=[],screenshots=[],measurements=[],readOnly=new Set(['inventory','inventorysnapshots','pooldiagnostics','getdatasetproperties','conversionjobs']);
 let context,page;
 const longPath='/mnt/'+project+'/'+Array.from({length:6},(_,i)=>'component-'+i+'-'+('long-unbroken-name-'.repeat(10))).join('/');
 function seedMetadata(model){
