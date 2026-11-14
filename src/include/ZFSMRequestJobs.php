@@ -23,7 +23,7 @@ function zfsmRequestJobRestoreContext($document) {
     $mount=$ctx['destination']??null;if(!is_string($mount)||!str_starts_with($mount,'/')||$mount==='/'||strlen($mount)>4096||preg_match('/[\x00-\x1f\x7f]/',$mount)||preg_match('#(?:^|/)\.\.?(/|$)#',$mount))return;
     try{$target=zfsmExplorerPath($plan['target']??null);}catch(Throwable$error){return;}
     if(preg_match('/[\x00-\x1f\x7f]/',$target))return;
-    $GLOBALS['zfsm_request_restore_context']=['snapshot'=>$ctx['snapshot'],'dataset'=>$ctx['dataset'],'target'=>$mount.($target===''?'':'/'.$target)];
+    zfsmRequestSet('request_restore_context',['snapshot'=>$ctx['snapshot'],'dataset'=>$ctx['dataset'],'target'=>$mount.($target===''?'':'/'.$target)]);
 }
 // Context comes from a successfully verified, server-owned protection review.
 function zfsmRequestJobReviewContext($review) {
@@ -46,7 +46,7 @@ function zfsmRequestJobSubject($request) {
 function zfsmRequestJobBegin($command,$request,$audit_id=null) {
     $history_gate=zfsmJobHistoryGate();try{
     $labels=zfsmRequestJobCommands();if(!isset($labels[$command]))throw new InvalidArgumentException('Unsupported request job');
-    $context=$command==='restoresnapshotfiles'?($GLOBALS['zfsm_request_restore_context']??[]):[];
+    $context=$command==='restoresnapshotfiles'?(zfsmRequestGet('request_restore_context',[])):[];
     if($command==='restoresnapshotfiles')$request=['cmd'=>$command]+$context;
     $parent=null;if(in_array($command,['cancelconversion','resumeconversion','publishconversion','cancelrestore','protectioncancel','downloadsnapshotarchive'],true)&&is_string($request['job_id']??null)&&preg_match('/^[0-9]{8}-[0-9]{6}-[a-f0-9]{12}$/D',$request['job_id']))try{$candidate=zfsmReadJob($request['job_id']);if(!zfsmJobProblem($candidate))$parent=$candidate;}catch(Throwable$error){}
     $id=gmdate('Ymd-His').'-'.bin2hex(random_bytes(6));$now=gmdate('c');$path=zfsmRequestJobLease($id);
@@ -99,26 +99,26 @@ function zfsmRequestJobFailure($failed) {
     return 'The operation failed. Review its stage and Administrative History; inspect actual state before retrying.';
 }
 function zfsmRequestJobAnswer($answer) {
-    $command=$GLOBALS['zfsm_job_request_command']??'';
+    $command=zfsmRequestGet('job_request_command','');
     if(isset($GLOBALS['zfsm_request_job'])){
         $failed=!empty($answer['failed']);$uncertain=($failed&&!empty($GLOBALS['zfsm_request_job']['native_submitted']))||isset($answer['failed']['audit'])||($failed&&!empty($answer['succeeded']));$summary=$uncertain?'The operation may have completed partly or fully. Inspect actual state and Administrative History before retrying.':($failed?zfsmRequestJobFailure($answer['failed']):(zfsmRequestJobCommands()[$command]??'Operation').' completed.');
         if($command==='snapshotdataset')foreach(array_keys($answer['succeeded']??[])as$name)if(zfsmValidSnapshotName($name)){zfsmRequestJobDownloadContext($name);break;}
-        $id=$GLOBALS['zfsm_request_job']['id'];$audit=$GLOBALS['zfsm_job_request_audit']??null;if($audit!==null)zfsmJobUpdate($id,['audit_id'=>$audit]);
-        $context=$GLOBALS['zfsm_job_failure_context']??[];
+        $id=$GLOBALS['zfsm_request_job']['id'];$audit=zfsmRequestGet('job_request_audit',null);if($audit!==null)zfsmJobUpdate($id,['audit_id'=>$audit]);
+        $context=zfsmRequestGet('job_failure_context',[]);
         $safe=array_intersect_key($context,array_flip(['stage','exit_code','error_code','tool']));
         $record=zfsmRequestJobFinish($uncertain?'recovery_required':($failed?'failed':'completed'),$summary,null,['succeeded_count'=>count($answer['succeeded']??[]),'failed_count'=>count($answer['failed']??[]),'failure'=>$failed?$safe:null]+(!empty($answer['scheduler_warning'])||!empty($answer['worker_warning'])?['severity'=>'warning']:[]));
         if(isset($answer['job']))$answer['request_job']=$record;else $answer['job']=$record;
     }elseif(($answer['job']['schema']??null)===7&&!empty($answer['failed'])){
         $answer['job']=zfsmJobUpdate($answer['job']['id'],['state'=>'recovery_required','stage'=>'observation_lost','finished_at'=>gmdate('c'),'error'=>'The native operation was requested, but the request outcome could not be recorded fully. Inspect actual state; automatic retry is disabled.']);
-    }elseif(empty($answer['job'])&&isset($GLOBALS['zfsm_request_published_job'])){
-        $answer['job']=zfsmReadJob($GLOBALS['zfsm_request_published_job']);
-    }elseif(empty($answer['job'])&&!empty($answer['failed'])&&in_array($command,zfsmRequestJobQueuedCommands(),true)&&empty($GLOBALS['zfsm_conversion_journal_started'])&&empty($GLOBALS['zfsm_deletion_journal_started'])){
-        zfsmRequestJobBegin($command,$_POST,$GLOBALS['zfsm_job_request_audit']??null);$answer['job']=zfsmRequestJobFinish('failed',zfsmRequestJobFailure($answer['failed']),'preflight_rejected');
+    }elseif(empty($answer['job'])&&(zfsmRequestGet('request_published_job')!==null)){
+        $answer['job']=zfsmReadJob(zfsmRequestGet('request_published_job'));
+    }elseif(empty($answer['job'])&&!empty($answer['failed'])&&in_array($command,zfsmRequestJobQueuedCommands(),true)&&empty(zfsmRequestGet('conversion_journal_started'))&&empty(zfsmRequestGet('deletion_journal_started'))){
+        zfsmRequestJobBegin($command,$_POST,zfsmRequestGet('job_request_audit',null));$answer['job']=zfsmRequestJobFinish('failed',zfsmRequestJobFailure($answer['failed']),'preflight_rejected');
     }elseif(empty($answer['job'])&&!empty($answer['failed'])&&isset(zfsmRequestJobCommands()[$command])&&!in_array($command,zfsmRequestJobObservedCommands(),true)){
         // A failed synchronous action is still shown in Jobs, written once; a partial
         // success needs inspection rather than a retry.
         $partial=!empty($answer['succeeded'])||isset($answer['failed']['audit']);
-        zfsmRequestJobBegin($command,$_POST,$GLOBALS['zfsm_job_request_audit']??null);$context=$GLOBALS['zfsm_job_failure_context']??[];
+        zfsmRequestJobBegin($command,$_POST,zfsmRequestGet('job_request_audit',null));$context=zfsmRequestGet('job_failure_context',[]);
         $answer['job']=zfsmRequestJobFinish($partial?'recovery_required':'failed',$partial?'The operation may have completed partly. Inspect actual state and Administrative History before retrying.':zfsmRequestJobFailure($answer['failed']),null,['succeeded_count'=>count($answer['succeeded']??[]),'failed_count'=>count($answer['failed']),'failure'=>array_intersect_key($context,array_flip(['stage','exit_code','error_code','tool']))]);
     }
     return $answer;

@@ -2,6 +2,17 @@
 require_once __DIR__.'/ZFSMActivityVisibility.php';
 require_once __DIR__.'/ZFSMJobHistory.php';
 
+// ARCH-005: state that one admin request passes between modules (which command runs, its
+// audit id, whether a queue journal was written, which job it published, restore context).
+// One explicit store with a fixed set of keys instead of scattered $GLOBALS entries; the
+// endpoint resets it at the start of every request.
+function zfsmRequestContextKeys(): array { return ['job_request_command','request_published_job','job_request_audit','job_failure_context','request_audit','conversion_journal_started','deletion_journal_started','request_restore_context']; }
+function zfsmRequestKey(string $key): string { if(!in_array($key,zfsmRequestContextKeys(),true))throw new LogicException('Unknown request context key '.$key); return $key; }
+function zfsmRequestGet(string $key,$default=null) { return $GLOBALS['zfsm_request_context'][zfsmRequestKey($key)]??$default; }
+function zfsmRequestSet(string $key,$value): void { $GLOBALS['zfsm_request_context'][zfsmRequestKey($key)]=$value; }
+function zfsmRequestUnset(string $key): void { unset($GLOBALS['zfsm_request_context'][zfsmRequestKey($key)]); }
+function zfsmRequestReset(): void { $GLOBALS['zfsm_request_context']=[]; }
+
 function zfsmJobDirectory($directory) {
     $exists=is_dir($directory);
     // Worker lanes start together (REL-001): another process may create it between the check and mkdir.
@@ -46,7 +57,7 @@ function zfsmJobAtomicWrite($file,$data) {
         if (fwrite($handle,$bytes)!==strlen($bytes) || !fflush($handle) || (function_exists('fsync')&&!fsync($handle))) throw new RuntimeException('Unable to flush job journal');
         fclose($handle); $handle=null;
         if (!@rename($temp,$file)) throw new RuntimeException('Unable to commit job journal');
-        if(!empty($GLOBALS['zfsm_job_request_command'])&&in_array($data['schema']??null,[1,2,4,6],true)&&isset($data['id'])&&basename($file)===$data['id'].'.json')$GLOBALS['zfsm_request_published_job']=$data['id'];
+        if(!empty(zfsmRequestGet('job_request_command'))&&in_array($data['schema']??null,[1,2,4,6],true)&&isset($data['id'])&&basename($file)===$data['id'].'.json')zfsmRequestSet('request_published_job',$data['id']);
         zfsmAuditSyncDirectory(dirname($file));
     } finally { if (is_resource($handle)) fclose($handle); if (is_file($temp)) @unlink($temp); }
     } finally { if(is_resource($history_gate)){flock($history_gate,LOCK_UN);fclose($history_gate);} }
@@ -390,7 +401,7 @@ function zfsmQueueConversion($directory,$pool,$offline_confirmed=false) {
         $job=zfsmJobInitializeHistory($job);
         // Publication can succeed before a following directory sync fails.
         // Such an outcome must not be reported as a proven prequeue rejection.
-        $GLOBALS['zfsm_conversion_journal_started']=true;
+        zfsmRequestSet('conversion_journal_started',true);
         zfsmJobAtomicWrite(zfsmJobFile($id),$job);
         return ['succeeded'=>[$directory=>'Conversion queued; original will be retained'],'failed'=>[],'job'=>$job];
     } finally { flock($lock,LOCK_UN); fclose($lock); }

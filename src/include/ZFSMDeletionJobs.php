@@ -88,7 +88,7 @@ function zfsmQueueDeletion($kind,$source,$recursive,$scope=null) {
     $lock=@fopen($queue,'c');if(!$lock||!flock($lock,LOCK_EX))throw new RuntimeException('Unable to lock queue');
     try {
         foreach(zfsmPendingJobs() as $existing) if (($existing['source']??null)===$source) throw new RuntimeException("Another operation for this target is already queued or running\nEarlier request: job ".$existing['id'].' ('.($existing['state']??'pending').')');
-        $GLOBALS['zfsm_deletion_journal_started']=true;
+        zfsmRequestSet('deletion_journal_started',true);
         zfsmJobAtomicWrite(zfsmJobFile($id),$job);
         $answer=['succeeded'=>[$source=>'Deletion queued. Follow progress and the verified result in Jobs.'],'failed'=>[],'job'=>$job];
         try{zfsmStartWorker();}catch(Throwable$error){$answer['worker_warning']='Deletion is queued, but the background worker could not start. No deletion has been confirmed. Check worker status before submitting another request.';}

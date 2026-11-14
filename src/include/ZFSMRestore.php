@@ -125,7 +125,7 @@ function zfsmCleanupArchive($job) {
     return 'removed';
 }
 function zfsmQueueRestore($id,$token,$secret,$confirmed) {
-    unset($GLOBALS['zfsm_request_restore_context']);
+    zfsmRequestUnset('request_restore_context');
     if($confirmed!=='1')throw new InvalidArgumentException('Review the restore summary and confirm explicitly');
     $file=zfsmRestorePreviewFile($id);
     if(is_link($file)||!is_file($file)||filesize($file)>64*1024*1024)throw new InvalidArgumentException('Restore preview expired; review the selection again');

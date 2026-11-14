@@ -12,9 +12,8 @@ require_once $docroot.'/plugins/'.$plugin.'/backend/ZFSMOperations.php';
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 $_POST = is_array($_POST ?? null) ? $_POST : array();
-unset($GLOBALS['zfsm_conversion_journal_started']);
-unset($GLOBALS['zfsm_deletion_journal_started']);
-unset($GLOBALS['zfsm_request_job'],$GLOBALS['zfsm_job_request_command'],$GLOBALS['zfsm_request_published_job'],$GLOBALS['zfsm_job_request_audit'],$GLOBALS['zfsm_job_failure_context']);
+zfsmRequestReset();
+unset($GLOBALS['zfsm_request_job']);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
@@ -34,19 +33,19 @@ function zfsmResolveAnswerCodes($answer) {
 
 function zfsmReturnAnswer($ret) {
 	$answer = zfsmResolveAnswerCodes($ret);
-	if (!empty($GLOBALS['zfsm_request_audit'])) {
-		$id=$GLOBALS['zfsm_request_audit']; unset($GLOBALS['zfsm_request_audit']);
+	if (!empty(zfsmRequestGet('request_audit'))) {
+		$id=zfsmRequestGet('request_audit'); zfsmRequestUnset('request_audit');
 		$deletion_command=$GLOBALS['zfsm_audit_operations'][$id]['command']??null;
 		if(in_array($deletion_command,['deletedirectory','destroydataset'],true)&&$answer['failed']&&empty($answer['job'])){
-			try{if(!empty($GLOBALS['zfsm_deletion_journal_started']))$answer['failed']['queue']='Deletion queue outcome is uncertain. Inspect Jobs and actual state before submitting again.';else{$kind=$deletion_command==='deletedirectory'?'directory':'dataset';$rejected=zfsmRecordRejectedDeletion($kind,zfsmPostString($kind==='directory'?'directory':'zdataset'),$answer['failed'],$id);if($rejected)$answer['job']=$rejected;}}
+			try{if(!empty(zfsmRequestGet('deletion_journal_started')))$answer['failed']['queue']='Deletion queue outcome is uncertain. Inspect Jobs and actual state before submitting again.';else{$kind=$deletion_command==='deletedirectory'?'directory':'dataset';$rejected=zfsmRecordRejectedDeletion($kind,zfsmPostString($kind==='directory'?'directory':'zdataset'),$answer['failed'],$id);if($rejected)$answer['job']=$rejected;}}
 			catch(Throwable$error){$answer['failed']['job_record']='The rejected deletion request could not be saved in Jobs. Inspect Administrative History.';error_log('ZFS Director: rejected deletion record failed');}
 		}
 		if(($GLOBALS['zfsm_audit_operations'][$id]['command']??null)==='convertdirectory'&&$answer['failed']&&empty($answer['job'])){
-			try{if(!empty($GLOBALS['zfsm_conversion_journal_started']))$answer['failed']['queue']='Conversion queue outcome is uncertain. Inspect Jobs and actual state before submitting again.';else{$rejected=zfsmRecordRejectedConversion(zfsmPostString('directory'),$answer['failed'],$id);if($rejected)$answer['job']=$rejected;}}
+			try{if(!empty(zfsmRequestGet('conversion_journal_started')))$answer['failed']['queue']='Conversion queue outcome is uncertain. Inspect Jobs and actual state before submitting again.';else{$rejected=zfsmRecordRejectedConversion(zfsmPostString('directory'),$answer['failed'],$id);if($rejected)$answer['job']=$rejected;}}
 			catch(Throwable$error){$answer['failed']['job_record']='The rejected request could not be saved in Jobs. No conversion was queued; inspect Administrative History.';error_log('ZFS Director: rejected conversion record failed');}
 		}
 		if($answer['failed']&&empty($GLOBALS['zfsm_audit_operations'][$id]['failure_details']['error_code']))zfsmAuditRecordFailure(null,[],['code'=>null,'output'=>implode("\n",array_map(fn($v)=>is_string($v)?$v:'',$answer['failed']))]);
-		$GLOBALS['zfsm_job_failure_context']=$GLOBALS['zfsm_audit_operations'][$id]['failure_details']??[];
+		zfsmRequestSet('job_failure_context',$GLOBALS['zfsm_audit_operations'][$id]['failure_details']??[]);
         try { zfsmAuditFinish($id,['status'=>$answer['failed']?'failed':'succeeded','succeeded'=>array_keys($answer['succeeded']),'failed'=>array_keys($answer['failed']),'reason'=>zfsmAuditFailureReason($answer['failed'])]); }
 		catch (Throwable $error) { $answer['failed']['audit']='Operation may have completed, but its final audit record failed. Inspect actual state before retrying.'; error_log('ZFS Director: final audit write failed'); }
 	}
@@ -83,7 +82,7 @@ try {
 	$spec = zfsmCommand($command);
 	if ($spec === null) throw new InvalidArgumentException('Unknown command');
 	$command = $_POST['cmd'] = $spec['name'];
-	$GLOBALS['zfsm_job_request_command']=$command;
+	zfsmRequestSet('job_request_command',$command);
 	if($spec['observed'])zfsmRequestJobBegin($command,$_POST);
 	if ($spec['kind'] === 'admin') {
 		$fields=$_POST;
@@ -91,9 +90,9 @@ try {
 			$data=$_POST['data'];
 			if (is_string($data['zpool']??null)&&is_string($data['name']??null)) $fields['zdataset']=$data['zpool'].'/'.$data['name'];
 		}
-		$GLOBALS['zfsm_request_audit']=zfsmAuditBegin($command,$fields);
-		$GLOBALS['zfsm_job_request_audit']=$GLOBALS['zfsm_request_audit'];
-        if(isset($GLOBALS['zfsm_request_job']))zfsmJobUpdate($GLOBALS['zfsm_request_job']['id'],['audit_id'=>$GLOBALS['zfsm_request_audit']]);
+		zfsmRequestSet('request_audit',zfsmAuditBegin($command,$fields));
+		zfsmRequestSet('job_request_audit',zfsmRequestGet('request_audit'));
+        if(isset($GLOBALS['zfsm_request_job']))zfsmJobUpdate($GLOBALS['zfsm_request_job']['id'],['audit_id'=>zfsmRequestGet('request_audit')]);
 	}
 	// Lock 'none' admin commands (protectionrun, conversion/restore queueing and cancels) only
 	// queue or flag a durable job; they serialize on their own job/config locks already.
