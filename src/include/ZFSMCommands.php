@@ -67,7 +67,7 @@ function zfsmCommandRegistry(): array {
         // Audited; change ZFS or files under the operation lock.
         'activityvisibility'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Organize activity history'],
         'cleanupmutation'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Clean completed recovery'],
-        'deletefinishedjobs'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Delete finished jobs'],
+        'deletefinishedjobs'=>['kind'=>'admin','lock'=>'config','destructive'=>false,'observed'=>false,'label'=>'Delete finished jobs'],
         'clonesnapshot'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Clone snapshot'],
         'createdataset'=>['kind'=>'admin','lock'=>'operation','destructive'=>false,'observed'=>false,'label'=>'Create dataset'],
         'deletedirectory'=>['kind'=>'admin','lock'=>'operation','destructive'=>true,'observed'=>false,'label'=>'Delete directory'],

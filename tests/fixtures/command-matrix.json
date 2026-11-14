@@ -79,7 +79,7 @@
  },
  "deletefinishedjobs": {
   "kind": "admin",
-  "lock": "operation",
+  "lock": "config",
   "destructive": false,
   "observed": false
  },

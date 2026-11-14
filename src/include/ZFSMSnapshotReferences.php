@@ -12,7 +12,7 @@ function zfsmAnnotateSnapshots(&$snapshots,$datasetGuids,$store,$jobs) {
 }
 function zfsmSnapshotReferenceStore(&$snapshots,$datasetGuids) {
     $store=[];$jobs=[];
-    try{if(is_file(dirname($GLOBALS['plugin_config']).'/protection/config.json')){$store=zfsmProtectionReadStore();$jobs=zfsmJobPage(1,200)['jobs'];}}catch(Throwable $error){/* Optional provenance remains Unknown. */}
+    try{if(is_file(dirname($GLOBALS['plugin_config']).'/protection/config.json')){$store=zfsmProtectionReadStore();$jobs=zfsmJobsWithLastResults(zfsmJobPage(1,200)['jobs']);}}catch(Throwable $error){/* Optional provenance remains Unknown. */}
     zfsmAnnotateSnapshots($snapshots,$datasetGuids,$store,$jobs);
 }
 function zfsmBookmarkMetadata($pool,&$datasets) {

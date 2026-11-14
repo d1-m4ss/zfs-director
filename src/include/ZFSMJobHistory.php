@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__.'/ZFSMRecoveryCleanup.php';
+require_once __DIR__.'/ZFSMLastResults.php';
 // Log retention never invokes ZFS or removes manifests, spools or saved data.
 // Settings > Keep finished jobs for: 1, 7 or 30 days, or 0 = always. Default 7.
 function zfsmJobRetentionDays() {
@@ -37,14 +38,6 @@ function zfsmJobHistoryTime($job) {
     $times=[];foreach(['created','updated','finished_at']as$key){$value=$job[$key]??null;$time=is_string($value)&&strlen($value)<=64?strtotime($value):false;if($time!==false&&$time>0)$times[]=$time;}
     return $times?max($times):null;
 }
-function zfsmJobHistoryEligible($job) {
-    if(zfsmJobProblem($job)||$job['state']!=='completed'||!empty($job['error'])||!empty($job['hold_owned'])||!empty($job['cancel_requested'])||zfsmJobHistoryTime($job)===null)return false;
-    if(!empty($job['result']['warning'])||!empty($job['result']['warnings'])||!in_array($job['result']['severity']??'info',['info','success'],true))return false;
-    if($job['schema']===7)return is_array($job['result']??null)&&is_string($job['result']['summary']??null)&&$job['result']['summary']!==''&&$job['stage']==='completed'&&($job['result']['failed_count']??0)===0&&!zfsmRequestJobActive($job);
-    // Conversion, file restore/ZIP and deletion journals describe saved data or
-    // recovery evidence. Their retention is deliberately independent of logs.
-    return $job['schema']===4&&$job['stage']==='finished'&&in_array($job['verified_outcome']??null,['completed','up_to_date','skipped'],true)&&($job['verification']['outcome']??null)===$job['verified_outcome'];
-}
 function zfsmJobHistoryReferences($value,&$pins,$self=null) {
     if(is_array($value)){foreach($value as$key=>$item){if(is_string($key))zfsmJobHistoryReferences($key,$pins,$self);zfsmJobHistoryReferences($item,$pins,$self);}return;}
     if(!is_string($value))return;
@@ -55,61 +48,132 @@ function zfsmJobHistoryRegular($file) {
     if(!$st||is_link($file)||($st['mode']&0170000)!==0100000||$st['nlink']!==1)throw new RuntimeException('History contains an unsafe file; retained for inspection.');
     return $st;
 }
-// "Delete finished jobs": removes the records of finished jobs on request, on every page.
-// Kept: queued or running jobs; anything that may still own data or a way to recover it
-// (cancelled or failed conversions, restores and deletions, snapshot holds, ZIP staging not yet
-// removed, recovery_required, journals that cannot be read safely); the latest run and the
-// latest verified run of every policy and replication, which pool warnings and the Replication
-// screen read; and journals other records refer to. Failed or cancelled protection and request
-// jobs own no data (the recovery journals above do), so they are deleted. Datasets, snapshots
-// and files are never touched. The caller holds the operation lock.
-function zfsmJobKeepOnDelete($job,$pinned=false) {
+// One decision, used by the hourly retention and by "Delete finished jobs".
+// A record stays only when it is still needed: queued or running work; a snapshot hold or a ZIP
+// that is still on disk; the journal of a conversion or file restore that may own saved data or
+// a way to recover it; a journal that cannot be read safely; and a journal another record or
+// the protection store points at. Everything else is deleted, whatever its outcome: failed,
+// cancelled and interrupted policy, replication and request jobs and all deletion journals own
+// no data. The newest result of each policy and replication is copied to a small file first
+// (ZFSMLastResults.php), so the Policies and Replication screens and the pool warnings keep
+// it. Datasets, snapshots and files are never touched.
+function zfsmJobKeepOnDelete($job) {
     if(zfsmJobProblem($job))return 'needs inspection';
     $state=$job['state']??'';$schema=$job['schema']??null;
     if(in_array($state,['queued','running'],true))return 'running';
-    if($state==='recovery_required')return 'needs recovery';
     if(!empty($job['hold_owned'])||(function_exists('zfsmArchiveNeedsCleanup')&&zfsmArchiveNeedsCleanup($job)))return 'still holds a snapshot or ZIP';
     // A ZIP that is still on disk belongs to its job until it is removed.
-    if($schema===2&&($job['type']??'')==='archive'&&empty($job['archive_removed']))return 'still holds a snapshot or ZIP';
-    if($pinned)return 'latest result of a policy or replication';
-    if($schema===4&&in_array($state,['completed','failed','cancelled'],true))return null;
-    if($schema===7&&in_array($state,['completed','failed','cancelled'],true))return function_exists('zfsmRequestJobActive')&&zfsmRequestJobActive($job)?'running':null;
+    if($schema===2&&($job['type']??'')==='archive')return empty($job['archive_removed'])?'still holds a snapshot or ZIP':null;
+    if($schema===6){
+        // A deletion that was interrupted or kept a private recovery container is the only record of it.
+        if(function_exists('zfsmCleanupTerminalJob')&&zfsmCleanupTerminalJob($job))return null;
+        return $state==='recovery_required'||!empty($job['recovery'])?'may own recovery data':null;
+    }
+    if($schema===4)return null;
+    if($schema===7)return function_exists('zfsmRequestJobActive')&&zfsmRequestJobActive($job)?'running':null;
+    if($state==='recovery_required')return 'needs recovery';
     if(function_exists('zfsmCleanupTerminalJob')&&zfsmCleanupTerminalJob($job))return null;
     return 'may own recovery data';
 }
+function zfsmJobHistoryDescribe($job,$stat,$hash) {
+    $refs=[];zfsmJobHistoryReferences($job,$refs,$job['id']);
+    $definition=($job['schema']??null)===4?(string)($job['type']??'').':'.(string)($job['definition_id']??''):null;
+    $refusal=zfsmProtectionBlockedBeforeStart($job);
+    return ['dev'=>$stat['dev'],'ino'=>$stat['ino'],'size'=>$stat['size'],'hash'=>$hash,'reason'=>zfsmJobKeepOnDelete($job),'time'=>zfsmJobHistoryTime($job)??PHP_INT_MAX,'created'=>(string)($job['created']??''),'refs'=>array_keys($refs),'definition'=>$definition,'verified'=>zfsmLastResultVerified($job),'refusal'=>$refusal?($job['type'].':'.$job['definition_id'].':'.hash('sha256',(string)($job['error']??''))):null];
+}
+// Compact description of every journal (never the journals themselves, so thousands of records
+// fit in memory). $strict is retention: an unknown or unsafe file stops the pass.
+function zfsmJobHistoryScan($directory,$strict) {
+    $records=[];$unreadable=[];$skipped=0;$bytes=0;$seen=0;$scan=opendir($directory);if($scan===false)throw new RuntimeException('Job storage is unavailable');
+    try{while(($name=readdir($scan))!==false){
+        if(++$seen>400000)throw new RuntimeException('History scan limit reached; no records removed.');
+        if(!preg_match('/^([0-9]{8}-[0-9]{6}-[a-f0-9]{12})\.json$/D',$name,$match)){if($strict&&str_ends_with($name,'.json'))throw new RuntimeException('Unknown job journal; history retained for inspection.');continue;}
+        $id=$match[1];$file=$directory.'/'.$name;
+        try{
+            $stat=zfsmJobHistoryRegular($file);
+            if($stat['size']>131072){$unreadable[$id]=true;continue;}
+            // Budget: what is not scanned in this pass stays untouched and is picked up by the next one.
+            if(count($records)>=20000||$bytes+$stat['size']>64*1024*1024){$skipped++;continue;}
+            $bytes+=$stat['size'];
+            $job=zfsmReadJob($id);if(zfsmJobProblem($job)){$unreadable[$id]=true;continue;}
+            $records[$id]=zfsmJobHistoryDescribe($job,$stat,hash_file('sha256',$file));
+        }catch(Throwable$error){if($strict)throw $error;$unreadable[$id]=true;}
+    }}finally{closedir($scan);}
+    return [$records,$unreadable,$skipped];
+}
+// id => keep reason, or null when the record is deleted. $cutoff: records newer than this
+// time stay ("recent"); null deletes regardless of age. $only: ids the request selected.
+// $fold: of each run of identical refusals only the newest stays, whatever its age.
+function zfsmJobHistoryPlan($records,$storePins,$cutoff,$only=null,$fold=false) {
+    $reason=[];$duplicate=[];
+    foreach($records as$id=>$r){
+        $why=$r['reason'];
+        if($why===null&&$only!==null&&!isset($only[$id]))$why='not selected';
+        elseif($why===null&&$cutoff!==null&&$r['time']>$cutoff)$why='recent';
+        $reason[$id]=$why;
+    }
+    uksort($records,fn($a,$b)=>($records[$b]['time']<=>$records[$a]['time'])?:strcmp($b,$a));
+    if($fold){$first=[];foreach($records as$id=>$r){if($r['refusal']===null||$records[$id]['reason']!==null)continue;if(!isset($first[$r['refusal']])){$first[$r['refusal']]=true;continue;}if($only===null||isset($only[$id])){$reason[$id]=null;$duplicate[$id]=true;}}}
+    foreach($storePins as$id=>$_)if(array_key_exists($id,$reason)&&$reason[$id]===null)$reason[$id]='referenced by protection';
+    // A record that stays keeps every record it points at, and so on down the chain.
+    $queue=array_keys(array_filter($reason,fn($why)=>$why!==null));
+    while($queue){$id=array_pop($queue);foreach($records[$id]['refs']as$ref)if(array_key_exists($ref,$reason)&&$reason[$ref]===null){$reason[$ref]='referenced by another job';$queue[]=$ref;}}
+    // The newest record of each definition among those about to go is saved first.
+    // Readers compare the creation time, so "newest" here means the newest created.
+    $byCreated=array_keys($records);usort($byCreated,fn($a,$b)=>strcmp($records[$b]['created'],$records[$a]['created'])?:strcmp($b,$a));
+    $latest=[];$remember=[];foreach($byCreated as$id){$r=$records[$id];if($reason[$id]!==null||$r['definition']===null)continue;
+        if(!isset($latest[$r['definition']])){$latest[$r['definition']]=true;$remember[$id]=true;}
+        if($r['verified']&&!isset($latest[$r['definition'].':verified'])){$latest[$r['definition'].':verified']=true;$remember[$id]=true;}}
+    return ['reason'=>$reason,'duplicate'=>$duplicate,'latest'=>$remember];
+}
+// Removes one journal with its lock, runtime copy and marker. Returns the bytes freed, or null
+// when somebody else holds the journal. Throws when the files changed since the scan.
+function zfsmJobHistoryRemove($id,$record,$directory,$runtime) {
+    $file=zfsmJobFile($id);$stat=zfsmJobHistoryRegular($file);
+    if($stat['dev']!==$record['dev']||$stat['ino']!==$record['ino']||hash_file('sha256',$file)!==$record['hash'])throw new RuntimeException('Job identity changed; remaining history retained.');
+    $aux=[$file.'.lock',$runtime.'/'.$id.'.json',$runtime.'/requests/'.$id.'.lock',$directory.'/visibility/jobs/'.$id.'.marker'];
+    $proofs=[];$existing=[];$locks=[];
+    try{
+        foreach(array_merge([$file],$aux)as$path){$proof=zfsmJobHistoryPathProof(dirname($path));if($proof===null)continue;if(!file_exists($path)&&!is_link($path))continue;$meta=zfsmJobHistoryRegular($path);$proofs[$path]=[$proof,$meta];$existing[]=$path;
+            if(str_ends_with($path,'.lock')){$h=fopen($path,'ce');if(!$h)return null;$locks[]=$h;$opened=fstat($h);if(!flock($h,LOCK_EX|LOCK_NB)||$opened['dev']!==$meta['dev']||$opened['ino']!==$meta['ino'])return null;}
+        }
+        foreach($proofs as$path=>[$proof,$meta]){$current=zfsmJobHistoryRegular($path);if(zfsmJobHistoryPathProof(dirname($path))!==$proof||$current['dev']!==$meta['dev']||$current['ino']!==$meta['ino'])throw new RuntimeException('History metadata identity changed; retained.');}
+        // The exclusive history gate excludes every per-ID updater and its waiters; the lock
+        // probes above also preserve foreign live locks.
+        if(!unlink($file))throw new RuntimeException('Unable to remove a job record.');
+        foreach($existing as$path)if($path!==$file&&!unlink($path))throw new RuntimeException('Unable to remove job metadata.');
+        return $stat['size'];
+    }finally{foreach($locks as$h)if(is_resource($h)){flock($h,LOCK_UN);fclose($h);}}
+}
+// Walks the plan: saves the newest results, then deletes. Returns [removed, bytes, kept reasons, duplicates removed].
+function zfsmJobHistoryApply($records,$plan,$directory,$limit,$strict,&$progress=null) {
+    $runtime=zfsmJobDirectory($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs');
+    $removed=0;$bytes=0;$kept=[];$duplicates=0;$progress=['removed'=>0,'bytes'=>0,'duplicates'=>0];
+    $keep=function($why)use(&$kept){$kept[$why]=($kept[$why]??0)+1;};
+    $ids=array_keys($plan['reason']);usort($ids,fn($a,$b)=>($records[$a]['time']<=>$records[$b]['time'])?:strcmp($a,$b));
+    try{foreach($ids as$id){
+        $why=$plan['reason'][$id];
+        if($why!==null){if(!in_array($why,['recent','not selected'],true))$keep($why);continue;}
+        if($limit!==null&&$removed>=$limit)continue;
+        if(isset($plan['latest'][$id])){try{zfsmLastResultRemember(zfsmReadJob($id));}catch(Throwable$error){$keep('newest result could not be saved');continue;}}
+        try{$freed=zfsmJobHistoryRemove($id,$records[$id],$directory,$runtime);}catch(Throwable$error){if($strict)throw $error;$keep('changed during deletion');continue;}
+        if($freed===null){$keep('running');continue;}
+        $removed++;$bytes+=$freed;if(isset($plan['duplicate'][$id]))$duplicates++;$progress=['removed'=>$removed,'bytes'=>$bytes,'duplicates'=>$duplicates];
+    }}finally{if($removed)zfsmAuditSyncDirectory($directory);}
+    return [$removed,$bytes,$kept,$duplicates];
+}
 function zfsmJobDeleteFinished($only=null) {
     $gate=zfsmJobHistoryGate(true,true);if($gate===null)throw new RuntimeException('Jobs are being updated; try again in a moment.');
-    $removed=0;$kept=[];$directory=zfsmJobDirectory($GLOBALS['plugin_state']);
-    $keep=function($reason)use(&$kept){$kept[$reason]=($kept[$reason]??0)+1;};
+    $directory=zfsmJobDirectory($GLOBALS['plugin_state']);
     try{
-        $names=@scandir($directory);if($names===false)throw new RuntimeException('Job storage is unavailable');
-        $jobs=[];$unreadable=[];
-        foreach($names as$name){
-            if(!preg_match('/^([0-9]{8}-[0-9]{6}-[a-f0-9]{12})\.json$/D',$name,$match))continue;
-            try{zfsmJobHistoryRegular($directory.'/'.$name);$jobs[$match[1]]=zfsmReadJob($match[1]);}catch(Throwable$error){$unreadable[$match[1]]=true;}
-        }
-        // Same pins as the hourly cleanup: latest and latest verified run per definition, and references.
-        $pins=[];try{zfsmJobHistoryReferences(zfsmProtectionReadStore(),$pins);}catch(Throwable$error){}
-        $order=$jobs;uasort($order,fn($a,$b)=>((zfsmJobHistoryTime($b)??PHP_INT_MAX)<=>(zfsmJobHistoryTime($a)??PHP_INT_MAX))?:strcmp($b['id'],$a['id']));
-        $latest=[];foreach($order as$id=>$job){
-            zfsmJobHistoryReferences($job,$pins,$id);
-            if(($job['schema']??null)===4){$key=($job['type']??'').':'.($job['definition_id']??'');if(!isset($latest[$key])){$pins[$id]=true;$latest[$key]=true;}if(($job['verification']['verified']??false)===true&&!isset($latest[$key.':verified'])){$pins[$id]=true;$latest[$key.':verified']=true;}}
-        }
-        foreach($unreadable as$id=>$_)if($only===null||isset($only[$id]))$keep('needs inspection');
-        foreach($jobs as$id=>$job){
-            if($only!==null&&!isset($only[$id]))continue;
-            $reason=zfsmJobKeepOnDelete($job,isset($pins[$id]));if($reason!==null){$keep($reason);continue;}
-            $file=zfsmJobFile($id);$lock=$file.'.lock';$handle=null;
-            if(file_exists($lock)||is_link($lock)){
-                try{zfsmJobHistoryRegular($lock);}catch(Throwable$error){$keep('needs inspection');continue;}
-                $handle=fopen($lock,'ce');if(!$handle||!flock($handle,LOCK_EX|LOCK_NB)){if($handle)fclose($handle);$keep('running');continue;}
-            }
-            try{
-                if(!unlink($file))throw new RuntimeException('Unable to delete a job record.');$removed++;
-                foreach([$lock,($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs').'/'.$id.'.json',$directory.'/visibility/jobs/'.$id.'.marker']as$aux)if(!is_link($aux)&&is_file($aux))@unlink($aux);
-            }finally{if($handle){flock($handle,LOCK_UN);fclose($handle);}}
-        }
-        if($removed)zfsmAuditSyncDirectory($directory);
+        [$records,$unreadable,$skipped]=zfsmJobHistoryScan($directory,false);
+        // An unreadable protection store means references cannot be checked: nothing is deleted.
+        $pins=[];try{$store=zfsmProtectionReadStore();}catch(Throwable$error){throw new RuntimeException('Protection settings could not be read; no job was deleted.');}zfsmJobHistoryReferences($store,$pins);
+        $plan=zfsmJobHistoryPlan($records,$pins,null,$only);
+        [$removed,$bytes,$kept]=zfsmJobHistoryApply($records,$plan,$directory,null,false);
+        foreach($unreadable as$id=>$_)if($only===null||isset($only[$id]))$kept['needs inspection']=($kept['needs inspection']??0)+1;
+        if($skipped)$kept['not scanned yet, press again']=$skipped;
+        zfsmLastResultsPrune($store);
     }finally{flock($gate,LOCK_UN);fclose($gate);}
     ksort($kept);$left=array_sum($kept);
     $message='Deleted '.$removed.' finished job record(s).'.($left?' Kept '.$left.': '.implode(', ',array_map(fn($reason,$count)=>$count.' '.$reason,array_keys($kept),$kept)).'.':'');
@@ -118,54 +182,22 @@ function zfsmJobDeleteFinished($only=null) {
 function zfsmJobHistoryCleanup($now=null) {
     $now=$now??time();$policy=zfsmJobHistoryPolicy();$last=zfsmJobHistoryStatus()['last_cleanup'];
     if($last!==null&&$now-$last['checked_at']<$policy['interval_seconds'])return ['skipped'=>'not_due'];
-    if($policy['days']===0)return ['skipped'=>'keep_always'];
-    $operation=zfsmAcquireOperationLock($GLOBALS['plugin_lock'],true);if($operation===null)return ['skipped'=>'operation_busy'];
-    $gate=null;$config=null;$report=['checked_at'=>$now,'removed'=>0,'reclaimed_bytes'=>0,'protected'=>0,'days'=>$policy['days'],'blocked'=>false];
-    try {
+    $gate=null;$config=null;$progress=null;$report=['checked_at'=>$now,'removed'=>0,'reclaimed_bytes'=>0,'protected'=>0,'days'=>$policy['days'],'blocked'=>false];
     try {
         $gate=zfsmJobHistoryGate(true,true);if($gate===null)return ['skipped'=>'journal_busy'];
         zfsmJobHistoryPathProof(dirname($GLOBALS['plugin_config']));zfsmJobHistoryPathProof(dirname($GLOBALS['plugin_config']).'/protection');$configPath=zfsmProtectionDirectory().'/config.lock';if(is_link($configPath))throw new RuntimeException('Protection state requires inspection.');$config=fopen($configPath,'ce');$configStat=$config?fstat($config):false;$configNamed=zfsmJobHistoryRegular($configPath);if(!$configStat||$configStat['dev']!==$configNamed['dev']||$configStat['ino']!==$configNamed['ino'])throw new RuntimeException('Protection lock identity changed.');if(!flock($config,LOCK_SH|LOCK_NB))return ['skipped'=>'configuration_busy'];
         $storeFile=zfsmProtectionDirectory().'/config.json';if(file_exists($storeFile)||is_link($storeFile))zfsmJobHistoryRegular($storeFile);$store=zfsmProtectionReadStore();$pins=[];zfsmJobHistoryReferences($store,$pins);
-        $records=[];$bytes=0;$seen=0;$directory=zfsmJobDirectory($GLOBALS['plugin_state']);$scan=opendir($directory);
-        try{while(($name=readdir($scan))!==false){if(++$seen>40000)throw new RuntimeException('History scan limit reached; no records removed.');if(!preg_match('/^([0-9]{8}-[0-9]{6}-[a-f0-9]{12})\.json$/D',$name,$match)){if(str_ends_with($name,'.json'))throw new RuntimeException('Unknown job journal; history retained for inspection.');continue;}
-            $file=$directory.'/'.$name;$stat=zfsmJobHistoryRegular($file);if($stat['size']>131072||count($records)>=20000||$bytes+$stat['size']>64*1024*1024)throw new RuntimeException('History scan limit reached; no records removed.');
-            $job=zfsmReadJob($match[1]);if(zfsmJobProblem($job)){$report['protected']++;continue;}$bytes+=$stat['size'];$refusal=zfsmProtectionBlockedBeforeStart($job);$records[$job['id']]=['stat'=>$stat,'hash'=>hash_file('sha256',$file),'time'=>zfsmJobHistoryTime($job)??PHP_INT_MAX,'keep'=>zfsmJobKeepOnDelete($job,false),'latest'=>($job['schema']??null)===4?($job['type'].':'.$job['definition_id']):null,'verified'=>($job['verification']['verified']??false)===true,'refusal'=>$refusal?($job['type'].':'.$job['definition_id'].':'.hash('sha256',(string)($job['error']??''))):null];
-            zfsmJobHistoryReferences($job,$pins,$job['id']);
-        }}finally{closedir($scan);}
-        uksort($records,fn($ka,$kb)=>($records[$kb]['time']<=>$records[$ka]['time'])?:strcmp($kb,$ka));
-        $latest=[];foreach($records as$id=>$r)if($r['latest']!==null){$key=$r['latest'];if(!isset($latest[$key])){$pins[$id]=true;$latest[$key]=true;}if($r['verified']&&!isset($latest[$key.':verified'])){$pins[$id]=true;$latest[$key.':verified']=true;}}
-        // A scheduled launch refused before anything ran used to write a new failed record every
-        // minute. Of each run of identical refusals only the newest is kept, whatever its age.
-        $duplicates=[];$firstRefusal=[];foreach($records as$id=>$r){if($r['refusal']===null)continue;$key=$r['refusal'];if(!isset($firstRefusal[$key])){$firstRefusal[$key]=true;continue;}if(!isset($pins[$id]))$duplicates[$id]=$r;}
-        $eligible=[];foreach($records as$id=>$r){if(isset($duplicates[$id]))continue;if(isset($pins[$id])||$r['keep']!==null)$report['protected']++;else$eligible[$id]=$r;}
-        $count=count($records);
-        $duplicateRemoved=0;
-        foreach(array_reverse($duplicates,true)+array_reverse($eligible,true)as$id=>$r){
-            $duplicate=isset($duplicates[$id]);
-            if($duplicate&&$duplicateRemoved>=$policy['duplicate_batch_limit'])continue;
-            if(!$duplicate&&$report['removed']-$duplicateRemoved>=$policy['batch_limit'])break;
-            if(!$duplicate&&$r['time']>$now-$policy['days']*86400)continue;
-            $file=zfsmJobFile($id);$stat=zfsmJobHistoryRegular($file);if($stat['dev']!==$r['stat']['dev']||$stat['ino']!==$r['stat']['ino']||hash_file('sha256',$file)!==$r['hash'])throw new RuntimeException('Job identity changed; remaining history retained.');
-            $aux=[$file.'.lock',$GLOBALS['plugin_runtime'].'/'.$id.'.json',$GLOBALS['plugin_runtime'].'/requests/'.$id.'.lock',$directory.'/visibility/jobs/'.$id.'.marker'];
-            $proofs=[];$existing=[];$locks=[];$busy=false;
-            try{
-                foreach(array_merge([$file],$aux)as$path){$proof=zfsmJobHistoryPathProof(dirname($path));if($proof===null)continue;if(!file_exists($path)&&!is_link($path))continue;$meta=zfsmJobHistoryRegular($path);$proofs[$path]=[$proof,$meta];$existing[]=$path;
-                    if(str_ends_with($path,'.lock')){$h=fopen($path,'ce');$locks[]=$h;$opened=fstat($h);if(!$h||!flock($h,LOCK_EX|LOCK_NB)||$opened['dev']!==$meta['dev']||$opened['ino']!==$meta['ino']){$busy=true;break;}}
-                }
-                if($busy){$report['protected']++;continue;}
-                foreach($proofs as$path=>[$proof,$meta]){$current=zfsmJobHistoryRegular($path);if(zfsmJobHistoryPathProof(dirname($path))!==$proof||$current['dev']!==$meta['dev']||$current['ino']!==$meta['ino'])throw new RuntimeException('History metadata identity changed; retained.');}
-                // Exclusive history gate excludes every per-ID updater and its
-                // waiters. Separate flock probes also preserve foreign live locks.
-                if(!unlink($file))throw new RuntimeException('Unable to remove an expired log record.');
-                $report['removed']++;if($duplicate){$duplicateRemoved++;$report['duplicates_removed']=$duplicateRemoved;}$count--;$bytes-=$stat['size'];$report['reclaimed_bytes']+=$stat['size'];
-                foreach($existing as$path)if($path!==$file&&!unlink($path))throw new RuntimeException('Unable to remove expired log metadata.');
-            }finally{foreach($locks as$h)if(is_resource($h)){flock($h,LOCK_UN);fclose($h);}}
-        }
-        $report['entries']=$count;$report['bytes']=$bytes;
-        if($report['removed'])zfsmAuditSyncDirectory($directory);
-    } catch(Throwable$error){$report['blocked']=true;$report['warning']=$error->getMessage();}
+        $directory=zfsmJobDirectory($GLOBALS['plugin_state']);
+        [$records,$unreadable,$skipped]=zfsmJobHistoryScan($directory,true);
+        // "Always" keeps every record, but still folds the repeated refusals older versions wrote.
+        $cutoff=$policy['days']===0?PHP_INT_MIN:$now-$policy['days']*86400;
+        $plan=zfsmJobHistoryPlan($records,$pins,$cutoff,null,true);
+        [$removed,$bytes,$kept,$duplicates]=zfsmJobHistoryApply($records,$plan,$directory,$policy['batch_limit']+$policy['duplicate_batch_limit'],true,$progress);
+        $report['removed']=$removed;$report['reclaimed_bytes']=$bytes;$report['protected']=array_sum($kept)+count($unreadable)+$skipped;$report['entries']=count($records)-$removed;
+        if($duplicates)$report['duplicates_removed']=$duplicates;
+        zfsmLastResultsPrune($store);
+    } catch(Throwable$error){$report['blocked']=true;$report['warning']=$error->getMessage();if(!empty($progress)){$report['removed']=$progress['removed'];$report['reclaimed_bytes']=$progress['bytes'];}}
     finally {foreach([$config,$gate]as$handle)if(is_resource($handle)){flock($handle,LOCK_UN);fclose($handle);}}
     zfsmJobAtomicWrite(zfsmJobDirectory($GLOBALS['plugin_runtime']).'/history-cleanup.json',$report);
     return $report;
-    }finally{flock($operation,LOCK_UN);fclose($operation);}
 }

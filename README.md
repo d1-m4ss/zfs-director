@@ -212,7 +212,7 @@ Snapshot policies, replication and file jobs run in three separate background la
 
 ### Keeping history bounded
 
-Finished jobs are deleted automatically after **7 days** by default. Change it in **Settings → Keep finished jobs for**: 1 day, 7 days, 30 days or Always. The check runs hourly. Running jobs, jobs that hold a snapshot or a ZIP, failed or cancelled conversions, restores and deletions, and the latest result of each policy and replication are kept. Datasets, snapshots and files are never touched.
+Finished jobs are deleted automatically after **7 days** by default. Change it in **Settings → Keep finished jobs for**: 1 day, 7 days, 30 days or Always. The check runs hourly. Only running jobs, jobs that hold a snapshot or a ZIP that is still on disk, and conversions and file restores that may own saved data are kept; **Delete finished jobs** follows the same rules. The newest result of each policy and replication stays on the Snapshot Policies and Replication screens. Datasets, snapshots and files are never touched.
 
 
 ## Requirements and state

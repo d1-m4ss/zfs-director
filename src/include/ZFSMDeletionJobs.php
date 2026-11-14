@@ -152,7 +152,7 @@ function zfsmRunDeletionJob($id) {
             $failure=$verified?null:substr(is_string($last['error']??null)?$last['error']:$result['summary'],0,4096);
         }
         $state=$failure===null?'completed':'failed';
-        $job=zfsmJobUpdate($id,['state'=>$state,'stage'=>$failure===null?'completed':'verifying','finished_at'=>gmdate('c'),'result'=>$result,'recovery'=>$result['recovery']??null,'error'=>$failure,'exit_code'=>$result['exit_code']??null]);
+        $job=zfsmJobUpdate($id,['state'=>$state,'stage'=>$failure===null?'completed':'verifying','finished_at'=>gmdate('c'),'result'=>$result,'recovery'=>$result['recovery']??($job['recovery']??null),'error'=>$failure,'exit_code'=>$result['exit_code']??null]);
         if ($failure===null) zfsmWriteJobProgress($id,['stage'=>'completed','percent'=>100]);
         zfsmAuditFinish($audit,['status'=>$failure===null?'succeeded':'failed','reason'=>$failure===null?null:'command_failed','details'=>['stage'=>$job['stage'],'exit_code'=>$job['exit_code']]]);$audit=null;
         return $job;

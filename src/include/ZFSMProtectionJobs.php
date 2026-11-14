@@ -395,6 +395,8 @@ function zfsmProtectionData(): array {
     if(($inventory['code']??1)!==0)throw new RuntimeException('Source dataset inventory is unavailable.');
     foreach(preg_split('/\r?\n/',trim($inventory['output']),-1,PREG_SPLIT_NO_EMPTY)as$line){$v=explode("\t",$line);if(count($v)!==2||!zfsmValidDatasetName($v[0])||!preg_match('/^[1-9][0-9]*$/D',$v[1]))throw new RuntimeException('Malformed source dataset inventory.');$datasets[]=['name'=>$v[0],'guid'=>$v[1]];}
     foreach($jobs as$j){$id=$j['definition_id'];if(!isset($last[$id])||strcmp($j['created'],$last[$id]['created'])>0)$last[$id]=$j;}
+    // The newest result of a definition survives the deletion of its journal (ZFSMLastResults.php).
+    foreach(zfsmLastResults()as$remembered){$id=$remembered['definition_id'];if(!isset($last[$id])||strcmp($remembered['created'],$last[$id]['created'])>0){if($remembered['type']==='replication')$remembered['verification']=zfsmProtectionCurrentVerification($remembered['verification']??[]);$last[$id]=$remembered;}}
     $present=array_fill_keys(array_column($datasets,'name'),true);$snapshotDefaults=zfsmSanoidSnapshotDefaults();
     foreach($native['policies']as&$p){$p['last_job']=$last[$p['id']]??null;$p['dataset_present']=isset($present[$p['dataset']]);if(($p['owner']??'')!=='external')$p['snapshot_effective']=zfsmSanoidSnapshotEffective($p,$native['templates'],$snapshotDefaults);}unset($p);
     $replications=array_values($s['replications']);foreach($replications as&$r)$r['last_job']=$last[$r['id']]??null;unset($r);

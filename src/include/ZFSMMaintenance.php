@@ -45,6 +45,6 @@ function zfsmRecordMaintenanceTransition($directory,$diagnostic,$severity,$reaso
 }
 function zfsmReadMaintenanceDiagnostics($pool,$config) {
     $diagnostic=zfsmReadPoolDiagnostics($pool);$alerts=[];
-    try{if(is_file(dirname($GLOBALS['plugin_config']).'/protection/config.json'))$alerts=zfsmProtectionLagAlerts($pool,zfsmProtectionReadStore(),zfsmJobPage(1,200)['jobs'],(int)($config['replication_lag_hours']??24),null,true);}catch(Throwable $error){$diagnostic['monitor_warning']='Protection alert evidence is unavailable.';}
+    try{if(is_file(dirname($GLOBALS['plugin_config']).'/protection/config.json'))$alerts=zfsmProtectionLagAlerts($pool,zfsmProtectionReadStore(),zfsmJobsWithLastResults(zfsmJobPage(1,200)['jobs']),(int)($config['replication_lag_hours']??24),null,true);}catch(Throwable $error){$diagnostic['monitor_warning']='Protection alert evidence is unavailable.';}
     $diagnostic=zfsmMaintenanceEvaluate($diagnostic,$config,$alerts);$diagnostic['maintenance_history']=zfsmReadMaintenanceHistory(dirname($GLOBALS['plugin_state']).'/monitor',$pool);return $diagnostic;
 }
