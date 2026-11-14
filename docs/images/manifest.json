@@ -12,7 +12,7 @@
     "src/frontend/ZFSMOverview.js": "fce0218a833ce698d308072206e7cc3a42161f4fa38dd821694baf6d374d2f69",
     "src/frontend/ZFSMPoolView.js": "3e12f339d474213fcaed5642e01978be63c61380d92296c0e4c7c46050f3f22b",
     "src/frontend/ZFSMProtection.css": "14e571822601176361a63df3e227d0962365b6ae2bcf41e5559f5a7f5726dde8",
-    "src/frontend/ZFSMProtection.js": "ef0bc65c98c26703dd1624f8d331928e86d2a8f9ae41f1b7e5b16472042c774b",
+    "src/frontend/ZFSMProtection.js": "ba1fc08ffd89d8f828f4f5439c60af3f976b9827dcced7a9c9ac131db93dcbaa",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "45c97ada67ea7425fb59da447c148d327a6f28653d088ca7c28733c8aea6981e",
     "src/frontend/ZFSMWorkspace.js": "59799ce8b34c8e5b3b1d69a1483bed16ef72dc465c7ec301e8e37099be7a9fbf",
