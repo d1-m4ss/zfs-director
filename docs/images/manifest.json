@@ -15,7 +15,7 @@
     "src/frontend/ZFSMProtection.js": "ba1fc08ffd89d8f828f4f5439c60af3f976b9827dcced7a9c9ac131db93dcbaa",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "45c97ada67ea7425fb59da447c148d327a6f28653d088ca7c28733c8aea6981e",
-    "src/frontend/ZFSMWorkspace.js": "85d9620153cd8663c9eb37c77dfea41c143c853de2113d3894589dcc3a648fc0",
+    "src/frontend/ZFSMWorkspace.js": "4bc6aca528f7f024938790016c4ce6a6461fa233d641020c3a30376f610999a1",
     "docs/preview/data.mjs": "86b3850d349451716ea3d78f0d50eca72d5b8518d9ceac47ef541aa8b99590fd",
     "docs/preview/server.mjs": "42b46c6e56e6cfa324b57bcf3050343611387b893c1367b5b1a072db197fab0e",
     "docs/preview/capture.mjs": "7217260b8303bba89cb84b95ed2b94a51befdfe618d7ebb1859d3551f771859f"
@@ -32,8 +32,8 @@
   "screenshots": [
     {
       "file": "overview.png",
-      "sha256": "c5a74eaed1a7ceaffbadc71a1c0ccdb9b2ff661430af9a665fdce0197b2e2564",
-      "bytes": 75727,
+      "sha256": "ff41d9c92e5626409b39f7f7c9954cdab89cf96818dbd17da7b440e22e8f8eab",
+      "bytes": 75728,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -41,8 +41,8 @@
     },
     {
       "file": "datasets.png",
-      "sha256": "718bfc9aadc10acdedde20be985385fd8cd596bf9b6433b6cee78a77b929ddc0",
-      "bytes": 208067,
+      "sha256": "44f6c0dac7d4fb530d38d1e5eab275fe0ef7b74dfb00ae4dbeebb933582d30c8",
+      "bytes": 208068,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -50,7 +50,7 @@
     },
     {
       "file": "snapshots.png",
-      "sha256": "9a96e43a71530c5f69c69fd40396d7254af6df8406c14d19247e2ae0ac0ab1f4",
+      "sha256": "06594db1a034fc8dc2d7dfabce1719a8f91b960aa5a3b6f4d42866ab345f4005",
       "bytes": 154910,
       "viewport": {
         "width": 1440,
