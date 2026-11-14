@@ -15,7 +15,9 @@ function zfsmRetainedRestoreBlocker($path) {
     $id=is_string($path)?zfsmRetainedRestoreId(basename($path)):null;
     if($id===null)return null;
     foreach(glob(zfsmJobDirectory($GLOBALS['plugin_state']).'/*.json')?:[]as$file){
-        try{$job=zfsmReadJob(basename($file,'.json'));}catch(Throwable$error){continue;}
+        $unreadable='This folder belongs to a restore whose record cannot be read. Inspect it in Jobs first.';
+        // The record of this very restore must be readable; a damaged one keeps the only copy of the files.
+        try{$job=zfsmReadJob(basename($file,'.json'));if(basename($file,'.json')===$id&&zfsmJobProblem($job))return $unreadable;}catch(Throwable$error){if(basename($file,'.json')===$id)return $unreadable;continue;}
         if(($job['schema']??null)!==2||($job['type']??null)!=='restore')continue;
         if(($job['id']??null)!==$id&&($job['staging']??null)!==$path)continue;
         if(in_array($job['state']??'',['queued','running','recovery_required','failed'],true))return 'This folder belongs to a restore that did not finish. Open that job in Jobs first.';

@@ -43,3 +43,16 @@ test('nothing inside a retained restore folder, and no other service folder, can
  }
  assert.deepEqual(await call(`echo json_encode([zfsmRetainedRestoreId('.zfsm-restore-${id}'),zfsmRetainedRestoreId('a/b/.zfsm-restore-${id}'),zfsmRetainedRestoreId('.zfsm-restore-${id}/replaced'),zfsmRetainedRestoreId('.zfsm-x/.zfsm-restore-${id}'),zfsmRetainedRestoreId('../.zfsm-restore-${id}'),zfsmRetainedRestoreId('.zfsm-restore-x')]);`),[id,id,null,null,null,null]);
 }));
+const UNREADABLE='This folder belongs to a restore whose record cannot be read. Inspect it in Jobs first.';
+test('a damaged record of this restore keeps its folder; a damaged record of another job does not',async()=>fixture(async({s,post,prepare,run,identity,m,call})=>{
+ await prepare(null);
+ await call(`echo json_encode(zfsmJobDirectory($GLOBALS['plugin_state']));`);
+ const journal=name=>`${'/boot/config/plugins/zfs.master.ui/jobs'}/${name}.json`;
+ s.php.writeFile(journal('20260101-120000-ffffffffffff'),'{broken');
+ const other=await post({cmd:'previewdeletedirectory',directory:folder,force:'1'});assert.deepEqual({can_delete:other.can_delete,blockers:other.blockers},{can_delete:true,blockers:[]},'someone else\'s damaged record is skipped');
+ const answer=await request(post,identity,m,folder);assert.equal(answer.job?.state,'queued',JSON.stringify(answer).slice(0,300));
+ s.php.writeFile(journal(id),'{broken');
+ const review=await post({cmd:'previewdeletedirectory',directory:folder,force:'1'});
+ assert.equal(review.can_delete,false);assert.deepEqual(review.blockers.filter(b=>b.kind==='restore').map(b=>b.title),[UNREADABLE]);
+ const job=await run(answer.job.id);assert.equal(job.state,'failed');assert.equal(s.php.fileExists(folder+'/replaced/old.txt'),true);
+}));
