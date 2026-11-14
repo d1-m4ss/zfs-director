@@ -107,6 +107,9 @@ test('every job card names the process, where it went and how it ended, in words
   assert.equal(status(10),'Needs inspection: the job record cannot be read');assert.equal(sub(12),null,'no trigger recorded: no claim about how it started');assert.equal(status(12),'Running: checking');
   assert.equal(card(1).querySelector('summary').textContent.includes('percentage unavailable'),false,'a running protection card shows the bar and the status, not a second stage line');
   assert.equal(card(2).querySelector('[role=alert]').textContent,'Both trusted Sanoid and Syncoid executables are required.','the cause is shown without an Error prefix');
+  assert.deepEqual([5,6,7].map(status),['Running: copying files','Running: copying files','✓ Completed'],'conversion, restore and ZIP cards state the status in words');
+  assert.equal(status(9),'Failed');
+  for(const n of [5,6,7,9])assert.doesNotMatch(card(n).querySelector('summary').textContent,/_|running ·|failed ·|completed ·/);
   for(const n of [1,2,3,4])assert.doesNotMatch(card(n).querySelector('summary').textContent,/recovery_required|finished|failed ·|running ·|transferring|inspecting|invalid_journal/);
  }finally{x.close();}
 });

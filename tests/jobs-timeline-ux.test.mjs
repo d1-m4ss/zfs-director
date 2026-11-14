@@ -36,7 +36,7 @@ test('Jobs inspect renders only captured chronological stages, attempt context a
 });
 test('Jobs exposes status and errors, preserves keyboard Copy focus across polls and copies redacted timeline',async()=>{
  const x=await workspace();try{
-  let row=x.root.querySelector('[data-job-id]');assert.match(row.querySelector('[role=status]').textContent,/failed.*copying/);assert.match(row.querySelector('[role=alert]').textContent,/Synthetic copy failure/);
+  let row=x.root.querySelector('[data-job-id]');assert.equal(row.querySelector('[role=status]').textContent,'Failed: Synthetic copy failure');assert.match(row.querySelector('[role=alert]').textContent,/Synthetic copy failure/);
   const copy=[...row.querySelectorAll('button')].find(b=>b.textContent==='Copy');assert.match(copy.getAttribute('aria-label'),/Copy job .*000000000001/);copy.focus();await x.poll();assert.equal(x.w.document.activeElement.getAttribute('aria-label'),copy.getAttribute('aria-label'));
   x.w.document.activeElement.click();for(let i=0;i<30;i++)await Promise.resolve();row=x.root.querySelector('[data-job-id]');const fallback=row.querySelector('[data-copy-fallback]');assert.match(fallback.value,/stage_history/);assert.doesNotMatch(fallback.value,/must-remain-secret/);await x.poll();assert.equal(x.w.document.activeElement,fallback);
   x.fail();await x.poll();assert.match(x.root.querySelector('[role=alert]').textContent,/Job status unavailable/);
@@ -62,7 +62,7 @@ test('active job progress and failed-job reason stay visible while technical det
 test('verified copy completion shows 100% with explicit ongoing verification, never a completed conversion',async()=>{
  const x=await workspace();try{
   Object.assign(x.jobs[0],{type:'conversion',state:'running',stage:'copying',progress:{percent:99,stage:'verifying'}});delete x.jobs[0].error;await x.poll();let row=x.root.querySelector('[data-job-id]');
-  assert.equal(row.querySelector('progress').value,100);assert.match(row.querySelector('progress').nextElementSibling.textContent,/Copying: 100%.*Verifying files/);assert.match(row.querySelector('[role=status]').textContent,/running.*Verifying/);assert.doesNotMatch(row.querySelector('summary').textContent,/✓|completed/);assert.ok(row.querySelector('progress').closest('summary'));
+  assert.equal(row.querySelector('progress').value,100);assert.match(row.querySelector('progress').nextElementSibling.textContent,/Copying: 100%.*Verifying files/);assert.equal(row.querySelector('[role=status]').textContent,'Running: verifying files');assert.doesNotMatch(row.querySelector('summary').textContent,/✓|completed/);assert.ok(row.querySelector('progress').closest('summary'));
   for(const stage of ['copy_verified','claiming','source_retained','reserving','reserved','mountpoint_pending','publishing','published']){x.jobs[0].stage=stage;delete x.jobs[0].progress;await x.poll();row=x.root.querySelector('[data-job-id]');assert.equal(row.querySelector('progress').value,100);assert.match(row.querySelector('summary').textContent,/Copying: 100%/);assert.doesNotMatch(row.querySelector('summary').textContent,/✓|completed/);if(stage==='source_retained')assert.match(row.querySelector('summary').textContent,/Verifying retained original/);}
   x.jobs[0].state='failed';x.jobs[0].error='Verification failed';await x.poll();row=x.root.querySelector('[data-job-id]');assert.match(row.querySelector('[role=alert]').textContent,/Verification failed/);assert.doesNotMatch(row.querySelector('summary').textContent,/Verifying files|Copying: 100%|✓/);
  }finally{x.close();}
