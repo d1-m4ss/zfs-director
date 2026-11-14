@@ -33,7 +33,7 @@ try {
         insist(zfsmObserveRequestJob($j['id'])['state']==='completed','observer replaced final result');
         require '/stand/src/include/ZFSMRestore.php';
         require_once '/stand/src/include/ZFSMRecoveryCleanup.php';
-        $GLOBALS['plugin_state']=$base.'/cleanup-jobs';$target='/fixture/.zfsm-mutation-'.str_repeat('a',48);
+        $GLOBALS['plugin_state']=$base.'/cleanup-jobs';$GLOBALS['plugin_runtime']=$base.'/cleanup-runtime';$target='/fixture/.zfsm-mutation-'.str_repeat('a',48);
         $cleanup=zfsmRequestJobBegin('cleanupmutation',['directory'=>$target]);$lease=$GLOBALS['zfsm_request_job']['lease'];$path=zfsmRequestJobLease($cleanup['id']);
         zfsmCleanupRequireIdle($target);
         $blocked=function()use($target){try{zfsmCleanupRequireIdle($target);return false;}catch(RuntimeException$error){return true;}};
