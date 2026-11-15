@@ -25,4 +25,13 @@ check('a replication warning is linked to its definition',function(){
  same('warning',$diagnostic['severity']);same([$alerts[0]['text']],$diagnostic['reasons']);
  same([['reason'=>$alerts[0]['text'],'type'=>'replication','id'=>'5f91932124fad7a0']],$diagnostic['reason_links']);
 });
+check('the replication age alert names the task and how old the last verified copy is',function(){
+ $job=['schema'=>4,'type'=>'replication','definition_id'=>'81e71907838a181a','created'=>'2026-10-18','verified_outcome'=>'completed','verification'=>['verified'=>true,'checkpoints'=>[['guid'=>'11','creation'=>100]]]];
+ $alerts=function($name,$age)use($job){$definition=['enabled'=>true,'source'=>'cache/a'];if($name!==null)$definition['name']=$name;return zfsmProtectionLagAlerts('cache',['replications'=>['81e71907838a181a'=>$definition]],[$job],24,100+$age);};
+ same(['Replication "Immich backup": last verified copy is 30 hours old; the limit is 24 hours.'],$alerts("Immich \n backup",30*3600+59));
+ same(['Replication "81e71907838a181a": last verified copy is 30 hours old; the limit is 24 hours.'],$alerts(null,30*3600+59));
+ same(['Replication "Photos": last verified copy is 3 days old; the limit is 24 hours.'],$alerts('Photos',72*3600));
+ same(['Replication "Photos": last verified copy is 47 hours old; the limit is 24 hours.'],$alerts('Photos',47*3600+3599));
+ same([],$alerts('Photos',24*3600));
+});
 finishTests();

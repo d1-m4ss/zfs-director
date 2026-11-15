@@ -1,3 +1,8 @@
+### 2026.11.15.3
+The warning about an old verified replication now names the replication task and says how old its last verified copy is, instead of showing an internal ID.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.15.2
 Delete finished jobs with Everything ticked now deletes every record except running work and records that hold a snapshot, including records that need attention; the files they pointed to are never touched and stay on disk. Without Everything such records are kept and the message says how to delete them, and an interrupted deletion shows one clear status on its card.
 
