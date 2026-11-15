@@ -164,3 +164,8 @@ test('a finished ZIP card that holds a snapshot says why it is kept; one that do
   assert.equal(x.root.querySelector('[data-job-id="'+jobs[0].id+'"] summary [data-job-kept]')!==null,true,'the line is visible without opening the card');
  }finally{x.close();}
 });
+test('an interrupted deletion card says so once',async()=>{
+ const job={id:'20261115-100000-000000000001',schema:6,type:'deletion',kind:'directory',rejected:false,state:'recovery_required',stage:'interrupted',source:'/mnt/cache/zfs/scripts_archived_20261114',created:'2026-11-15T10:00:00Z',error:'Deletion was interrupted or the system restarted.',actions:{}};
+ const x=await workspace([job]);
+ try{assert.equal(x.root.querySelector('[data-job-id] [role=status]').textContent,'Needs attention: deletion was interrupted');}finally{x.close();}
+});

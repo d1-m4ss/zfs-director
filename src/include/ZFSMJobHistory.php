@@ -168,6 +168,15 @@ function zfsmJobHistoryApply($records,$plan,$directory,$limit,$strict,&$progress
     }}finally{if($removed)zfsmAuditSyncDirectory($directory);}
     return [$removed,$bytes,$kept,$duplicates];
 }
+// The record is only a record. Whether its files are still on disk, so that the message can say so.
+function zfsmJobLeavesFiles($id) {
+    try{$job=zfsmReadJob($id);}catch(Throwable$error){return false;}
+    $schema=$job['schema']??null;
+    if($schema===1)return (is_string($job['recovery']??null)&&is_dir($job['recovery']))||(is_string($job['dataset']??null)&&function_exists('zfsmDatasetExists')&&zfsmDatasetExists($job['dataset']));
+    if($schema===2)return is_string($job['staging']??null)&&is_dir($job['staging']);
+    if($schema===6){$found=false;$check=function($value)use(&$found){if(is_string($value)&&str_starts_with($value,'/')&&file_exists($value))$found=true;};$recovery=$job['recovery']??null;if(is_array($recovery))array_walk_recursive($recovery,$check);else $check($recovery);return $found;}
+    return false;
+}
 function zfsmJobDeleteFinished($only=null) {
     $gate=zfsmJobHistoryGate(true,true);if($gate===null)throw new RuntimeException('Jobs are being updated; try again in a moment.');
     $directory=zfsmJobDirectory($GLOBALS['plugin_state']);
@@ -175,8 +184,13 @@ function zfsmJobDeleteFinished($only=null) {
         [$records,$unreadable,$skipped]=zfsmJobHistoryScan($directory,false);
         // An unreadable protection store means references cannot be checked: nothing is deleted.
         $pins=[];try{$store=zfsmProtectionReadStore();}catch(Throwable$error){throw new RuntimeException('Protection settings could not be read; no job was deleted.');}zfsmJobHistoryReferences($store,$pins);
+        // "Everything" deletes every record except running work and holds. A record is only a record: the
+        // files it pointed to are never touched and stay visible by name on disk.
+        $soft=['needs recovery','may own recovery data','needs inspection'];$softIds=[];
+        if($only===null)foreach($records as$id=>&$record){if(in_array($record['reason'],$soft,true)){$record['reason']=null;$softIds[$id]=zfsmJobLeavesFiles($id);}}unset($record);
         $plan=zfsmJobHistoryPlan($records,$pins,null,$only);
         [$removed,$bytes,$kept]=zfsmJobHistoryApply($records,$plan,$directory,null,false);
+        $leftFiles=0;foreach($softIds as$id=>$leaves)if($leaves&&!is_file(zfsmJobDirectory($GLOBALS['plugin_state']).'/'.$id.'.json'))$leftFiles++;
         // "Everything" also removes a journal that cannot be validated, but only a plain single-link
         // file whose lock nobody holds; with filters such a journal is never selected and stays.
         $runtime=zfsmJobDirectory($GLOBALS['plugin_runtime']??'/var/tmp/zfs.master.ui/jobs');$freedAny=false;
@@ -191,7 +205,10 @@ function zfsmJobDeleteFinished($only=null) {
         zfsmLastResultsPrune($store);
     }finally{flock($gate,LOCK_UN);fclose($gate);}
     ksort($kept);$left=array_sum($kept);
-    $message='Deleted '.$removed.' finished job record(s).'.($left?' Kept '.$left.': '.implode(', ',array_map(fn($reason,$count)=>$count.' '.$reason,array_keys($kept),$kept)).'.':'');
+    $attention=0;$others=[];foreach($kept as$reason=>$count){if(in_array($reason,['needs recovery','may own recovery data','needs inspection'],true))$attention+=$count;else $others[$reason]=$count;}
+    $message=($leftFiles?'Deleted '.$removed.' job record(s). Files they pointed to stay on disk: see Show recovery files.':'Deleted '.$removed.' finished job record(s).')
+        .($others?' Kept '.array_sum($others).': '.implode(', ',array_map(fn($reason,$count)=>$count.' '.$reason,array_keys($others),$others)).'.':'')
+        .($attention?' Kept '.$attention.' that need attention. Tick Everything to delete them too.':'');
     return ['succeeded'=>['jobs'=>$message],'failed'=>[],'deleted'=>$removed,'kept'=>$kept];
 }
 function zfsmJobHistoryCleanup($now=null) {

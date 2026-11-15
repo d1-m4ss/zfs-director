@@ -51,7 +51,7 @@ test('a refusal the user hid does not mute the next refusal',async t=>{
  echo json_encode(['new_record'=>$second!==$first,'visible_attention'=>$page['counts']['needs_attention']]);`);
  assert.deepEqual(out,{new_record:true,visible_attention:2});
 });
-test('Delete finished jobs keeps data owners, holds and running work; deletes the rest and saves the newest policy result',async t=>{
+test('Delete finished jobs with Everything keeps only running work and holds; it deletes the rest and saves the newest policy result',async t=>{
  const out=await run(t,`$abc=zfsmProtectionReadStore()['policies']['abc'];$GLOBALS['abc']=$abc;$n=0;
  $prot=function($state,$minute,$extra=[])use(&$n){$j=zfsmNewProtectionJob('policy',$GLOBALS['abc']);$j['id']=sprintf('20261113-21%02d00-%012x',$minute,$minute);$j['created']=$j['updated']=gmdate('c',1794600000+$minute*60);$j['state']=$state;$j['stage']=$state==='queued'?'queued':'finished';$j['verified_outcome']=$state==='completed'?'completed':($state==='queued'?'queued':'failed');$j['verification']=['outcome'=>$j['verified_outcome']];$j=$extra+$j;zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);return $j['id'];};
  $conv=function($state,$stage,$minute){$id=sprintf('20261113-22%02d00-%012x',$minute,$minute);$j=['schema'=>1,'id'=>$id,'state'=>$state,'stage'=>$stage,'source'=>'/mnt/cache/x','dataset'=>'cache/x','owner_dataset'=>'cache','owner_guid'=>'123','owner_mountpoint'=>'/mnt/cache','pool'=>'cache','source_identity'=>['dev'=>'1','ino'=>'2'],'recovery'=>'/mnt/cache/x_zfsm_recovery_'.$id];zfsmJobAtomicWrite(zfsmJobFile($id),$j);return $id;};
@@ -59,12 +59,12 @@ test('Delete finished jobs keeps data owners, holds and running work; deletes th
  $cancelledConversion=$conv('cancelled','copying',1);$failedConversion=$conv('failed','copying',2);$doneConversion=$conv('completed','complete_source_retained',3);
  hide($oldFail);
  $r=zfsmJobDeleteFinished();$left=array_map(fn($f)=>basename($f,'.json'),journals());sort($left);
- echo json_encode(['deleted'=>$r['deleted'],'kept'=>$r['kept'],'left'=>$left,'expected_left'=>[$queued,$held,$cancelledConversion,$failedConversion],'deleted_ids'=>array_values(array_diff([$oldFail,$oldDone,$latest,$doneConversion],$left)),'saved'=>zfsmLastResults()['policy:abc']['id']??null,'latest'=>$latest,'message'=>$r['succeeded']['jobs']]);`);
- assert.equal(out.deleted,4,'failed and completed protection jobs (including the newest) and the completed conversion');
+ echo json_encode(['deleted'=>$r['deleted'],'kept'=>$r['kept'],'left'=>$left,'expected_left'=>[$queued,$held],'deleted_ids'=>array_values(array_diff([$oldFail,$oldDone,$latest,$doneConversion,$cancelledConversion,$failedConversion],$left)),'saved'=>zfsmLastResults()['policy:abc']['id']??null,'latest'=>$latest,'message'=>$r['succeeded']['jobs']]);`);
+ assert.equal(out.deleted,6,'protection jobs (including the newest) and all three conversions: a record is only a record');
  assert.equal(out.saved,out.latest,'the newest policy result is saved before its journal goes');
- assert.deepEqual(out.left,out.expected_left.sort(),'running, held and unfinished conversions stay');
- assert.deepEqual(out.kept,{'may own recovery data':2,running:1,'still holds a snapshot':1});
- assert.match(out.message,/^Deleted 4 finished job record\(s\)\. Kept 4:/);
+ assert.deepEqual(out.left,out.expected_left.sort(),'only running work and the hold stay');
+ assert.deepEqual(out.kept,{running:1,'still holds a snapshot':1});
+ assert.equal(out.message,'Deleted 6 finished job record(s). Kept 2: 1 running, 1 still holds a snapshot.');
 });
 test('Delete finished jobs removes every matching record in one call, on every page; Everything ignores the filters',async t=>{
  const out=await run(t,`$abc=zfsmProtectionReadStore()['policies']['abc'];$GLOBALS['abc']=$abc;
@@ -120,7 +120,7 @@ test('a journal that is too large to read safely does not stop the retention pas
  $r=zfsmJobHistoryCleanup(1794600000+999999);echo json_encode(['blocked'=>$r['blocked'],'removed'=>$r['removed'],'protected'=>$r['protected'],'big_kept'=>is_file($big),'left'=>count(journals())]);`);
  assert.deepEqual(out,{blocked:false,removed:3,protected:1,big_kept:true,left:1});
 });
-test('Delete keeps deletion journals that own recovery data, saves the newest verified replication result, and refuses when the protection store is unreadable',async t=>{
+test('Delete with Everything also removes deletion journals that own recovery data, saves the newest verified replication result, and refuses when the protection store is unreadable',async t=>{
  const out=await run(t,`$def=['id'=>'a1','owner'=>'managed','source'=>'cache/test','source_guid'=>'123','target'=>'backup/test'];
  $store=zfsmProtectionReadStore();$store['replications']['a1']=$def;zfsmProtectionWriteStore($store);
  $rep=function($n,$state,$verified)use($def){$j=['schema'=>4,'id'=>sprintf('20261113-23%02d00-%012x',$n,$n),'type'=>'replication','definition_id'=>'a1','definition'=>$def,'definition_hash'=>hash('sha256',json_encode($def,JSON_THROW_ON_ERROR)),'state'=>$state,'stage'=>'finished','verified_outcome'=>$state==='completed'?'completed':'failed','source'=>'cache/test','source_guid'=>'123','target'=>'backup/test','cancel_requested'=>false,'created'=>gmdate('c',1794600000+$n*60),'updated'=>gmdate('c',1794600000+$n*60),'verification'=>['outcome'=>$state==='completed'?'completed':'failed','verified'=>$verified,'checkpoints'=>[['guid'=>'7']]]];zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);return $j['id'];};
@@ -131,9 +131,9 @@ test('Delete keeps deletion journals that own recovery data, saves the newest ve
  $refused=false;try{zfsmJobDeleteFinished();}catch(Throwable$e){$refused=true;}$untouched=count(journals());file_put_contents($config,$good);
  $r=zfsmJobDeleteFinished();$left=array_map(fn($f)=>basename($f,'.json'),journals());sort($left);
  $latest=zfsmLastResults();$verified=zfsmLastResults(true);
- echo json_encode(['refused'=>$refused,'untouched'=>$untouched,'left'=>$left,'expected'=>[$withRecovery,$interrupted],'newest'=>$latest['replication:a1']['id']??null,'newest_id'=>$newestId,'verified'=>$verified['replication:a1']['id']??null,'verified_id'=>$verifiedId,'merged'=>count(zfsmJobsWithLastResults([]))]);`);
+ echo json_encode(['refused'=>$refused,'untouched'=>$untouched,'left'=>$left,'expected'=>[],'newest'=>$latest['replication:a1']['id']??null,'newest_id'=>$newestId,'verified'=>$verified['replication:a1']['id']??null,'verified_id'=>$verifiedId,'merged'=>count(zfsmJobsWithLastResults([]))]);`);
  assert.equal(out.refused,true,'an unreadable protection store stops the deletion');assert.equal(out.untouched,6);
- assert.deepEqual(out.left,out.expected.sort(),'a deletion that kept a recovery container or was interrupted stays; the others go');
+ assert.deepEqual(out.left,out.expected.sort(),'with Everything the deletion records go too, whatever they point to');
  assert.equal(out.newest,out.newest_id);assert.equal(out.verified,out.verified_id,'the newest verified run is saved next to the newest run');assert.equal(out.merged,2);
 });
 test('Jobs hands the card the definition name and the destination, with user@host for a remote replication',async t=>{
@@ -176,4 +176,27 @@ test('a paused policy shows no failed-check line anywhere',async t=>{
  $page=zfsmJobPage(1,50,['filter'=>'all','listed'=>true])['policy_failures'];$data=zfsmProtectionData();$p=array_values(array_filter($data['policies'],fn($p)=>$p['id']==='abc'))[0];
  echo json_encode(['before'=>$before,'page'=>$page,'policy'=>$p['last_check_failure']]);`);
  assert.deepEqual(out,{before:1,page:[],policy:null});
+});
+test('Everything deletes records that need attention and leaves their files byte for byte; the filters keep them and say so',async t=>{
+ const out=await run(t,`$files=[];
+ $conv=function($n,$state)use(&$files){$id=sprintf('20261115-10%02d00-%012x',$n,$n);$dir='/mnt/cache/x'.$n.'_archived_'.substr($id,0,15);mkdir($dir,0700,true);file_put_contents($dir.'/keep.txt','original '.$n);$files[$dir.'/keep.txt']='original '.$n;
+  $j=['schema'=>1,'id'=>$id,'state'=>$state,'stage'=>'copying','source'=>'/mnt/cache/x'.$n,'dataset'=>'cache/x'.$n,'owner_dataset'=>'cache','owner_guid'=>'123','owner_mountpoint'=>'/mnt/cache','pool'=>'cache','source_identity'=>['dev'=>'1','ino'=>'2'],'recovery'=>$dir,'created'=>gmdate('c',1794600000+$n),'updated'=>gmdate('c',1794600000+$n),'error'=>'verification failed'];zfsmJobAtomicWrite(zfsmJobFile($id),$j);return $id;};
+ $del=function($n)use(&$files){$id=sprintf('20261115-11%02d00-%012x',$n,$n);$box='/mnt/cache/.zfsm-mutation-'.str_repeat('b',48);mkdir($box,0700,true);file_put_contents($box.'/journal.jsonl','{}');$files[$box.'/journal.jsonl']='{}';
+  $j=['schema'=>6,'type'=>'deletion','kind'=>'directory','id'=>$id,'source'=>'/mnt/cache/y','rejected'=>false,'recursive'=>true,'ack_boot'=>zfsmBootId(),'owner_guid'=>'123','owner_dataset'=>'cache','request'=>['op'=>'delete','recursive'=>true,'root'=>'/mnt/cache','path'=>'y','identity'=>['dev'=>'1','ino'=>'2'],'root_identity'=>['dev'=>'1','ino'=>'3']],'started_at'=>gmdate('c',1794600000+$n),'state'=>'recovery_required','stage'=>'interrupted','created'=>gmdate('c',1794600000+$n),'updated'=>gmdate('c',1794600000+$n),'finished_at'=>gmdate('c',1794600000+$n),'error'=>'x','recovery'=>['location'=>$box]];zfsmJobAtomicWrite(zfsmJobFile($id),$j);return $id;};
+ $bad=function(){$id='20261115-120000-000000000001';file_put_contents(zfsmJobFile($id),'{broken');return $id;};
+ $prot=function($state,$minute,$extra=[]){$j=zfsmNewProtectionJob('policy',zfsmProtectionReadStore()['policies']['abc']);$j['id']=sprintf('20261115-13%02d00-%012x',$minute,$minute);$j['created']=$j['updated']=gmdate('c',1794600000+$minute*60);$j['state']=$state;$j['stage']=$state==='queued'?'queued':'finished';$j['verified_outcome']=$state==='queued'?'queued':'completed';$j['verification']=['outcome'=>$j['verified_outcome']];$j=$extra+$j;zfsmJobAtomicWrite(zfsmJobFile($j['id']),$j);return $j['id'];};
+ $c1=$conv(1,'recovery_required');$c2=$conv(2,'recovery_required');$d1=$del(1);$b1=$bad();$queued=$prot('queued',1);$held=$prot('completed',2,['hold_owned'=>true]);
+ $ids=[$c1,$c2,$d1,$b1,$queued,$held];
+ $auto=zfsmJobHistoryCleanup(1794600000+400*86400);$afterAuto=array_map(fn($f)=>basename($f,'.json'),journals());sort($afterAuto);
+ $filtered=zfsmJobDeleteFinished([$c1=>true,$c2=>true,$d1=>true]);$afterFilter=array_map(fn($f)=>basename($f,'.json'),journals());sort($afterFilter);
+ $all=zfsmJobDeleteFinished();$left=array_map(fn($f)=>basename($f,'.json'),journals());sort($left);
+ $intact=true;foreach($files as$file=>$content)if(@file_get_contents($file)!==$content)$intact=false;
+ echo json_encode(['ids'=>$ids,'after_auto'=>$afterAuto,'after_filter'=>$afterFilter,'filtered'=>$filtered['succeeded']['jobs'],'all'=>$all['succeeded']['jobs'],'left'=>$left,'queued'=>$queued,'held'=>$held,'intact'=>$intact,'files'=>count($files)]);`);
+ const sorted=ids=>[...ids].sort();
+ assert.deepEqual(out.after_auto,sorted(out.ids),'the automatic cleanup by age still never touches them');
+ assert.deepEqual(out.after_filter,sorted(out.ids),'a filtered delete keeps them');
+ assert.equal(out.filtered,'Deleted 0 finished job record(s). Kept 2: 1 running, 1 still holds a snapshot. Kept 3 that need attention. Tick Everything to delete them too.');
+ assert.deepEqual(out.left,sorted([out.queued,out.held]),'Everything leaves only running work and the hold');
+ assert.equal(out.all,'Deleted 4 job record(s). Files they pointed to stay on disk: see Show recovery files. Kept 2: 1 running, 1 still holds a snapshot.');
+ assert.equal(out.intact,true);assert.equal(out.files,3);
 });
