@@ -208,7 +208,7 @@ function zfsmJobDeleteFinished($only=null) {
     $attention=0;$others=[];foreach($kept as$reason=>$count){if(in_array($reason,['needs recovery','may own recovery data','needs inspection'],true))$attention+=$count;else $others[$reason]=$count;}
     $message=($leftFiles?'Deleted '.$removed.' job record(s). Files they pointed to stay on disk: see Show recovery files.':'Deleted '.$removed.' finished job record(s).')
         .($others?' Kept '.array_sum($others).': '.implode(', ',array_map(fn($reason,$count)=>$count.' '.$reason,array_keys($others),$others)).'.':'')
-        .($attention?' Kept '.$attention.' that need attention. Tick Everything to delete them too.':'');
+        .($attention?($only===null?' Kept '.$attention.' that could not be deleted now. Try again in a moment.':' Kept '.$attention.' that need attention. Tick Everything to delete them too.'):'');
     return ['succeeded'=>['jobs'=>$message],'failed'=>[],'deleted'=>$removed,'kept'=>$kept];
 }
 function zfsmJobHistoryCleanup($now=null) {

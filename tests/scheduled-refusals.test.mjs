@@ -200,3 +200,11 @@ test('Everything deletes records that need attention and leaves their files byte
  assert.equal(out.all,'Deleted 4 job record(s). Files they pointed to stay on disk: see Show recovery files. Kept 2: 1 running, 1 still holds a snapshot.');
  assert.equal(out.intact,true);assert.equal(out.files,3);
 });
+test('the Everything hint is shown only when Everything is off',async t=>{
+ const out=await run(t,`$id='20261115-120000-000000000009';symlink('/nonexistent-target',zfsmJobFile($id));
+ $on=zfsmJobDeleteFinished()['succeeded']['jobs'];$off=zfsmJobDeleteFinished([$id=>true])['succeeded']['jobs'];
+ echo json_encode(['on'=>$on,'off'=>$off,'still'=>is_link(zfsmJobFile($id))]);`);
+ assert.equal(out.still,true);
+ assert.equal(out.on,'Deleted 0 finished job record(s). Kept 1 that could not be deleted now. Try again in a moment.');
+ assert.equal(out.off,'Deleted 0 finished job record(s). Kept 1 that need attention. Tick Everything to delete them too.');
+});
