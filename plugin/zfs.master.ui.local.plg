@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
-<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.15.3" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs.master.ui.local.plg" support="https://forums.unraid.net/topic/200986-plugin-zfs-director/">
-  <CHANGES>### 2026.11.15.3
-The warning about an old verified replication now names the replication task and says how old its last verified copy is, instead of showing an internal ID.
+<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.15.4" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs.master.ui.local.plg" support="https://forums.unraid.net/topic/200986-plugin-zfs-director/">
+  <CHANGES>### 2026.11.15.4
+Each replication job now has its own "Notify if a scheduled run is missed" option, on by default, which replaces the single 24-hour limit for all jobs. The limit comes from the job's schedule: the longest gap between its scheduled runs plus 25% (at least one hour), so a weekly replication no longer triggers a warning after a day. The notification no longer contains the age of the last verified copy, so it is sent once instead of every hour while it stays active. The global age setting was removed from the Settings screen; a stored value of 0 still turns all of these warnings off.
 
 ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.</CHANGES>
   <FILE Run="/bin/bash">
@@ -10,13 +10,13 @@ ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-la
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director was NOT updated (exit $status). Nothing was changed: your settings, schedules and data are intact. The reason is shown above."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.15.3.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.15.4.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.15.3-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.15.3-$$
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.15.4-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.15.4-$$
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs.master.ui.local.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.15.3-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.15.4-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -234,7 +234,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '92ae7dbecd3fbde6c2d911c94d6d48064a6746bf20e1db9f757776cdde76062d' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'b42e6b30c8be9b720e9b420690de397f66bbefec376005dd33242396a89c8443' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -735,9 +735,9 @@ early_failure() { local result=$?; if [[ "$result" != 0 ]]; then resume_runtime;
 trap early_failure EXIT
 </INLINE>
   </FILE>
-  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.15.3.tgz">
-    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.15.3/zfs-director-2026.11.15.3.tgz</URL>
-    <MD5>e6407a2446c17e3c9d374d88c9c4042f</MD5>
+  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.15.4.tgz">
+    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.15.4/zfs-director-2026.11.15.4.tgz</URL>
+    <MD5>33152715f293b9553d797690e0e2ca68</MD5>
   </FILE>
   <FILE Run="/bin/bash">
     <INLINE>set -euo pipefail
@@ -745,14 +745,14 @@ trap early_failure EXIT
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director was NOT updated (exit $status). Nothing was changed: your settings, schedules and data are intact. The reason is shown above."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.15.3.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.15.4.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.15.3-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.15.3-$$
-printf '%s  %s\n' '92ae7dbecd3fbde6c2d911c94d6d48064a6746bf20e1db9f757776cdde76062d' "$archive" | sha256sum -c -
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.15.4-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.15.4-$$
+printf '%s  %s\n' 'b42e6b30c8be9b720e9b420690de397f66bbefec376005dd33242396a89c8443' "$archive" | sha256sum -c -
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs.master.ui.local.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.15.3-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.15.4-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -970,7 +970,7 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == '92ae7dbecd3fbde6c2d911c94d6d48064a6746bf20e1db9f757776cdde76062d' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'b42e6b30c8be9b720e9b420690de397f66bbefec376005dd33242396a89c8443' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
@@ -1504,7 +1504,7 @@ legacy_cleanup apply
 # Automatic installation receipt distinguishes boot from an unrelated upgrade.
 if [[ "$hold_recovery" == 0 ]]; then
   receipt=$(mktemp "$installed.XXXXXX")
-  printf '%s\n' '92ae7dbecd3fbde6c2d911c94d6d48064a6746bf20e1db9f757776cdde76062d' &gt; "$receipt"
+  printf '%s\n' 'b42e6b30c8be9b720e9b420690de397f66bbefec376005dd33242396a89c8443' &gt; "$receipt"
   mv -T -- "$receipt" "$installed"
 fi
 # Startup must follow Plugin Manager registration, not precede it.
@@ -1519,7 +1519,7 @@ chmod 0755 "$hook"
   $json=json_encode(["registration"=&gt;$argv[1],"sha256"=&gt;$argv[2],"hold_recovery"=&gt;$argv[3]==="1"],JSON_THROW_ON_ERROR);
   $temporary=tempnam(dirname($path),".install-");
   if($temporary===false||file_put_contents($temporary,$json)!==strlen($json)||!rename($temporary,$path))exit(1);
-' -- "$registration" '92ae7dbecd3fbde6c2d911c94d6d48064a6746bf20e1db9f757776cdde76062d' "$hold_recovery"
+' -- "$registration" 'b42e6b30c8be9b720e9b420690de397f66bbefec376005dd33242396a89c8443' "$hold_recovery"
 # No child service inherits the installer's operation/protection locks.
 flock -u 6
 flock -u 7
@@ -1527,7 +1527,7 @@ exec 6&gt;&amp;- 7&gt;&amp;-
 flock -u 9
 exec 9&gt;&amp;-
 trap - EXIT
-echo 'ZFS Director 2026.11.15.3 code installed; Plugin Manager will verify registration and start background services next.'
+echo 'ZFS Director 2026.11.15.4 code installed; Plugin Manager will verify registration and start background services next.'
 
 </INLINE>
   </FILE>
