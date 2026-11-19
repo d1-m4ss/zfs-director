@@ -14,8 +14,14 @@ test('retention with no protected snapshots reports actual deletion as completed
  const r=await retentionResult({protectedSnapshots:false});t.after(()=>r.stand.close());
  assert.equal(r.job.verified_outcome,'completed');assert.deepEqual(r.job.verification.snapshots_pruned,[r.owned]);assert.equal(r.job.error,null);
 });
+test('retention with nothing eligible because every candidate is protected is a normal result, not a failure',async t=>{
+ // Replication bases and held snapshots are kept on every check; reporting that as blocked failed each minute-by-minute check.
+ const r=await retentionResult({eligible:false});t.after(()=>r.stand.close());
+ assert.equal(r.job.verified_outcome,'up_to_date');assert.equal(r.job.error,null);assert.equal(r.job.state,'completed');
+ assert.deepEqual(r.job.verification.snapshots_pruned,[]);assert.match(r.job.verification.reason,/^Nothing to delete; kept [1-9][0-9]* protected snapshot\(s\)/);
+ const after=r.stand.readModel();for(const name of [r.owned,r.manual,r.held])if(r.before.snapshots[name])assert.deepEqual(after.snapshots[name],r.before.snapshots[name]);
+});
 for(const [name,options,want]of [
- ['no eligible deletions',{eligible:false},'blocked'],
  ['unverified retention plan',{invalidPlan:true},'blocked'],
  ['native deletion failure',{deleteFailure:true},'recovery_required']
 ])test('retention '+name+' remains unsuccessful rather than completed with warnings',async t=>{

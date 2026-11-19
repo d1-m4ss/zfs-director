@@ -253,7 +253,9 @@ function zfsmQueueProtection(array $request,bool $interactive=true): array {
             return ['succeeded'=>[],'failed'=>[$job['id']=>$e->getMessage()],'job'=>$job];}
         zfsmProtectionForgetBlocked($type,$id);
         zfsmJobAtomicWrite($ephemeral?zfsmProtectionRuntimeJobFile($job['id']):zfsmJobFile($job['id']),$job);if(!$interactive&&$type!=='policy')zfsmAuditEvent('protectionscheduled',['job_id'=>$job['id']],'queued');return ['succeeded'=>[$job['id']=>'Queued'],'failed'=>[],'job'=>$job];
-    });
+    // Cron starts every due definition in the same second; a scheduled launch waits its turn instead of
+    // giving up after the interactive 2 s budget, which silently skipped a replication for the day.
+    },false,$interactive?2.0:60.0);
 }
 // Counts datasets that syncoid starts sending (or skips). Only the number is kept:
 // the text of native output may expose SSH identities or paths and is discarded.

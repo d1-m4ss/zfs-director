@@ -1,3 +1,10 @@
+### 2026.11.20.1
+Snapshot policies now delete their expired snapshots on datasets that are replicated. Every snapshot of a replication source used to count as needed by the replication, so nothing there was ever deleted. Now only the replication's last verified base (usually syncoid's own sync snapshot) and anything newer are kept; with no verified run on record everything is kept as before. Snapshots not created by the policy are still never deleted. A scheduled check now plans deletion only right after it created a new snapshot, instead of every minute; manual runs and deletion-only policies still plan it every time.
+
+A snapshot policy check that has nothing to delete except protected snapshots (replication bases, held snapshots or snapshots the policy did not create) is now a normal result. It used to be reported as failed on every minute-by-minute check and kept a Jobs record for each one. A scheduled run that starts in the same second as other schedules now waits up to a minute for the protection configuration instead of two seconds; before, a replication could be skipped for the whole day without any record. When a scheduled run cannot start, the reason is now written to the system log.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.19.2
 An update no longer stops because a scheduled snapshot check is running. Snapshot policies check every minute, so an update almost always found one in progress and refused. The installer now pauses new checks, waits up to 5 minutes for the running one to finish, drops checks that had not started yet (the next minute queues them again), and then updates. Jobs you started yourself still pause the update as before. The installation log is shorter: per-file checksum and syntax-check lines are no longer printed.
 

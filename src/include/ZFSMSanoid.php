@@ -179,8 +179,25 @@ function zfsmSanoidCreated(string $output,array $before,array $after,string $pol
     $owned=[];preg_match_all('/^taking (?:dst )?snapshot ([^\r\n]+@[^\s]+)(?:\s|$)/m',$output,$m);
     foreach(array_unique($m[1])as$name){$s=$after['snapshots'][$name]??null;if($s&&!isset($before['snapshots'][$name]))$owned[$name]=['guid'=>$s['guid'],'dataset_guid'=>$s['dataset_guid'],'policy_id'=>$policyId];}return $owned;
 }
-function zfsmSanoidReferences(array $policy,array $snapshots,array $store): array {
-    $references=[];foreach($store['replications']as$r)if(zfsmProtectionScopeOverlap($policy['dataset'],$r['source']))foreach($snapshots as$name=>$snapshot){$owner=explode('@',$name,2)[0];if($owner===$r['source']||(!empty($r['recursive'])&&str_starts_with($owner,$r['source'].'/')))$references[]=$name;}return array_values(array_unique($references));
+// Snapshots a replication still needs: its incremental base, i.e. the snapshots its newest verified run
+// confirmed on the destination, and anything at least as new (a newer verified run may be out of view).
+// Older snapshots are not needed: syncoid sends from the newest common snapshot. A dataset without a
+// verified base on record (never replicated, history unreadable) keeps every snapshot, as before.
+function zfsmSanoidReplicationResults(): ?array {
+    try{return zfsmJobsWithLastResults(zfsmJobPage(1,200,['type'=>'replication'])['jobs']);}catch(Throwable$error){return null;}
+}
+function zfsmSanoidReferences(array $policy,array $snapshots,array $store,?array $results=null): array {
+    $replications=array_filter($store['replications'],fn($r)=>zfsmProtectionScopeOverlap($policy['dataset'],$r['source']));if(!$replications)return [];
+    $results??=zfsmSanoidReplicationResults();
+    $references=[];
+    foreach($replications as$id=>$r){
+        // A result counts only for the same source and destination: an edited definition keeps its id.
+        $bases=[];foreach($results??[]as$job){if((string)($job['definition_id']??'')!==(string)$id||($job['type']??null)!=='replication'||!zfsmLastResultVerified($job)||($job['source']??null)!==$r['source']||($job['target']??null)!==($r['target']??null)||(isset($job['definition']['host'])&&($job['definition']['host']??'')!==($r['host']??'')))continue;
+            foreach($job['verification']['checkpoints']??[]as$rel=>$checkpoint){if(!is_string($checkpoint['guid']??null)||!is_numeric($checkpoint['creation']??null))continue;$owner=$r['source'].$rel;
+                $bases[$owner]['guids'][$checkpoint['guid']]=true;$bases[$owner]['creation']=max($bases[$owner]['creation']??0,(int)$checkpoint['creation']);}}
+        foreach($snapshots as$name=>$snapshot){$owner=explode('@',$name,2)[0];if($owner!==$r['source']&&(empty($r['recursive'])||!str_starts_with($owner,$r['source'].'/')))continue;
+            $base=$bases[$owner]??null;if($base===null||isset($base['guids'][(string)($snapshot['guid']??'')])||(int)($snapshot['creation']??0)>=$base['creation'])$references[]=$name;}
+    }return array_values(array_unique($references));
 }
 function zfsmSanoidExecute(array $job): array {
     $d=zfsmProtectionRequireExecution();$store=zfsmProtectionReadStore();$p=$store['policies'][$job['definition_id']]??null;if(!$p)throw new RuntimeException('Policy definition was removed.');if(!$p['enabled'])return ['outcome'=>'skipped','reason'=>'Policy is disabled.','exit_code'=>null];
@@ -195,6 +212,9 @@ function zfsmSanoidExecute(array $job): array {
     if(($result['code']??1)!==0)return $out;
     if($p['autosnap']&&!$created&&!array_filter($after['snapshots'],fn($s)=>in_array(explode('@',$s['name'],2)[0],$scope,true))){$out['outcome']='blocked';$out['reason']='Sanoid returned 0 but no snapshot exists in the effective policy scope.';}
     if(!$p['autoprune'])return $out;
+    // Deletion follows a new snapshot: a scheduled minute-by-minute check that created nothing has nothing
+    // newly expired to act on. Manual runs and deletion-only policies still plan retention every time.
+    if(($job['trigger']??'')==='schedule'&&$p['autosnap']&&!$created)return $out;
     // Background planning can inspect many snapshots; HTTP previews retain
     // their short budget. This longer phase remains strictly read-only.
     $plan=zfsmSanoidInvoke($p,$scope,true,$d['sanoid']['path'],['--prune-snapshots','--readonly'],90);
@@ -208,7 +228,10 @@ function zfsmSanoidExecute(array $job): array {
     if($out['snapshots_pruned']&&$out['outcome']!=='blocked'){
         $out['outcome']=$retention['protected']?'completed_with_warnings':'completed';
         $out['reason']='Deleted '.count($out['snapshots_pruned']).' snapshot(s); kept '.count($retention['protected']).' protected snapshot(s). Protected snapshots were not changed.';
-    }elseif($retention['protected']){$out['outcome']='blocked';$out['reason']='Retention preserved foreign/held snapshots or replication bases. Snapshot creation may have completed.';}
+    }elseif($retention['protected']){
+        // Keeping replication bases, held snapshots and snapshots this policy did not create is the intended result,
+        // not a failure: reporting it as blocked failed every minute-by-minute check and kept a journal for each one.
+        $out['reason']='Nothing to delete; kept '.count($retention['protected']).' protected snapshot(s) (replication bases, holds or snapshots this policy did not create).';}
     return $out;
 }
 function zfsmSanoidDetachExternal(string $text,string $dataset): array {

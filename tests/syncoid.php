@@ -86,6 +86,13 @@ check('scenario: normal incremental run, destination has a common lineage, is no
  $dst="backup/a\tfilesystem\t200\t2\t2\nbackup/a@s1\tsnapshot\t11\t10\t5\nbackup/a/child\tfilesystem\t201\t2\t3\nbackup/a/child@s1\tsnapshot\t21\t10\t5\n";
  $r=inspectScenario($sourceFull,$dst,"backup/a\t-\nbackup/a/child\t-\n");same([],$r['blockers']);same([],$r['hazards']);
 });
+check('scenario: older destination snapshots that the source has since deleted do not block; newer destination-only ones do',function()use($sourceFull){
+ // s0 was replicated earlier and then removed from the source by its retention; s1 is the newest common snapshot.
+ $dst="backup/a\tfilesystem\t200\t2\t2\nbackup/a@s0\tsnapshot\t10\t5\t4\nbackup/a@s1\tsnapshot\t11\t10\t5\nbackup/a/child\tfilesystem\t201\t2\t3\nbackup/a/child@s0\tsnapshot\t20\t5\t4\nbackup/a/child@s1\tsnapshot\t21\t10\t5\n";
+ $r=inspectScenario($sourceFull,$dst,"backup/a\t-\nbackup/a/child\t-\n");same([],$r['blockers']);
+ $diverged="backup/a\tfilesystem\t200\t2\t2\nbackup/a@s0\tsnapshot\t10\t5\t4\nbackup/a@s1\tsnapshot\t11\t10\t5\nbackup/a@local\tsnapshot\t99\t15\t9\nbackup/a/child\tfilesystem\t201\t2\t3\nbackup/a/child@s1\tsnapshot\t21\t10\t5\n";
+ $r=inspectScenario($sourceFull,$diverged,"backup/a\t-\nbackup/a/child\t-\n");same(['Destination has a snapshot outside source lineage: @local'],$r['blockers']);
+});
 check('scenario: choosing another source for a destination that already holds different data never overwrites: it is blocked',function()use($sourceFull){
  $other="backup/a\tfilesystem\t200\t2\t2\nbackup/a@older-other-dataset\tsnapshot\t999\t10\t5\nbackup/a@another\tsnapshot\t998\t11\t6\n";
  $r=inspectScenario($sourceFull,$other);

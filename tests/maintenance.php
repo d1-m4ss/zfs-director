@@ -78,6 +78,33 @@ check('a missed run is measured from the last verified run, not from the oldest 
  // The newest verified finish counts wherever it appears in the list.
  same([],$alerts([$run(gmdate('c',$now-2*3600),'completed',gmdate('c',$now-3*3600)),$run(gmdate('c',$now-40*3600))]));
 });
+check('retention keeps only what a replication still needs: its last verified base and anything newer',function(){
+ // Real layout from the user's server: daily autosnaps plus syncoid's own sync snapshot as the confirmed base.
+ $store=['replications'=>['81e7'=>['source'=>'cache/immich','target'=>'backup/immich','recursive'=>true]]];$policy=['dataset'=>'cache/immich'];
+ $snap=fn($guid,$creation)=>['guid'=>$guid,'creation'=>$creation];
+ $snapshots=['cache/immich@autosnap_2026-11-10_daily'=>$snap('10',1000),'cache/immich@pre_v3.3.6'=>$snap('11',500),'cache/immich@autosnap_2026-11-19_daily'=>$snap('12',5000),'cache/immich@syncoid_2026-11-19'=>$snap('13',5010),
+  'cache/immich/library@autosnap_2026-11-10_daily'=>$snap('20',1000),'cache/immich/library@syncoid_2026-11-19'=>$snap('21',5012),'cache/immich/new@autosnap_2026-11-10_daily'=>$snap('30',1000),'cache/immich@manual_after_base'=>$snap('14',6000),'cache/immich@autosnap_2026-11-15_daily'=>$snap('15',3000),'tank/other@autosnap_2026-11-10_daily'=>$snap('40',1000)];
+ $run=fn($finished,$checkpoints,$source='cache/immich',$target='backup/immich')=>['schema'=>4,'type'=>'replication','definition_id'=>'81e7','source'=>$source,'target'=>$target,'verified_outcome'=>'completed','finished_at'=>$finished,'verification'=>['verified'=>true,'checkpoints'=>$checkpoints]];
+ $results=[$run('2026-11-19T01:00:15+00:00',[''=>['guid'=>'13','creation'=>5010],'/library'=>['guid'=>'21','creation'=>5012]])];
+ $kept=zfsmSanoidReferences($policy,$snapshots,$store,$results);sort($kept);
+ // Old autosnaps are free for retention; the base, anything newer, and a child with no base on record stay.
+ same(['cache/immich/library@syncoid_2026-11-19','cache/immich/new@autosnap_2026-11-10_daily','cache/immich@manual_after_base','cache/immich@syncoid_2026-11-19'],$kept);
+ // An older verified run in view does not lower the bar set by the newest one.
+ $kept=zfsmSanoidReferences($policy,$snapshots,$store,array_merge($results,[$run('2026-11-10T01:00:00+00:00',[''=>['guid'=>'10','creation'=>1000]])]));
+ same(true,in_array('cache/immich@autosnap_2026-11-10_daily',$kept,true));same(false,in_array('cache/immich@pre_v3.3.6',$kept,true));same(false,in_array('cache/immich@autosnap_2026-11-15_daily',$kept,true));
+ // A result of the same id for another source or destination (the definition was edited) is no base: keep all.
+ same(9,count(zfsmSanoidReferences($policy,$snapshots,$store,[$run('2026-11-19T01:00:15+00:00',[''=>['guid'=>'13','creation'=>5010]],'cache/old')])));
+ same(9,count(zfsmSanoidReferences($policy,$snapshots,$store,[$run('2026-11-19T01:00:15+00:00',[''=>['guid'=>'13','creation'=>5010]],'cache/immich','backup/other')])));
+ // A policy no replication overlaps needs no lookup at all.
+ same([],zfsmSanoidReferences(['dataset'=>'tank/other'],$snapshots,$store,null));
+ // No verified run on record (or unreadable history) keeps every snapshot of the source, as before.
+ $all=zfsmSanoidReferences($policy,$snapshots,$store,[]);same(9,count($all));
+ $failed=[['schema'=>4,'type'=>'replication','definition_id'=>'81e7','verified_outcome'=>'failed','verification'=>['verified'=>false,'checkpoints'=>[''=>['guid'=>'13','creation'=>5010]]]]];
+ same(9,count(zfsmSanoidReferences($policy,$snapshots,$store,$failed)));
+ // A non-recursive replication only covers its own dataset.
+ $store['replications']['81e7']['recursive']=false;$kept=zfsmSanoidReferences($policy,$snapshots,$store,$results);sort($kept);
+ same(['cache/immich@manual_after_base','cache/immich@syncoid_2026-11-19'],$kept);
+});
 check('the replication definition validator stores missed_alert as a boolean defaulting to true',function(){
  $base=['id'=>'abc','name'=>'R','source'=>'cache/a','target'=>'tank/b','mode'=>'local'];
  same(true,zfsmSyncoidJob($base)['missed_alert']);

@@ -150,7 +150,10 @@ function zfsmSyncoidVerify(array $before,array $after,int $exit): array {
 function zfsmSyncoidInspect(array $j): array {
     $source=zfsmSyncoidInventory($j,false);$target=zfsmSyncoidInventory($j,true);$blocked=[];
     if(isset($target['']['guid'])&&$target['']['guid']===$source['']['guid'])throw new RuntimeException('Source and destination have the same dataset identity.');
-    foreach($target as$rel=>$row){if(!isset($source[$rel])){$blocked[]='Foreign destination dataset '.$rel;continue;}foreach($row['snapshots']as$guid=>$s)if(!isset($source[$rel]['snapshots'][$guid]))$blocked[]='Destination has a snapshot outside source lineage: '.$rel.'@'.$s['name'];}
+    // Destination-only snapshots older than the newest common one are history the source has since deleted
+    // (its retention ran); syncoid sends from the newest common snapshot, so only later ones break lineage.
+    // With no common snapshot at all every destination-only snapshot still blocks (different data).
+    foreach($target as$rel=>$row){if(!isset($source[$rel])){$blocked[]='Foreign destination dataset '.$rel;continue;}$rows=[];$common=null;foreach($row['snapshots']as$guid=>$s){if(isset($source[$rel]['snapshots'][$guid]))$common=count($rows);$rows[]=[$guid,$s];}foreach($rows as$k=>[$guid,$s])if(!isset($source[$rel]['snapshots'][$guid])&&($common===null||$k>$common))$blocked[]='Destination has a snapshot outside source lineage: '.$rel.'@'.$s['name'];}
     // syncoid cannot send the first snapshot into an existing destination dataset that has none
     // ("exists but has no snapshots matching"); it would need --force-delete, which Director never uses.
     // This is a hazard, not a blocker: other datasets of the same run still replicate.
