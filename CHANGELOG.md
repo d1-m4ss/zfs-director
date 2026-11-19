@@ -1,3 +1,8 @@
+### 2026.11.19.1
+The missed-run alert now counts from when the last verified replication run finished. It used to count from the creation time of the oldest transferred snapshot, so a recursive job with a child dataset that had no new snapshots, or a run with nothing new to send, was reported as missed although it ran on schedule.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.15.4
 Each replication job now has its own "Notify if a scheduled run is missed" option, on by default, which replaces the single 24-hour limit for all jobs. The limit comes from the job's schedule: the longest gap between its scheduled runs plus 25% (at least one hour), so a weekly replication no longer triggers a warning after a day. The notification no longer contains the age of the last verified copy, so it is sent once instead of every hour while it stays active. The global age setting was removed from the Settings screen; a stored value of 0 still turns all of these warnings off.
 

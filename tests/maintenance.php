@@ -67,6 +67,17 @@ check('a failed replication run still alerts unless the job turned its missed-ru
  same(['Replication "Immich backup": last run not verified. Native transfer failed (exit 2).'],$alerts(['missed_alert'=>true]));
  same([],$alerts(['missed_alert'=>false]));
 });
+check('a missed run is measured from the last verified run, not from the oldest checkpoint snapshot',function(){
+ // Daily job (limit 30 h). A child with no new snapshot keeps a checkpoint created 10 days ago.
+ $now=strtotime('2026-11-19T23:06:00Z');$old=$now-10*86400;
+ $run=fn($finished,$outcome='up_to_date',$created=null)=>['schema'=>4,'type'=>'replication','definition_id'=>'d1','created'=>$created??$finished,'finished_at'=>$finished,'verified_outcome'=>$outcome,'verification'=>['verified'=>$outcome!=='failed','checkpoints'=>[''=>['guid'=>'1','creation'=>$now-3600],'child'=>['guid'=>'2','creation'=>$old]]]];
+ $alerts=fn($jobs)=>zfsmProtectionLagAlerts('cache',['replications'=>['d1'=>['enabled'=>true,'name'=>'Replication','source'=>'cache/immich','schedule'=>'0 3 * * *']]],$jobs,24,$now);
+ same([],$alerts([$run(gmdate('c',$now-20*3600))]));
+ same([],$alerts([$run(gmdate('c',$now-20*3600),'completed')]));
+ same(['Replication "Replication": no verified copy for longer than expected (limit: 30 hours).'],$alerts([$run(gmdate('c',$now-31*3600))]));
+ // The newest verified finish counts wherever it appears in the list.
+ same([],$alerts([$run(gmdate('c',$now-2*3600),'completed',gmdate('c',$now-3*3600)),$run(gmdate('c',$now-40*3600))]));
+});
 check('the replication definition validator stores missed_alert as a boolean defaulting to true',function(){
  $base=['id'=>'abc','name'=>'R','source'=>'cache/a','target'=>'tank/b','mode'=>'local'];
  same(true,zfsmSyncoidJob($base)['missed_alert']);
