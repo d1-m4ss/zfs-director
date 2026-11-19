@@ -66,6 +66,34 @@ function zfsmProtectionCron($schedule): string {
     foreach($fields as$i=>$field){foreach(explode(',',$field)as$part){if(!preg_match('/^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/D',$part,$m))throw new InvalidArgumentException('Invalid cron expression.');$max=[59,23,31,12,7][$i];$min=$i===2||$i===3?1:0;if(isset($m[2])&&((int)$m[2]<1||(int)$m[2]>$max+1))throw new InvalidArgumentException('Invalid cron interval.');if($m[1]!=='*'){$r=explode('-',$m[1]);foreach($r as$n)if((int)$n<$min||(int)$n>$max)throw new InvalidArgumentException('Cron value is outside its field range.');if(count($r)===2&&(int)$r[0]>(int)$r[1])throw new InvalidArgumentException('Cron range must be ascending.');}}}
     return implode(' ',$fields);
 }
+// Longest gap in seconds between two consecutive fire times of a schedule that zfsmProtectionCron accepts;
+// null when it is invalid or never fires. Days are matched over two reference years (2024, 2025), so
+// weekday and month patterns see every transition; a schedule with a single matching day gets 366 days.
+function zfsmCronMaxGapSeconds(string $schedule): ?int {
+    try{zfsmProtectionCron($schedule);}catch(InvalidArgumentException $error){return null;}
+    $fields=preg_split('/\s+/',trim($schedule));$sets=[];
+    foreach($fields as$i=>$field){$set=[];$max=[59,23,31,12,7][$i];$min=$i===2||$i===3?1:0;
+        foreach(explode(',',$field)as$part){preg_match('/^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/D',$part,$m);$step=(int)($m[2]??1);
+            if($m[1]==='*'){$low=$min;$high=$max;}else{$range=explode('-',$m[1]);$low=(int)$range[0];$high=isset($range[1])?(int)$range[1]:$low;}
+            for($n=$low;$n<=$high;$n+=$step)$set[$i===4?$n%7:$n]=true;}
+        $sets[$i]=$set;}
+    $minutes=[];foreach(array_keys($sets[0])as$minute)foreach(array_keys($sets[1])as$hour)$minutes[]=$hour*60+$minute;
+    if(!$minutes)return null;sort($minutes);$first=$minutes[0];$last=$minutes[count($minutes)-1];
+    $gap=0;for($k=1;$k<count($minutes);$k++)$gap=max($gap,$minutes[$k]-$minutes[$k-1]);
+    $either=$fields[2][0]!=='*'&&$fields[4][0]!=='*';$previous=null;$start=gmmktime(0,0,0,1,1,2024);
+    for($day=0;$day<731;$day++){[$month,$dom,$dow]=array_map('intval',explode(' ',gmdate('n j w',$start+$day*86400)));
+        $dayMatch=$either?isset($sets[2][$dom])||isset($sets[4][$dow]):isset($sets[2][$dom])&&isset($sets[4][$dow]);
+        if(!isset($sets[3][$month])||!$dayMatch)continue;
+        if($previous!==null)$gap=max($gap,($day-$previous)*1440-$last+$first);elseif(!isset($single))$single=$day;
+        $previous=$day;}
+    if($previous===null)return null;if($previous===$single)$gap=max($gap,366*1440-$last+$first);
+    return $gap*60;
+}
+// Age after which a verified copy counts as missed: the longest scheduled gap plus 25% (at least one hour), rounded up to whole hours.
+function zfsmReplicationMissedLimitSeconds($schedule): ?int {
+    $gap=is_string($schedule)?zfsmCronMaxGapSeconds($schedule):null;if($gap===null)return null;
+    return intdiv($gap+max(3600,intdiv($gap+3,4))+3599,3600)*3600;
+}
 function zfsmSanoidScope(array $p,array $datasets): array {
     $scope=[];foreach($datasets as$ds){if($ds!==$p['dataset']&&(!$p['recursive']||!str_starts_with($ds,$p['dataset'].'/')))continue;if($ds===$p['dataset']&&$p['process_children_only'])continue;$exclude=false;foreach($p['exclusions']as$e)if($ds===$e||str_starts_with($ds,$e.'/'))$exclude=true;if(!$exclude)$scope[]=$ds;}sort($scope,SORT_STRING);return $scope;
 }

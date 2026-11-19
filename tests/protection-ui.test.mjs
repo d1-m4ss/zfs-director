@@ -436,3 +436,31 @@ test('a paused policy row shows no failed-check line',async()=>{
  const t=await mount(true,(fields,{data})=>fields.cmd==='protectiondata'?{...data,policies:data.policies.map(p=>p.id==='abc'?{...p,enabled:false,last_check_failure:{since:'2026-11-14T18:00:00Z',times:2,reason:'Sanoid is not installed'}}:p)}:undefined);
  try{await t.app.render('policies');assert.deepEqual([...t.root.querySelectorAll('[data-check-failure]')].map(n=>n.textContent),[]);}finally{t.app.stop();}
 });
+const toSchedule=(t,dlg)=>{change(t,dlg.querySelector('[name=source]'),'cache/a','change');click(dlg,'Next');change(t,dlg.querySelector('[name=target]'),'backup/a');click(dlg,'Next');};
+test('replication editor offers the missed-run alert on by default, with its hint, and sends it as a flag',async()=>{
+ const t=await mount(true,f=>f.cmd==='protectionreplicationpreview'?{preview_id:'c'.repeat(32),token:'signed',review:{type:'replication',value:{...f.data,missed_alert:f.data.missed_alert==='1'},capabilities:{resume:true}}}:undefined);
+ try{await t.app.render('replication');click(t.root,'New replication');const dlg=t.root.querySelector('dialog');toSchedule(t,dlg);
+  const box=dlg.querySelector('[name=missed_alert]');assert.equal(box.type,'checkbox');assert.equal(box.checked,true);assert.equal(box.getAttribute('aria-label'),'Notify if a scheduled run is missed');
+  assert.equal(box.closest('label').nextElementSibling.textContent,'Alerts when no verified copy appears for the schedule interval plus 25% (at least 1 hour). Turn off for one-off or manual replications.');
+  click(dlg,'Review & create replication');await wait();assert.equal(t.calls.find(c=>c.cmd==='protectionreplicationpreview').data.missed_alert,'1');
+  assert.equal(detailValue(dlg,'Missed-run alert'),'On');
+ }finally{t.app.stop();t.w.close();}
+ const off=await mount(true,f=>f.cmd==='protectionreplicationpreview'?{preview_id:'c'.repeat(32),token:'signed',review:{type:'replication',value:{...f.data,missed_alert:f.data.missed_alert==='1'},capabilities:{resume:true}}}:undefined);
+ try{await off.app.render('replication');click(off.root,'New replication');const dlg=off.root.querySelector('dialog');toSchedule(off,dlg);const box=dlg.querySelector('[name=missed_alert]');box.checked=false;
+  click(dlg,'Review & create replication');await wait();assert.equal(off.calls.find(c=>c.cmd==='protectionreplicationpreview').data.missed_alert,'0');assert.equal(detailValue(dlg,'Missed-run alert'),'Off');
+ }finally{off.app.stop();off.w.close();}
+});
+test('editing a replication keeps its missed-run alert choice and treats a missing flag as on',async()=>{
+ const base={source:'cache/a',target:'backup/a',owner:'managed',mode:'local',schedule:'10 2 * * *',enabled:true,source_guid:'123',target_guid:'456'};
+ for(const [stored,expected] of [[false,'0'],[true,'1'],[undefined,'1']]){
+  const t=await mount();t.data.replications=[{...base,id:'d'.repeat(16),name:'Archive',...(stored===undefined?{}:{missed_alert:stored})}];
+  try{await t.app.render('replication');click(t.root.querySelector('[data-replication-id]'),'Edit');const dlg=t.root.querySelector('dialog');click(dlg,'Next');click(dlg,'Next');assert.equal(dlg.querySelector('[name=missed_alert]').checked,expected==='1');click(dlg,'Review changes');await wait();assert.equal(t.calls.find(c=>c.cmd==='protectionreplicationpreview').data.missed_alert,expected);}finally{t.app.stop();t.w.close();}
+ }
+});
+test('replication details show the missed-run alert state and its limit',async()=>{
+ const t=await mount();const base={source:'cache/a',target:'backup/a',owner:'managed',enabled:true,mode:'local',schedule:'0 3 * * 0'};
+ t.data.replications=[{...base,id:'weekly',name:'Weekly',missed_alert:true,missed_alert_limit_seconds:210*3600},{...base,id:'hourly',name:'Hourly',missed_alert:true,missed_alert_limit_seconds:2*3600},{...base,id:'day',name:'Day',missed_alert:true,missed_alert_limit_seconds:73*3600},{...base,id:'off',name:'Off',missed_alert:false,missed_alert_limit_seconds:null},{...base,id:'unknown',name:'Unknown',missed_alert:true,missed_alert_limit_seconds:null}];
+ try{await t.app.render('replication');const shown=id=>{click(t.root.querySelector('[data-replication-id='+id+']'),'Inspect');const dlg=t.root.querySelector('dialog');const value=detailValue(dlg,'Missed-run alert');click(dlg,'Close');return value;};
+  assert.deepEqual(['weekly','hourly','day','off','unknown'].map(shown),['On — limit 8 days 18 hours','On — limit 2 hours','On — limit 3 days 1 hour','Off','On']);
+ }finally{t.app.stop();t.w.close();}
+});

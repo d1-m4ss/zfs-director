@@ -574,7 +574,7 @@
         refresh_interval: config.refresh_interval ?? 30, lazy_load: config.lazy_load ?? 0,
         destructive_mode: config.destructive_mode ?? 0, exclusion: config.dataset_exclusion ?? config.exclusion ?? '',
         directory_listing: Array.isArray(config.directory_listing) ? config.directory_listing.join('\n') : config.directory_listing || '',
-        snap_max_days_alert: config.snap_max_days_alert ?? 30, snap_pattern: config.snap_pattern ?? 'Y-m-d-His', snap_prefix: config.snap_prefix || '',space_warning_percent:config.space_warning_percent??80,space_critical_percent:config.space_critical_percent??90,replication_lag_hours:config.replication_lag_hours??24,job_retention_days:config.job_retention_days??7
+        snap_max_days_alert: config.snap_max_days_alert ?? 30, snap_pattern: config.snap_pattern ?? 'Y-m-d-His', snap_prefix: config.snap_prefix || '',space_warning_percent:config.space_warning_percent??80,space_critical_percent:config.space_critical_percent??90,job_retention_days:config.job_retention_days??7
       };
       for (const name of Object.keys(values)) values[name] = String(values[name]);
       return values;
@@ -599,7 +599,6 @@
       field(state, 'snap_max_days_alert', 'Snapshot age warning (days)', values.snap_max_days_alert, null, { type: 'number', min: 0, max: 36500, step: 1, required: true });
       field(state,'space_warning_percent','Space warning threshold (%)',values.space_warning_percent,null,{type:'number',min:1,max:99,step:1,required:true});
       field(state,'space_critical_percent','Space critical threshold (%)',values.space_critical_percent,null,{type:'number',min:2,max:100,step:1,required:true});
-      field(state,'replication_lag_hours','Verified replication age alert (hours; 0 = disabled)',values.replication_lag_hours,null,{type:'number',min:0,max:8760,step:1,required:true});
       // Rarely changed, expert-level options stay available but out of the way.
       const basicGrid = state.grid, advanced = element('details'), advancedGrid = element('div');
       advanced.className = 'zfsm-settings-advanced'; advancedGrid.className = basicGrid.className;

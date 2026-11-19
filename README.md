@@ -112,6 +112,8 @@ An SSH destination needs an SSH key. Register it in **Settings → Sanoid / Sync
 
 Reviewing or saving a definition is not a transfer. Run and enable decisions are explicit. Syncoid exit status alone is not treated as verified replication success: receiver identity and checkpoint evidence are part of the result. Interrupted/resumable work remains visible for inspection. Automatic destination rollback is not part of this workflow.
 
+Each replication job has its own **Notify if a scheduled run is missed** option (on by default). When it is on and no verified copy has appeared for the longest gap between the job's scheduled runs plus 25% (at least one hour, rounded up to whole hours), Director raises a warning that names the job and its limit, for example 8 days 18 hours for a weekly job, 30 hours for a daily job and 2 hours for an hourly job. The warning text does not contain the age, so the Unraid notification is sent once, not every hour. The same warning appears when the last run was not verified. Turn the option off for one-off or manual replications. The Replication details show the current limit. Saving **0** as the legacy `replication_lag_hours` setting still disables all of these warnings; the option is no longer on the Settings screen.
+
 ![Synthetic replication wizard](docs/images/replication-wizard.png)
 
 ![Synthetic local replication definition and recorded result](docs/images/replication.png)

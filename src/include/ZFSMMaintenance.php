@@ -22,13 +22,21 @@ function zfsmMaintenanceEvaluate($diagnostic,$config,$lagAlerts=[]) {
     }
     $diagnostic['reasons']=array_values(array_unique($diagnostic['reasons']??[]));return $diagnostic;
 }
+// "8 days 18 hours" / "30 hours"; stays constant between checks so the monitor fingerprint does not change.
+function zfsmMissedLimitText(int $seconds): string {
+    $hours=intdiv($seconds,3600);$plural=fn($n,$unit)=>$n.' '.$unit.($n===1?'':'s');
+    if($hours<48)return $plural($hours,'hour');
+    return $plural(intdiv($hours,24),'day').($hours%24>0?' '.$plural($hours%24,'hour'):'');
+}
+// $hours is only the legacy master switch (saved replication_lag_hours of 0 turns every alert off). Each job's own
+// limit comes from its schedule; a job with missed_alert false is never reported.
 function zfsmProtectionLagAlerts($pool,$store,$jobs,$hours,$now=null,$withLinks=false) {
     if($hours<=0)return [];$now=$now??time();$alerts=[];
-    foreach($store['replications']??[] as $id=>$definition){if(empty($definition['enabled'])||explode('/',$definition['source']??'',2)[0]!==$pool)continue;$latest=null;
+    foreach($store['replications']??[] as $id=>$definition){if(empty($definition['enabled'])||($definition['missed_alert']??true)===false||explode('/',$definition['source']??'',2)[0]!==$pool)continue;$latest=null;
         foreach($jobs as $job)if(($job['definition_id']??null)===(string)$id&&($job['type']??'')==='replication'&&($job['schema']??null)===4){if($latest===null||strcmp($job['created']??'',$latest['created']??'')>0)$latest=$job;}
         if(!$latest)continue;$verification=zfsmProtectionCurrentVerification($latest['verification']??[],$now);
         if(in_array($latest['verified_outcome']??'',['failed','blocked','unknown','interrupted','recovery_required'],true)){$reason=$latest['verification']['reason']??($latest['error']??'');$name=preg_replace('/\s+/',' ',(string)($definition['name']??$id));$text='Replication "'.$name.'": last run not verified'.(is_string($reason)&&$reason!==''?'. '.rtrim(substr(preg_replace('/\s+/',' ',$reason),0,300),'. ').'.':'.');$alerts[]=$withLinks?['text'=>$text,'type'=>'replication','id'=>(string)$id]:$text;}
-        elseif($verification['lag_seconds']!==null&&$verification['lag_seconds']>$hours*3600){$name=preg_replace('/\s+/',' ',(string)($definition['name']??$id));$age=(int)floor($verification['lag_seconds']/3600);$ageText=$age<48?max(1,$age).(max(1,$age)===1?' hour':' hours'):intdiv($age,24).' days';$text='Replication "'.$name.'": last verified copy is '.$ageText.' old; the limit is '.$hours.((int)$hours===1?' hour.':' hours.');$alerts[]=$withLinks?['text'=>$text,'type'=>'replication','id'=>(string)$id]:$text;}
+        elseif($verification['lag_seconds']!==null&&($limit=zfsmReplicationMissedLimitSeconds($definition['schedule']??null))!==null&&$verification['lag_seconds']>$limit){$name=preg_replace('/\s+/',' ',(string)($definition['name']??$id));$text='Replication "'.$name.'": no verified copy for longer than expected (limit: '.zfsmMissedLimitText($limit).').';$alerts[]=$withLinks?['text'=>$text,'type'=>'replication','id'=>(string)$id]:$text;}
     }return $alerts;
 }
 function zfsmReadMaintenanceHistory($directory,$pool) {
