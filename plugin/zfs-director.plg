@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
-<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.19.1" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg" support="https://forums.unraid.net/topic/200986-plugin-zfs-director/">
-  <CHANGES>### 2026.11.19.1
-The missed-run alert now counts from when the last verified replication run finished. It used to count from the creation time of the oldest transferred snapshot, so a recursive job with a child dataset that had no new snapshots, or a run with nothing new to send, was reported as missed although it ran on schedule.
+<PLUGIN name="zfs.master.ui" author="d1-m4ss" version="2026.11.19.2" min="7.3.3" icon="database" launch="Main/ZFSDirector" pluginURL="https://raw.githubusercontent.com/d1-m4ss/zfs-director/main/plugin/zfs-director.plg" support="https://forums.unraid.net/topic/200986-plugin-zfs-director/">
+  <CHANGES>### 2026.11.19.2
+An update no longer stops because a scheduled snapshot check is running. Snapshot policies check every minute, so an update almost always found one in progress and refused. The installer now pauses new checks, waits up to 5 minutes for the running one to finish, drops checks that had not started yet (the next minute queues them again), and then updates. Jobs you started yourself still pause the update as before. The installation log is shorter: per-file checksum and syntax-check lines are no longer printed.
 
 ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.</CHANGES>
   <FILE Run="/bin/bash">
@@ -10,13 +10,13 @@ ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-la
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director was NOT updated (exit $status). Nothing was changed: your settings, schedules and data are intact. The reason is shown above."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.19.1.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.19.2.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.19.1-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.19.1-$$
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.19.2-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.19.2-$$
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.19.1-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.19.2-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -234,16 +234,18 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'dc12f1594ea9698b66a826914a60c58a3723afff29d1daa06394710b175ed9f8' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'bef23df663b9167a515ce6fef3701e295855a4b17ff2f827d5d559750d9746a8' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
-  /usr/bin/php -r '
+  ZFSM_PREFLIGHT_PASS="${1:-strict}" /usr/bin/php -r '
 // Read-only installer prerequisite. No plugin includes, worker or scheduler calls.
 if(PHP_SAPI!=='"'"'cli'"'"')exit(2);
 $root=$argv[1]??'"'"'/boot/config/plugins/zfs.master.ui'"'"';
 $acceptedBoot=($argv[2]??'"'"''"'"')==='"'"'accepted-boot'"'"';
 $managedInstall=($argv[2]??'"'"''"'"')==='"'"'install'"'"';
+// The installer'"'"'s first pass lets scheduled snapshot checks through: it pauses new ones and waits for the running one.
+$deferScheduled=getenv('"'"'ZFSM_PREFLIGHT_PASS'"'"')==='"'"'defer-scheduled'"'"';
 $requireRecovery=static function($message)use($acceptedBoot){fwrite(STDERR,'"'"'ZFS Director preflight: '"'"'.$message."\n");exit($acceptedBoot?10:1);};
 try{
     if(!is_string($root)||!str_starts_with($root,'"'"'/'"'"')||str_contains($root,"\0")||str_contains($root,'"'"'..'"'"')||is_link($root))throw new RuntimeException('"'"'Unsafe persistent state path'"'"');
@@ -255,7 +257,7 @@ try{
     }
     $jobs=$root.'"'"'/jobs'"'"';if(is_link($jobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
     $pendingJobs=[];
-    $scanJobs=function($directory,$skipIfDurable=null)use(&amp;$pendingJobs,$requireRecovery){
+    $scanJobs=function($directory,$skipIfDurable=null,$deferScheduled=false)use(&amp;$pendingJobs,$requireRecovery){
         if(!is_dir($directory))return;
         $scan=opendir($directory);$count=0;
         // Only job journals count toward the bound: every journal also keeps a .lock file and may
@@ -267,7 +269,7 @@ try{
             $file=$directory.'"'"'/'"'"'.$name;
             if(is_link($file)||!is_file($file)||filesize($file)&gt;131072)throw new RuntimeException('"'"'Job requires inspection before upgrade'"'"');$j=json_decode(file_get_contents($file),true,32);if(!is_array($j))$requireRecovery('"'"'Malformed job requires inspection'"'"');
             if(!is_array($j)||!is_string($j['"'"'state'"'"']??null))$requireRecovery('"'"'A job with an unreadable state requires inspection; background services stay paused.'"'"');
-            if(in_array($j['"'"'state'"'"'],['"'"'queued'"'"','"'"'running'"'"'],true)){$label=trim(preg_replace('"'"'/[^\x20-\x7e]+/'"'"','"'"''"'"',(string)($j['"'"'type'"'"']??'"'"'job'"'"').'"'"' '"'"'.(string)($j['"'"'source'"'"']??$j['"'"'label'"'"']??'"'"''"'"')));$pendingJobs[]=substr($label==='"'"''"'"'?'"'"'job'"'"':$label,0,90).'"'"' ('"'"'.$j['"'"'state'"'"'].'"'"')'"'"';continue;}
+            if(in_array($j['"'"'state'"'"'],['"'"'queued'"'"','"'"'running'"'"'],true)){if($deferScheduled&amp;&amp;($j['"'"'type'"'"']??null)==='"'"'policy'"'"'&amp;&amp;($j['"'"'trigger'"'"']??null)==='"'"'schedule'"'"')continue;$label=trim(preg_replace('"'"'/[^\x20-\x7e]+/'"'"','"'"''"'"',(string)($j['"'"'type'"'"']??'"'"'job'"'"').'"'"' '"'"'.(string)($j['"'"'source'"'"']??$j['"'"'label'"'"']??'"'"''"'"')));$pendingJobs[]=substr($label==='"'"''"'"'?'"'"'job'"'"':$label,0,90).'"'"' ('"'"'.$j['"'"'state'"'"'].'"'"')'"'"';continue;}
             // Terminal file jobs can still release holds or delete ZIP staging.
             // Future expiry/retry times only defer that work after activation.
             if(in_array($j['"'"'type'"'"']??null,['"'"'restore'"'"','"'"'archive'"'"'],true)&amp;&amp;($j['"'"'hold_owned'"'"']??null)!==false)$requireRecovery('"'"'File job protection requires inspection; worker stays stopped'"'"');
@@ -278,19 +280,20 @@ try{
     // A scheduled policy check (REL-002) is queued only in the tmpfs runtime directory while
     // idle-capable; an update must refuse to proceed while one is in flight there too.
     $runtimeJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/protection-queue'"'"';if(is_link($runtimeJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
-    $scanJobs($runtimeJobs,$jobs);
+    $scanJobs($runtimeJobs,$jobs,$deferScheduled);
     $requestJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/requests'"'"';if(is_link($requestJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
     $scanJobs($requestJobs,$jobs);
     if($pendingJobs){
         $shown=implode('"'"'; '"'"',array_slice($pendingJobs,0,3)).(count($pendingJobs)&gt;3?'"'"'; and '"'"'.(count($pendingJobs)-3).'"'"' more'"'"':'"'"''"'"');
         $requireRecovery('"'"'Update paused: '"'"'.count($pendingJobs).'"'"' job(s) still queued or running: '"'"'.$shown.'"'"'. Nothing was changed and the installed version keeps running. Next: open Main &gt; ZFS Director &gt; Jobs, wait for these jobs to finish or cancel them, then run Plugins &gt; Check for Updates again.'"'"');
     }
-    echo "ZFS Director preflight: no pending execution or file cleanup. Settings and schedules retained.\n";
 }catch(Throwable$e){fwrite(STDERR,'"'"'ZFS Director upgrade blocked: '"'"'.$e-&gt;getMessage()."\n");exit(1);}
 ' -- /boot/config/plugins/zfs.master.ui "$mode" || status=$?
   if [[ "$status" == 10 &amp;&amp; "$restore_accepted" == 1 ]]; then hold_recovery=1; elif [[ "$status" != 0 ]]; then return "$status"; fi
 }
-preflight
+# Scheduled snapshot checks start every minute; the first pass lets them through and the
+# installer waits for the running one after pausing new ones (strict pass under the lock below).
+preflight defer-scheduled
 # Read-only prerequisite gate, before stopping the installed implementation.
 # Execute the exact packaged helper; the generic probe creates no files.
 if ! /usr/bin/perl -e '#!/usr/bin/perl
@@ -735,9 +738,9 @@ early_failure() { local result=$?; if [[ "$result" != 0 ]]; then resume_runtime;
 trap early_failure EXIT
 </INLINE>
   </FILE>
-  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.19.1.tgz">
-    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.19.1/zfs-director-2026.11.19.1.tgz</URL>
-    <MD5>0406f40e33c2adfc4be3b9a600b1f0ef</MD5>
+  <FILE Name="/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.19.2.tgz">
+    <URL>https://github.com/d1-m4ss/zfs-director/releases/download/2026.11.19.2/zfs-director-2026.11.19.2.tgz</URL>
+    <MD5>bbf2af4c5db2dbe654452f7603251432</MD5>
   </FILE>
   <FILE Run="/bin/bash">
     <INLINE>set -euo pipefail
@@ -745,14 +748,14 @@ trap early_failure EXIT
 exec 2&gt;&amp;1
 trap 'status=$?; echo "ZFS Director was NOT updated (exit $status). Nothing was changed: your settings, schedules and data are intact. The reason is shown above."; exit "$status"' ERR
 umask 077
-archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.19.1.tgz
+archive=/boot/config/plugins/zfs.master.ui/zfs-director-2026.11.19.2.tgz
 live=/usr/local/emhttp/plugins/zfs.master.ui
-stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.19.1-$$
-previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.19.1-$$
-printf '%s  %s\n' 'dc12f1594ea9698b66a826914a60c58a3723afff29d1daa06394710b175ed9f8' "$archive" | sha256sum -c -
+stage=/usr/local/emhttp/plugins/.zfs-director-stage-2026.11.19.2-$$
+previous=/usr/local/emhttp/plugins/.zfs-director-previous-2026.11.19.2-$$
+printf '%s  %s\n' 'bef23df663b9167a515ce6fef3701e295855a4b17ff2f827d5d559750d9746a8' "$archive" | sha256sum -c --quiet -
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration=zfs-director.plg
-legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.19.1-$(date -u +%Y%m%dT%H%M%SZ)-$$
+legacy_backup=/boot/config/plugins-removed/zfs-director-2026.11.19.2-$(date -u +%Y%m%dT%H%M%SZ)-$$
 legacy_cleanup() {
   /usr/bin/php -r '
 // Embedded in the PLG: only known plugin code/registrations are replaced.
@@ -970,16 +973,18 @@ restore_accepted=0
 hold_recovery=0
 old_receipt=
 if [[ -f "$installed" ]]; then old_receipt=$(cat "$installed"); fi
-if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'dc12f1594ea9698b66a826914a60c58a3723afff29d1daa06394710b175ed9f8' ]]; then restore_accepted=1; fi
+if [[ ! -e "$live" &amp;&amp; -f "$installed" &amp;&amp; "$(cat "$installed")" == 'bef23df663b9167a515ce6fef3701e295855a4b17ff2f827d5d559750d9746a8' ]]; then restore_accepted=1; fi
 preflight() {
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
-  /usr/bin/php -r '
+  ZFSM_PREFLIGHT_PASS="${1:-strict}" /usr/bin/php -r '
 // Read-only installer prerequisite. No plugin includes, worker or scheduler calls.
 if(PHP_SAPI!=='"'"'cli'"'"')exit(2);
 $root=$argv[1]??'"'"'/boot/config/plugins/zfs.master.ui'"'"';
 $acceptedBoot=($argv[2]??'"'"''"'"')==='"'"'accepted-boot'"'"';
 $managedInstall=($argv[2]??'"'"''"'"')==='"'"'install'"'"';
+// The installer'"'"'s first pass lets scheduled snapshot checks through: it pauses new ones and waits for the running one.
+$deferScheduled=getenv('"'"'ZFSM_PREFLIGHT_PASS'"'"')==='"'"'defer-scheduled'"'"';
 $requireRecovery=static function($message)use($acceptedBoot){fwrite(STDERR,'"'"'ZFS Director preflight: '"'"'.$message."\n");exit($acceptedBoot?10:1);};
 try{
     if(!is_string($root)||!str_starts_with($root,'"'"'/'"'"')||str_contains($root,"\0")||str_contains($root,'"'"'..'"'"')||is_link($root))throw new RuntimeException('"'"'Unsafe persistent state path'"'"');
@@ -991,7 +996,7 @@ try{
     }
     $jobs=$root.'"'"'/jobs'"'"';if(is_link($jobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
     $pendingJobs=[];
-    $scanJobs=function($directory,$skipIfDurable=null)use(&amp;$pendingJobs,$requireRecovery){
+    $scanJobs=function($directory,$skipIfDurable=null,$deferScheduled=false)use(&amp;$pendingJobs,$requireRecovery){
         if(!is_dir($directory))return;
         $scan=opendir($directory);$count=0;
         // Only job journals count toward the bound: every journal also keeps a .lock file and may
@@ -1003,7 +1008,7 @@ try{
             $file=$directory.'"'"'/'"'"'.$name;
             if(is_link($file)||!is_file($file)||filesize($file)&gt;131072)throw new RuntimeException('"'"'Job requires inspection before upgrade'"'"');$j=json_decode(file_get_contents($file),true,32);if(!is_array($j))$requireRecovery('"'"'Malformed job requires inspection'"'"');
             if(!is_array($j)||!is_string($j['"'"'state'"'"']??null))$requireRecovery('"'"'A job with an unreadable state requires inspection; background services stay paused.'"'"');
-            if(in_array($j['"'"'state'"'"'],['"'"'queued'"'"','"'"'running'"'"'],true)){$label=trim(preg_replace('"'"'/[^\x20-\x7e]+/'"'"','"'"''"'"',(string)($j['"'"'type'"'"']??'"'"'job'"'"').'"'"' '"'"'.(string)($j['"'"'source'"'"']??$j['"'"'label'"'"']??'"'"''"'"')));$pendingJobs[]=substr($label==='"'"''"'"'?'"'"'job'"'"':$label,0,90).'"'"' ('"'"'.$j['"'"'state'"'"'].'"'"')'"'"';continue;}
+            if(in_array($j['"'"'state'"'"'],['"'"'queued'"'"','"'"'running'"'"'],true)){if($deferScheduled&amp;&amp;($j['"'"'type'"'"']??null)==='"'"'policy'"'"'&amp;&amp;($j['"'"'trigger'"'"']??null)==='"'"'schedule'"'"')continue;$label=trim(preg_replace('"'"'/[^\x20-\x7e]+/'"'"','"'"''"'"',(string)($j['"'"'type'"'"']??'"'"'job'"'"').'"'"' '"'"'.(string)($j['"'"'source'"'"']??$j['"'"'label'"'"']??'"'"''"'"')));$pendingJobs[]=substr($label==='"'"''"'"'?'"'"'job'"'"':$label,0,90).'"'"' ('"'"'.$j['"'"'state'"'"'].'"'"')'"'"';continue;}
             // Terminal file jobs can still release holds or delete ZIP staging.
             // Future expiry/retry times only defer that work after activation.
             if(in_array($j['"'"'type'"'"']??null,['"'"'restore'"'"','"'"'archive'"'"'],true)&amp;&amp;($j['"'"'hold_owned'"'"']??null)!==false)$requireRecovery('"'"'File job protection requires inspection; worker stays stopped'"'"');
@@ -1014,19 +1019,20 @@ try{
     // A scheduled policy check (REL-002) is queued only in the tmpfs runtime directory while
     // idle-capable; an update must refuse to proceed while one is in flight there too.
     $runtimeJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/protection-queue'"'"';if(is_link($runtimeJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
-    $scanJobs($runtimeJobs,$jobs);
+    $scanJobs($runtimeJobs,$jobs,$deferScheduled);
     $requestJobs='"'"'/var/tmp/'"'"'.basename($root).'"'"'/jobs/requests'"'"';if(is_link($requestJobs))throw new RuntimeException('"'"'Jobs path requires inspection'"'"');
     $scanJobs($requestJobs,$jobs);
     if($pendingJobs){
         $shown=implode('"'"'; '"'"',array_slice($pendingJobs,0,3)).(count($pendingJobs)&gt;3?'"'"'; and '"'"'.(count($pendingJobs)-3).'"'"' more'"'"':'"'"''"'"');
         $requireRecovery('"'"'Update paused: '"'"'.count($pendingJobs).'"'"' job(s) still queued or running: '"'"'.$shown.'"'"'. Nothing was changed and the installed version keeps running. Next: open Main &gt; ZFS Director &gt; Jobs, wait for these jobs to finish or cancel them, then run Plugins &gt; Check for Updates again.'"'"');
     }
-    echo "ZFS Director preflight: no pending execution or file cleanup. Settings and schedules retained.\n";
 }catch(Throwable$e){fwrite(STDERR,'"'"'ZFS Director upgrade blocked: '"'"'.$e-&gt;getMessage()."\n");exit(1);}
 ' -- /boot/config/plugins/zfs.master.ui "$mode" || status=$?
   if [[ "$status" == 10 &amp;&amp; "$restore_accepted" == 1 ]]; then hold_recovery=1; elif [[ "$status" != 0 ]]; then return "$status"; fi
 }
-preflight
+# Scheduled snapshot checks start every minute; the first pass lets them through and the
+# installer waits for the running one after pausing new ones (strict pass under the lock below).
+preflight defer-scheduled
 # Read-only prerequisite gate, before stopping the installed implementation.
 # Execute the exact packaged helper; the generic probe creates no files.
 if ! /usr/bin/perl -e '#!/usr/bin/perl
@@ -1470,7 +1476,26 @@ resume_runtime() {
 early_failure() { local result=$?; if [[ "$result" != 0 ]]; then resume_runtime; fi; }
 trap early_failure EXIT
 stop_runtime 'package installation in progress'
-if [[ -f "$live/scripts/zfsm-worker.php" ]]; then /usr/bin/php "$live/scripts/zfsm-worker.php" --stop; fi
+# New scheduled checks are refused while paused; the running one is allowed to finish.
+if [[ -f "$live/scripts/zfsm-worker.php" ]]; then
+  stop_deadline=$((SECONDS+300)) stop_notice=0
+  # Exit status 1 means busy (each attempt already waits 12 s); any other failure is reported at once.
+  while :; do
+    stop_status=0; stop_error=$(/usr/bin/php "$live/scripts/zfsm-worker.php" --stop 2&gt;&amp;1) || stop_status=$?
+    if [[ "$stop_status" == 0 ]]; then break; fi
+    if [[ "$stop_status" != 1 ]]; then printf '%s\n' "$stop_error"; exit "$stop_status"; fi
+    if (( SECONDS &gt;= stop_deadline )); then echo 'ZFS Director: background work did not finish within 5 minutes. Update paused; the installed version keeps running.'; exit 1; fi
+    if [[ "$stop_notice" == 0 ]]; then stop_notice=1; echo 'ZFS Director: waiting for the current scheduled check to finish (up to 5 minutes)...'; fi
+  done
+fi
+# Scheduled checks that never started are dropped; the next minute queues them again.
+/usr/bin/php -r '
+  $dir=$argv[1];if(!is_dir($dir)||is_link($dir))exit(0);
+  foreach(glob($dir."/*.json")?:[] as $file){
+    if(is_link($file)||!is_file($file)||filesize($file)&gt;131072)continue;$job=json_decode((string)file_get_contents($file),true);
+    if(is_array($job)&amp;&amp;($job["state"]??null)==="queued"&amp;&amp;($job["type"]??null)==="policy"&amp;&amp;($job["trigger"]??null)==="schedule"&amp;&amp;@unlink($file)&amp;&amp;is_file($file.".lock")&amp;&amp;!is_link($file.".lock"))@unlink($file.".lock");
+  }
+' -- /var/tmp/zfs.master.ui/jobs/protection-queue
 exec 9&gt;&gt;/var/lock/zfs.master.ui.lock
 flock -n 9 || { echo 'ZFS Director: an operation is active; wait for it to finish and retry installation.'; exit 1; }
 mkdir -p /boot/config/plugins/zfs.master.ui/protection
@@ -1481,9 +1506,9 @@ flock -n 7 &amp;&amp; flock -n 6 || { echo 'ZFS Director: protection configurati
 preflight
 mkdir -m 0700 "$stage"
 tar -xzf "$archive" -C "$stage"
-(cd "$stage/zfs.master.ui"; sha256sum -c SHA256SUMS)
+(cd "$stage/zfs.master.ui"; sha256sum -c --quiet SHA256SUMS)
 while IFS= read -r -d '' file; do /usr/bin/php -l "$file" &gt;/dev/null; done &lt; &lt;(find "$stage/zfs.master.ui" -type f \( -name '*.php' -o -name '*.page' \) -print0)
-/usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl"
+/usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl" &gt;/dev/null 2&gt;&amp;1 || /usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl"
 find "$stage/zfs.master.ui" -type d -exec chmod 0755 {} +
 rollback_install() {
   local result=$?
@@ -1504,7 +1529,7 @@ legacy_cleanup apply
 # Automatic installation receipt distinguishes boot from an unrelated upgrade.
 if [[ "$hold_recovery" == 0 ]]; then
   receipt=$(mktemp "$installed.XXXXXX")
-  printf '%s\n' 'dc12f1594ea9698b66a826914a60c58a3723afff29d1daa06394710b175ed9f8' &gt; "$receipt"
+  printf '%s\n' 'bef23df663b9167a515ce6fef3701e295855a4b17ff2f827d5d559750d9746a8' &gt; "$receipt"
   mv -T -- "$receipt" "$installed"
 fi
 # Startup must follow Plugin Manager registration, not precede it.
@@ -1519,7 +1544,7 @@ chmod 0755 "$hook"
   $json=json_encode(["registration"=&gt;$argv[1],"sha256"=&gt;$argv[2],"hold_recovery"=&gt;$argv[3]==="1"],JSON_THROW_ON_ERROR);
   $temporary=tempnam(dirname($path),".install-");
   if($temporary===false||file_put_contents($temporary,$json)!==strlen($json)||!rename($temporary,$path))exit(1);
-' -- "$registration" 'dc12f1594ea9698b66a826914a60c58a3723afff29d1daa06394710b175ed9f8' "$hold_recovery"
+' -- "$registration" 'bef23df663b9167a515ce6fef3701e295855a4b17ff2f827d5d559750d9746a8' "$hold_recovery"
 # No child service inherits the installer's operation/protection locks.
 flock -u 6
 flock -u 7
@@ -1527,7 +1552,7 @@ exec 6&gt;&amp;- 7&gt;&amp;-
 flock -u 9
 exec 9&gt;&amp;-
 trap - EXIT
-echo 'ZFS Director 2026.11.19.1 code installed; Plugin Manager will verify registration and start background services next.'
+echo 'ZFS Director 2026.11.19.2 code installed; Plugin Manager will verify registration and start background services next.'
 
 </INLINE>
   </FILE>
