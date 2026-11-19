@@ -26,8 +26,9 @@ VERSION_PATTERN = re.compile(r'^[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$')
 # Files where the published version appears for users (download links, CA template).
 VERSIONED_FILES = ['README.md', 'README.ru.md', 'ca_profile.xml', 'zfs-director.xml', 'docs/INSTALLATION.md', 'src/README.md']
 PLUGIN_FILES = ['zfs-director.plg', 'zfs.master.ui.plg', 'zfs.master.ui.local.plg']
-SCREENSHOTS = ("docker run --rm -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.62.1-noble "
-               "bash -c 'node docs/preview/server.mjs > /tmp/preview.log 2>&1 & sleep 3; node docs/preview/capture.mjs'")
+# Local headless Chromium from the installed Playwright package; no container image is needed.
+SCREENSHOTS = ("bash -c 'node docs/preview/server.mjs > /tmp/zfsm-preview.log 2>&1 & server=$!; sleep 3; "
+               "node docs/preview/capture.mjs; code=$?; kill $server; exit $code'")
 
 
 def current_version():

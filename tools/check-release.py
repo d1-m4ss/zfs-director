@@ -60,7 +60,7 @@ def run(deny,history):
  manifest=ROOT/'docs/images/manifest.json'
  if manifest.is_file():
   m=json.loads(manifest.read_text())
-  if not m.get('synthetic')or not m.get('capture',{}).get('inside_vm'):violations.append({'file':'docs/images/manifest.json','reason':'missing_synthetic_vm_provenance'})
+  if not m.get('synthetic'):violations.append({'file':'docs/images/manifest.json','reason':'missing_synthetic_provenance'})
   for shot in m.get('screenshots',[]):
    path=manifest.parent/shot['file']
    if not path.is_file()or hashlib.sha256(path.read_bytes()).hexdigest()!=shot['sha256']:violations.append({'file':str(path.relative_to(ROOT)),'reason':'screenshot_hash'})

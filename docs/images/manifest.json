@@ -7,33 +7,33 @@
     "src/frontend/ZFSMCreateDataset.php": "009ea5bea576530f75c7100758720ade773f296b69962a50d5c818c64c7c4947",
     "src/frontend/ZFSMDateTime.js": "49f830ac8f01343da5486d2735c04d0a85e8fcef5d6e1149672bd3e4fe724938",
     "src/frontend/ZFSMExplorer.js": "e9d017135516240bda7655ff5ba7ef4bbd360cf658322e537df9c025d77c51d8",
-    "src/frontend/ZFSMForms.js": "af0672fd482c3ec3c6ae02119e708330fc9a6c6e7d287914a48e332e9f861c91",
+    "src/frontend/ZFSMForms.js": "15ecd69189887ab40f57c6181876252447fae7d0b7636947d5c44c450600ce25",
     "src/frontend/ZFSMInventory.js": "04d6f24cf3bd00986aacaf300f7918e3825df1da2fd51f2b30caaa7d6f7b1038",
     "src/frontend/ZFSMOverview.js": "fce0218a833ce698d308072206e7cc3a42161f4fa38dd821694baf6d374d2f69",
     "src/frontend/ZFSMPoolView.js": "3e12f339d474213fcaed5642e01978be63c61380d92296c0e4c7c46050f3f22b",
     "src/frontend/ZFSMProtection.css": "14e571822601176361a63df3e227d0962365b6ae2bcf41e5559f5a7f5726dde8",
-    "src/frontend/ZFSMProtection.js": "ba1fc08ffd89d8f828f4f5439c60af3f976b9827dcced7a9c9ac131db93dcbaa",
+    "src/frontend/ZFSMProtection.js": "758d6e9c6a498b57a5613b47abefa8d7984095ac8492878064fc1be4b847dc56",
     "src/frontend/ZFSMSnapshots.js": "916983cd48ee356e04a440c3c2774e741abafac34957579b711f473c13dec38b",
     "src/frontend/ZFSMWorkspace.css": "45c97ada67ea7425fb59da447c148d327a6f28653d088ca7c28733c8aea6981e",
     "src/frontend/ZFSMWorkspace.js": "5a3a47d2712b84e108b5d9ed443ab07fa67d69455fa76e764d02027473177ac1",
     "docs/preview/data.mjs": "86b3850d349451716ea3d78f0d50eca72d5b8518d9ceac47ef541aa8b99590fd",
     "docs/preview/server.mjs": "42b46c6e56e6cfa324b57bcf3050343611387b893c1367b5b1a072db197fab0e",
-    "docs/preview/capture.mjs": "7217260b8303bba89cb84b95ed2b94a51befdfe618d7ebb1859d3551f771859f"
+    "docs/preview/capture.mjs": "011bcbe0873a33878353c7afd2c414e39e69fc415a8211a69972302c2c7624d4"
   },
   "capture": {
-    "platform": "linux",
+    "platform": "darwin",
     "architecture": "arm64",
-    "virtualization": "orbstack",
-    "browser": "151.0.7922.34",
+    "virtualization": "none",
+    "browser": "159.0.8154.6",
     "timezone": "UTC",
     "display_clock": "2026-01-03T12:00:00Z",
-    "inside_vm": true
+    "inside_vm": false
   },
   "screenshots": [
     {
       "file": "overview.png",
-      "sha256": "c5a74eaed1a7ceaffbadc71a1c0ccdb9b2ff661430af9a665fdce0197b2e2564",
-      "bytes": 75727,
+      "sha256": "61350335c8b23d8945b0db3ab184e8e6fe5ecd0605e3af23ca1a673ef18cd079",
+      "bytes": 84452,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -41,8 +41,8 @@
     },
     {
       "file": "datasets.png",
-      "sha256": "718bfc9aadc10acdedde20be985385fd8cd596bf9b6433b6cee78a77b929ddc0",
-      "bytes": 208067,
+      "sha256": "845126248a17c8ca6ba98e304dd73b160567d9a122a2f7ce67dc88de3b5a7ecd",
+      "bytes": 223419,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -50,8 +50,8 @@
     },
     {
       "file": "snapshots.png",
-      "sha256": "9a96e43a71530c5f69c69fd40396d7254af6df8406c14d19247e2ae0ac0ab1f4",
-      "bytes": 154910,
+      "sha256": "2c1e4d79ef1da5150bb74062acba5655731811c9caaf6a64310a6a193785513d",
+      "bytes": 165131,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -59,8 +59,8 @@
     },
     {
       "file": "file-manager.png",
-      "sha256": "40401d8efed45516402aff68e42a5ce2d9dd0e897d037779cfac0642e9378939",
-      "bytes": 120304,
+      "sha256": "b9a430318743f71dfd095bc368ae2bccab2bce67d58b2a24650661f22560ee95",
+      "bytes": 131913,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -68,8 +68,8 @@
     },
     {
       "file": "restore-review.png",
-      "sha256": "c5d924f64282896019dbef5c92dbce5f57b51525a3b2d41cb3b77352b1034e0e",
-      "bytes": 121902,
+      "sha256": "fdcf275b82d1bb30e727a7d79cf9c59aa00a8c6c336c6aa4f3ddf3225f04a1a8",
+      "bytes": 133538,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -77,8 +77,8 @@
     },
     {
       "file": "actions.png",
-      "sha256": "8b3048b4e9e6a2f127bc384ad1512de19957f184c187805f46fd3a8c98844783",
-      "bytes": 103365,
+      "sha256": "bb9895fbcc2cb18a94ac7c9a4eef6ecd65b0c4c1074648c3d2cc90491d4a4d8d",
+      "bytes": 111058,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -86,8 +86,8 @@
     },
     {
       "file": "deletion-review.png",
-      "sha256": "68db3340e5b8b65d30ba006b0d0e8e458eef0748d7c4e83fd278aa2e916f72df",
-      "bytes": 98203,
+      "sha256": "8f14676989feef687d2396ef7734b759c9bad8f7734cad412cc8b29d46861aa3",
+      "bytes": 107154,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -95,8 +95,8 @@
     },
     {
       "file": "policies.png",
-      "sha256": "8745f6362396f94fa7f5ffb2e749e64ca1587772d6d2b8df81de1c7daeda7ce1",
-      "bytes": 157610,
+      "sha256": "22718861e21620610a2462c4e9482109f75010c76c2b33518ee763fc93f74812",
+      "bytes": 173234,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -104,8 +104,8 @@
     },
     {
       "file": "snapshot-policy.png",
-      "sha256": "6e58f9bf26d1ef304f205aa28e2e9c7f6c581b77a032612bab63b1b52b73ee8c",
-      "bytes": 146312,
+      "sha256": "0599990f9f6ccca88c8e399ca413dcbc5dc1c30f567ae918f39359fd7b4253af",
+      "bytes": 160151,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -113,8 +113,8 @@
     },
     {
       "file": "replication.png",
-      "sha256": "daf4d6b37a2a88cd5713cf9534841dda96e530c87459cff234f8e558bd72a4f6",
-      "bytes": 104587,
+      "sha256": "69da484ca636292b387a52e170cd2e94aa55ac6626db817ce81df935c5fbfd6e",
+      "bytes": 117157,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -122,8 +122,8 @@
     },
     {
       "file": "replication-wizard.png",
-      "sha256": "f548fb731c464ff865e1f87da6c4d004fa7924adc5d470ce9e50cb5bb00ad758",
-      "bytes": 91822,
+      "sha256": "37c7070ccb10188f399edfb3aa0671d5d43e2aa1244e12d7319b099e818e8419",
+      "bytes": 101023,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -131,8 +131,8 @@
     },
     {
       "file": "jobs.png",
-      "sha256": "dc32a4469172fa358d24771976a650a5abe07f00d6561e986f7dd7fba329d1a7",
-      "bytes": 114429,
+      "sha256": "dd16c9577bcc080625b1c10c1d10cb1deb4a5a7a0bc03bacdb29911ede2daab2",
+      "bytes": 126080,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -140,8 +140,8 @@
     },
     {
       "file": "settings.png",
-      "sha256": "c1ed9e86fb877a87413033c6f91f82bcf6d439c86362bafb3941ed6437edee9d",
-      "bytes": 115747,
+      "sha256": "fb1f79bfed7006a20ec911ddb504e153b21388b31385239309ee1a4230a1424a",
+      "bytes": 129202,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -149,8 +149,8 @@
     },
     {
       "file": "theme-gray.png",
-      "sha256": "80ad6c1537ffe1ee3acebaed16fd771f72b176fadd545a70a3a9c874d290ac96",
-      "bytes": 75665,
+      "sha256": "222047a29c80e0dc8af4c6152c87c56cec6b91d8a76d0cad442612d840375de9",
+      "bytes": 84814,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -158,8 +158,8 @@
     },
     {
       "file": "theme-light.png",
-      "sha256": "d3d68aeeaa146692631e5b29d9427dfe21f6de34180e13c64d7382813bf7753a",
-      "bytes": 75037,
+      "sha256": "c4661e8beb7c0c00330d8e7bfc725bf20665e892147ec949aff82055f23c4b0a",
+      "bytes": 83937,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -167,8 +167,8 @@
     },
     {
       "file": "theme-azure.png",
-      "sha256": "5f190c0dce5e55e5f0e0b68fde9f4366556b3fb0b3ade0fe329efeb8ae89bca7",
-      "bytes": 75994,
+      "sha256": "27e6aeae7dce4518c7186bc214dbf35309a80b06f46a41f7e47dd989772b55e2",
+      "bytes": 85303,
       "viewport": {
         "width": 1440,
         "height": 980
@@ -176,8 +176,8 @@
     },
     {
       "file": "mobile.png",
-      "sha256": "e9c2da2dcb629bf7e8118e9b2f83296d4a2a942b524ad063a2cd2f894ba07779",
-      "bytes": 43832,
+      "sha256": "f3bf2dba408649f00ee093a0b57b358370b7e7d05028760302073eb6a7eec96c",
+      "bytes": 46151,
       "viewport": {
         "width": 390,
         "height": 844
