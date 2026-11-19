@@ -197,7 +197,7 @@ class InstallerTests(unittest.TestCase):
                            cwd=ROOT, check=True, capture_output=True)
             digest = hashlib.sha256(next(output.glob('*.tgz')).read_bytes()).hexdigest()
             install = (output / 'install.sh').read_text()
-            gate = install.split('\npreflight\n# Read-only prerequisite gate', 1)[0] + '\npreflight\n'
+            gate = install.split('\npreflight defer-scheduled\n# Read-only prerequisite gate', 1)[0] + '\npreflight defer-scheduled\n'
             # The read-only PLG gate does not depend on having downloaded TGZ yet.
             gate = '\n'.join(line for line in gate.splitlines() if not (line.startswith("printf '%s  %s") and 'sha256sum -c' in line))
             for receipt, runtime, expected in [(None, False, 'install'), ('old-package', False, 'install'), (digest, False, 'accepted-boot'), (digest, True, 'install')]:
@@ -582,6 +582,47 @@ class InstallerTests(unittest.TestCase):
             self.assertIn(version, result.stderr)
             self.assertEqual(list(output.glob('*.plg')), [], 'A missing changelog section must not produce a PLG')
 
+
+
+class WorkerStopWaitTests(unittest.TestCase):
+    """The installer waits for a running scheduled check: retries only while --stop reports busy (1)."""
+    def run_loop(self, statuses, deadline=300):
+        with tempfile.TemporaryDirectory(dir=STAND_TMP) as folder:
+            output = pathlib.Path(folder) / 'build'
+            subprocess.run(['python3', str(ROOT / 'tools/build-installer.py'), '--output', str(output)], cwd=ROOT, check=True, capture_output=True)
+            install = (output / 'install.sh').read_text()
+            block = install.split('# New scheduled checks are refused while paused; the running one is allowed to finish.\n', 1)[1].split('# Scheduled checks that never started', 1)[0]
+            anchor = pathlib.Path(folder)
+            (anchor / 'live/scripts').mkdir(parents=True)
+            (anchor / 'live/scripts/zfsm-worker.php').write_text('')
+            calls = anchor / 'calls'
+            (anchor / 'statuses').write_text('\n'.join(map(str, statuses)) + '\n')
+            php = anchor / 'php'
+            php.write_text('#!/bin/bash\necho x >> ' + shlex.quote(str(calls)) + '\nn=$(wc -l < ' + shlex.quote(str(calls)) + ')\ns=$(sed -n "${n}p" ' + shlex.quote(str(anchor / 'statuses')) + ')\n[[ -n "$s" ]] || s=1\n[[ "$s" == 0 ]] || echo "stop said $s" >&2\nexit "$s"\n')
+            php.chmod(0o700)
+            script = 'set -euo pipefail\nlive=' + shlex.quote(str(anchor / 'live')) + '\n' + block.replace('/usr/bin/php', shlex.quote(str(php))).replace('SECONDS+300', 'SECONDS+' + str(deadline)) + 'echo AFTER-LOOP\n'
+            result = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=60)
+            return result, len(calls.read_text().splitlines()) if calls.exists() else 0
+
+    def test_busy_then_stopped_continues_with_one_notice(self):
+        result, calls = self.run_loop([1, 1, 0])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, 3)
+        self.assertEqual(result.stdout.count('waiting for the current scheduled check'), 1)
+        self.assertIn('AFTER-LOOP', result.stdout)
+
+    def test_busy_past_the_deadline_stops_the_update(self):
+        result, calls = self.run_loop([1] * 50, deadline=0)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('did not finish within 5 minutes', result.stdout)
+        self.assertNotIn('AFTER-LOOP', result.stdout)
+        self.assertEqual(calls, 1)
+
+    def test_other_failure_is_reported_at_once_without_retrying(self):
+        result, calls = self.run_loop([255])
+        self.assertEqual(result.returncode, 255)
+        self.assertIn('stop said 255', result.stdout)
+        self.assertEqual(calls, 1)
 
 
 if __name__ == '__main__':

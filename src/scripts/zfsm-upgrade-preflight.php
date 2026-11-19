@@ -4,6 +4,8 @@ if(PHP_SAPI!=='cli')exit(2);
 $root=$argv[1]??'/boot/config/plugins/zfs.master.ui';
 $acceptedBoot=($argv[2]??'')==='accepted-boot';
 $managedInstall=($argv[2]??'')==='install';
+// The installer's first pass lets scheduled snapshot checks through: it pauses new ones and waits for the running one.
+$deferScheduled=getenv('ZFSM_PREFLIGHT_PASS')==='defer-scheduled';
 $requireRecovery=static function($message)use($acceptedBoot){fwrite(STDERR,'ZFS Director preflight: '.$message."\n");exit($acceptedBoot?10:1);};
 try{
     if(!is_string($root)||!str_starts_with($root,'/')||str_contains($root,"\0")||str_contains($root,'..')||is_link($root))throw new RuntimeException('Unsafe persistent state path');
@@ -15,7 +17,7 @@ try{
     }
     $jobs=$root.'/jobs';if(is_link($jobs))throw new RuntimeException('Jobs path requires inspection');
     $pendingJobs=[];
-    $scanJobs=function($directory,$skipIfDurable=null)use(&$pendingJobs,$requireRecovery){
+    $scanJobs=function($directory,$skipIfDurable=null,$deferScheduled=false)use(&$pendingJobs,$requireRecovery){
         if(!is_dir($directory))return;
         $scan=opendir($directory);$count=0;
         // Only job journals count toward the bound: every journal also keeps a .lock file and may
@@ -27,7 +29,7 @@ try{
             $file=$directory.'/'.$name;
             if(is_link($file)||!is_file($file)||filesize($file)>131072)throw new RuntimeException('Job requires inspection before upgrade');$j=json_decode(file_get_contents($file),true,32);if(!is_array($j))$requireRecovery('Malformed job requires inspection');
             if(!is_array($j)||!is_string($j['state']??null))$requireRecovery('A job with an unreadable state requires inspection; background services stay paused.');
-            if(in_array($j['state'],['queued','running'],true)){$label=trim(preg_replace('/[^\x20-\x7e]+/','',(string)($j['type']??'job').' '.(string)($j['source']??$j['label']??'')));$pendingJobs[]=substr($label===''?'job':$label,0,90).' ('.$j['state'].')';continue;}
+            if(in_array($j['state'],['queued','running'],true)){if($deferScheduled&&($j['type']??null)==='policy'&&($j['trigger']??null)==='schedule')continue;$label=trim(preg_replace('/[^\x20-\x7e]+/','',(string)($j['type']??'job').' '.(string)($j['source']??$j['label']??'')));$pendingJobs[]=substr($label===''?'job':$label,0,90).' ('.$j['state'].')';continue;}
             // Terminal file jobs can still release holds or delete ZIP staging.
             // Future expiry/retry times only defer that work after activation.
             if(in_array($j['type']??null,['restore','archive'],true)&&($j['hold_owned']??null)!==false)$requireRecovery('File job protection requires inspection; worker stays stopped');
@@ -38,12 +40,11 @@ try{
     // A scheduled policy check (REL-002) is queued only in the tmpfs runtime directory while
     // idle-capable; an update must refuse to proceed while one is in flight there too.
     $runtimeJobs='/var/tmp/'.basename($root).'/jobs/protection-queue';if(is_link($runtimeJobs))throw new RuntimeException('Jobs path requires inspection');
-    $scanJobs($runtimeJobs,$jobs);
+    $scanJobs($runtimeJobs,$jobs,$deferScheduled);
     $requestJobs='/var/tmp/'.basename($root).'/jobs/requests';if(is_link($requestJobs))throw new RuntimeException('Jobs path requires inspection');
     $scanJobs($requestJobs,$jobs);
     if($pendingJobs){
         $shown=implode('; ',array_slice($pendingJobs,0,3)).(count($pendingJobs)>3?'; and '.(count($pendingJobs)-3).' more':'');
         $requireRecovery('Update paused: '.count($pendingJobs).' job(s) still queued or running: '.$shown.'. Nothing was changed and the installed version keeps running. Next: open Main > ZFS Director > Jobs, wait for these jobs to finish or cancel them, then run Plugins > Check for Updates again.');
     }
-    echo "ZFS Director preflight: no pending execution or file cleanup. Settings and schedules retained.\n";
 }catch(Throwable$e){fwrite(STDERR,'ZFS Director upgrade blocked: '.$e->getMessage()."\n");exit(1);}

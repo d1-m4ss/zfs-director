@@ -1,3 +1,8 @@
+### 2026.11.19.2
+An update no longer stops because a scheduled snapshot check is running. Snapshot policies check every minute, so an update almost always found one in progress and refused. The installer now pauses new checks, waits up to 5 minutes for the running one to finish, drops checks that had not started yet (the next minute queues them again), and then updates. Jobs you started yourself still pause the update as before. The installation log is shorter: per-file checksum and syntax-check lines are no longer printed.
+
+ZFS Director: based on ZFS Master by Carlos Rodriguez (IkerSaint). GPL-2.0-or-later. Settings and recovery state retain their namespace. Background services start automatically after successful validation. Uninstall stops Director services and preserves settings, Jobs and recovery data.
+
 ### 2026.11.19.1
 The missed-run alert now counts from when the last verified replication run finished. It used to count from the creation time of the oldest transferred snapshot, so a recursive job with a child dataset that had no new snapshots, or a run with nothing new to send, was reported as missed although it ran on schedule.
 

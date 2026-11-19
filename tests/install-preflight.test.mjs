@@ -89,3 +89,19 @@ test('a large but healthy Jobs folder (journals plus their lock files) does not 
         assert.equal(result.exitCode,0,result.errors+result.text);
     }finally{php.exit();}
 });
+test('the installer first pass lets a running scheduled snapshot check through, but not manual work, and the strict pass still blocks it',async()=>{
+    const run=async(jobs,arg)=>{const php=await runtime();try{
+        php.mkdir('/state/jobs');php.writeFile('/state/zfs.master.ui.cfg','[general]\nsanoid_integration=1\n');
+        php.mkdir('/var/tmp/state/jobs/protection-queue');
+        for(const [name,job] of jobs)php.writeFile(name.startsWith('/')?name:'/var/tmp/state/jobs/protection-queue/'+name,JSON.stringify(job));
+        const source=(await readFile('src/scripts/zfsm-upgrade-preflight.php','utf8')).replace("if(PHP_SAPI!=='cli')exit(2);",'');
+        const env=arg?'putenv("ZFSM_PREFLIGHT_PASS='+arg+'");':'';
+        const result=await php.run({code:'<?php define("STDERR",fopen("php://stderr","w"));'+env+'$argv=["preflight","/state","install"]; ?>'+source}).catch(error=>{if(error.response)return error.response;throw error;});
+        return {code:result.exitCode,text:result.errors+result.text};
+    }finally{php.exit();}};
+    const scheduled=[['20261119-230600-aaaaaaaaaaaa.json',{state:'running',type:'policy',trigger:'schedule',source:'cache/immich'}],['20261119-230600-bbbbbbbbbbbb.json',{state:'queued',type:'policy',trigger:'schedule',source:'cache/appdata'}]];
+    let r=await run(scheduled,'defer-scheduled');assert.equal(r.code,0,r.text);assert.equal(r.text,'');
+    r=await run(scheduled,null);assert.equal(r.code,1,r.text);assert.match(r.text,/Update paused: 2 job\(s\) still queued or running: policy cache\/immich \(running\); policy cache\/appdata \(queued\)/);
+    r=await run([['20261119-230600-cccccccccccc.json',{state:'queued',type:'policy',trigger:'manual',source:'cache/immich'}]],'defer-scheduled');assert.equal(r.code,1,r.text);
+    r=await run([['/state/jobs/20261119-230600-dddddddddddd.json',{state:'running',type:'replication',trigger:'schedule',source:'cache/immich'}]],'defer-scheduled');assert.equal(r.code,1,r.text);assert.match(r.text,/replication cache\/immich \(running\)/);
+});

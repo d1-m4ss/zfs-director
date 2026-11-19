@@ -218,7 +218,7 @@ archive=/boot/config/plugins/zfs.master.ui/{archive.name}
 live=/usr/local/emhttp/plugins/zfs.master.ui
 stage=/usr/local/emhttp/plugins/.zfs-director-stage-{VERSION}-$$
 previous=/usr/local/emhttp/plugins/.zfs-director-previous-{VERSION}-$$
-printf '%s  %s\\n' '{digest}' "$archive" | sha256sum -c -
+printf '%s  %s\\n' '{digest}' "$archive" | sha256sum -c --quiet -
 # Legacy migration guard. Inspect now; cleanup runs after package validation.
 registration={plugin_name}
 legacy_backup=/boot/config/plugins-removed/zfs-director-{VERSION}-$(date -u +%Y%m%dT%H%M%SZ)-$$
@@ -252,10 +252,12 @@ if [[ ! -e "$live" && -f "$installed" && "$(cat "$installed")" == '{digest}' ]];
 preflight() {{
   local status=0 mode=install
   if [[ "$restore_accepted" == 1 ]]; then mode=accepted-boot; fi
-  /usr/bin/php -r {upgrade_probe} -- /boot/config/plugins/zfs.master.ui "$mode" || status=$?
+  ZFSM_PREFLIGHT_PASS="${{1:-strict}}" /usr/bin/php -r {upgrade_probe} -- /boot/config/plugins/zfs.master.ui "$mode" || status=$?
   if [[ "$status" == 10 && "$restore_accepted" == 1 ]]; then hold_recovery=1; elif [[ "$status" != 0 ]]; then return "$status"; fi
 }}
-preflight
+# Scheduled snapshot checks start every minute; the first pass lets them through and the
+# installer waits for the running one after pausing new ones (strict pass under the lock below).
+preflight defer-scheduled
 # Read-only prerequisite gate, before stopping the installed implementation.
 # Execute the exact packaged helper; the generic probe creates no files.
 if ! /usr/bin/perl -e {directory_probe} <<< '{{"op":"probe"}}'; then
@@ -277,7 +279,26 @@ resume_runtime() {{
 early_failure() {{ local result=$?; if [[ "$result" != 0 ]]; then resume_runtime; fi; }}
 trap early_failure EXIT
 stop_runtime 'package installation in progress'
-if [[ -f "$live/scripts/zfsm-worker.php" ]]; then /usr/bin/php "$live/scripts/zfsm-worker.php" --stop; fi
+# New scheduled checks are refused while paused; the running one is allowed to finish.
+if [[ -f "$live/scripts/zfsm-worker.php" ]]; then
+  stop_deadline=$((SECONDS+300)) stop_notice=0
+  # Exit status 1 means busy (each attempt already waits 12 s); any other failure is reported at once.
+  while :; do
+    stop_status=0; stop_error=$(/usr/bin/php "$live/scripts/zfsm-worker.php" --stop 2>&1) || stop_status=$?
+    if [[ "$stop_status" == 0 ]]; then break; fi
+    if [[ "$stop_status" != 1 ]]; then printf '%s\\n' "$stop_error"; exit "$stop_status"; fi
+    if (( SECONDS >= stop_deadline )); then echo 'ZFS Director: background work did not finish within 5 minutes. Update paused; the installed version keeps running.'; exit 1; fi
+    if [[ "$stop_notice" == 0 ]]; then stop_notice=1; echo 'ZFS Director: waiting for the current scheduled check to finish (up to 5 minutes)...'; fi
+  done
+fi
+# Scheduled checks that never started are dropped; the next minute queues them again.
+/usr/bin/php -r '
+  $dir=$argv[1];if(!is_dir($dir)||is_link($dir))exit(0);
+  foreach(glob($dir."/*.json")?:[] as $file){{
+    if(is_link($file)||!is_file($file)||filesize($file)>131072)continue;$job=json_decode((string)file_get_contents($file),true);
+    if(is_array($job)&&($job["state"]??null)==="queued"&&($job["type"]??null)==="policy"&&($job["trigger"]??null)==="schedule"&&@unlink($file)&&is_file($file.".lock")&&!is_link($file.".lock"))@unlink($file.".lock");
+  }}
+' -- /var/tmp/zfs.master.ui/jobs/protection-queue
 exec 9>>/var/lock/zfs.master.ui.lock
 flock -n 9 || {{ echo 'ZFS Director: an operation is active; wait for it to finish and retry installation.'; exit 1; }}
 mkdir -p /boot/config/plugins/zfs.master.ui/protection
@@ -288,9 +309,9 @@ flock -n 7 && flock -n 6 || {{ echo 'ZFS Director: protection configuration or e
 preflight
 mkdir -m 0700 "$stage"
 tar -xzf "$archive" -C "$stage"
-(cd "$stage/zfs.master.ui"; sha256sum -c SHA256SUMS)
+(cd "$stage/zfs.master.ui"; sha256sum -c --quiet SHA256SUMS)
 while IFS= read -r -d '' file; do /usr/bin/php -l "$file" >/dev/null; done < <(find "$stage/zfs.master.ui" -type f \\( -name '*.php' -o -name '*.page' \\) -print0)
-/usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl"
+/usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl" >/dev/null 2>&1 || /usr/bin/perl -c "$stage/zfs.master.ui/scripts/zfsm-files.pl"
 find "$stage/zfs.master.ui" -type d -exec chmod 0755 {{}} +
 rollback_install() {{
   local result=$?
@@ -340,7 +361,7 @@ echo 'ZFS Director {VERSION} code installed; Plugin Manager will verify registra
     # Plugin Manager resolves FILE entries in order and may unlink an existing
     # TGZ on a checksum mismatch. Refuse unsafe state BEFORE that can happen.
     early = install.split("stop_runtime 'package installation in progress'", 1)[0]
-    checksum_gate = next(line for line in early.splitlines(keepends=True) if line.startswith("printf '%s  %s") and '"$archive" | sha256sum -c -' in line)
+    checksum_gate = next(line for line in early.splitlines(keepends=True) if line.startswith("printf '%s  %s") and '"$archive" | sha256sum -c --quiet -' in line)
     assert checksum_gate in early
     early = early.replace(checksum_gate, '', 1)
     gate_file = ET.Element('FILE', Run='/bin/bash')
